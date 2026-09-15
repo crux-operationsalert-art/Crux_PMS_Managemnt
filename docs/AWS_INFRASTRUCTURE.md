@@ -35,8 +35,6 @@ Nothing here is my inference — where a value is still open it says so.
 create rights for RDS, S3, Route 53 and ACM. Neither blocks provisioning
 the database and API — only the public hostname and certificate.
 
-**Turso token:** rotated by the user. No further action.
-
 ---
 
 ## 2. Zero data loss — what actually delivers it

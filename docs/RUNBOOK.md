@@ -7,20 +7,15 @@
 
 Concrete steps, in order. Each one is verifiable before the next.
 
-**Database: Postgres** (Supabase or Neon free tier). Reasoning in
-`TURSO_R2_READINESS.md` §10. **Storage: Cloudflare R2**, unchanged.
+**Database: Postgres** (Supabase). Reasoning in the *Postgres over Turso*
+decision in `APPLICATION_AUDIT_LOG.md`. **Storage: Cloudflare R2**, unchanged.
 
 ---
 
-## 0. Rotate the token you pasted into chat — before anything else
+## 0. Credentials — before anything else
 
-The Turso API token in that message grants full control of your Turso
-organisation: create, read and drop any database. It is now in a chat
-transcript, so treat it as public.
-
-1. Turso dashboard → **Settings → API Tokens** → revoke it.
-2. You no longer need a Turso token for this build, but revoke it regardless.
-3. **Do not paste the next one anywhere.** Credentials belong in `.env`, and
+**Do not paste a credential into chat.** One was, earlier in this project, and
+it had to be treated as public and revoked. Credentials belong in `.env`, and
    `.env` goes in `.gitignore` *before* the first commit:
 
 ```
@@ -205,9 +200,8 @@ Postgres was chosen to keep.
 
 ## 9. What still needs you
 
-**One thing, and it is not about data: rotate the Turso API token** you pasted
-into chat. Everything else is seeded with sample data you replace as admin, per
-your instruction.
+Nothing about data. Everything is seeded with sample data you replace as admin,
+per your instruction.
 
 ### Deliberately *not* asked of you now
 

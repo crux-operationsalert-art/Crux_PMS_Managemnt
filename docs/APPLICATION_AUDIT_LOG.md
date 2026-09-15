@@ -127,8 +127,9 @@ on.
 # DECISION — Postgres over Turso · 9 Sep 2026
 
 Delegated to me. **Chosen: Postgres (Supabase or Neon free tier). R2 for
-documents unchanged.** Full reasoning in `TURSO_R2_READINESS.md` §10; the short
-version:
+documents unchanged.** Turso is not used and its assessment document has since
+been removed; this entry is kept so the decision does not get reopened without
+the reasoning that settled it:
 
 **Turso's benefit is unusable where it would count.** Its advantage is edge
 reads, but §7 already established that the penalty engine, escalation clock and
@@ -153,9 +154,10 @@ into figures several audits went into making trustworthy.
 **Unchanged:** never store a rounded derived rate and multiply by it. That was
 the ₹0.13-per-row error, and it is a modelling rule, not a storage one.
 
-`build/schema.libsql.sql` is **kept, not deleted** — if an offline field app ever
-needs embedded replicas, the verified translation already exists. The decision
-should be revisited only for that requirement.
+`build/schema.libsql.sql`, the verified libSQL translation, was kept at the time
+against a possible offline field app. **Removed on 15 Sep 2026** when Turso was
+dropped for good. It is recoverable from git history if that requirement ever
+returns.
 
 `RUNBOOK.md` is rewritten for this path: 9 steps, with a sixth verification test
 added for the coverage trigger, since that is the guarantee Postgres was chosen
@@ -174,40 +176,6 @@ the file back: `Crux-template-People.csv`, 8 columns, 17 lines.
 months ticked under "Compare with", or all 13 via a single button. Every row
 carries a Period column, the total line is recomputed across the whole set
 (weighted for rates, never averaged), and the filename states the range.
-
-## Corrections to TURSO_R2_READINESS.md
-The handover document was wrong in four ways, two of which would have caused
-real damage if the next session followed it literally.
-
-1. **"Never store a derived rate" would have broken rate resolution.** All 153
-   `rate` rows are `origin:'DERIVED'`, and **101 of 144 trading pairs resolve
-   from them**. Dropping them per my own instruction left **144 pairs with no
-   rate** — exceptions from 45 to 144, worse than the defect fixed in Audit 08
-   and introduced by the document meant to prevent such things. Now scoped to
-   *new* rates, with what happens to the existing 153 spelled out.
-2. **A float-drift claim I had not measured.** I asserted `REAL` would drift on
-   `revenue = mtd × rate`. Measured: ~10⁻¹⁰, invisible. The real error is ₹0.13
-   per row from **rounding a derived rate** — a different problem needing a
-   different fix. Integer paise is still right, for equality and reconciliation
-   rather than precision.
-3. **`numeric` counted as 4 columns; it is 29.** The 25 bare ones include every
-   money and score column, so the money decision's reach was understated ~6×.
-4. **§2 claimed to be "the complete list" with "nothing here is a blocker".**
-   Both false. Missing: 6 stored functions, 1 trigger, 2 `bytea`, 27 `date`,
-   2 `smallint`, 3 unnamed indexes, 10 `add column if not exists`.
-
-**The omission that matters most.** SQLite has no stored functions or procedural
-language, so `coverage_rule_no_overlap` — the trigger enforcing *"overlaps
-refused at write time, by the database, not by convention"* — **cannot move to
-Turso**. That guarantee becomes API-enforced and therefore bypassable by a
-direct write, a migration or a second service. It is now stated in §1's verdict,
-detailed in §2b with a nightly integrity scan as mitigation, and raised as a
-decision step: accept the trade, or choose Postgres. **It is the only real
-argument against Turso in the assessment**, and it was absent from the version I
-handed over.
-
-A handover document that has been wrong once should say so, so §8 now lists all
-four corrections.
 
 ---
 
