@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: crux-api
+    runtime: node
+    region: singapore
+    plan: starter
+    rootDir: build/api
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: WORKSPACE_DOMAIN
+        value: cruxindia.co.in
+      - key: MAIL_FROM
+        value: operations.alert@cruxindia.co.in
+      - key: MAIL_DAILY_CAP
+        value: "1500"
+      - key: CORS_ORIGINS
+        sync: false
+      - key: GMAIL_SA_EMAIL
+        sync: false
+      - key: GMAIL_SA_KEY
+        sync: false
+
+# DELIBERATELY NO WORKER SERVICE.
+#
+# The database already runs the chase/auto-close/outbox engine itself, via
+# pg_cron: `crux-tick` every 15 minutes and `crux-mail` every minute, 5,652
+# successful runs and counting (verified 2026-09-15). Deploying build/api/
+# worker.js here would put a SECOND engine on the same outbox and the same
+# next_chase_at -- which is exactly the double-send that produced 1,892 sends
+# to one person for one case.
+#
+# One engine. Today that is pg_cron, because it is the one that matches the
+# live schema -- worker.js still reads job_config.disabled_reason, a column
+# this database calls `reason`.
+#
+# If the worker is ever adopted instead, disabling the cron jobs is the FIRST
+# step, not a follow-up:
+#   select cron.unschedule('crux-tick'); select cron.unschedule('crux-mail');

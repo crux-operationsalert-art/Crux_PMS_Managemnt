@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+node_modules/
+*.log
+
+# Personal data and design-process material. NEVER commit these.
+#
+# design-handoff/ holds the 9.5MB datastore export (staff names, emails,
+# mobiles, employee IDs, reporting lines; client contact names, mobiles and
+# emails), the normalised extracts of the same, and the design chat
+# transcripts -- one of which contains a live API token at chat1.md:11930.
+# Publishing any of it repeats the exposure recorded in SECURITY-URGENT.md.
+design-handoff/
