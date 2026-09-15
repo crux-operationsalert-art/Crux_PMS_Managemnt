@@ -268,19 +268,6 @@
   </sc-if>
 
   <sc-if value="{{ signedIn }}" hint-placeholder-val="{{ true }}">
-  <div style="background:#2a2d33;color:#5c6470;border-bottom:2px solid #b4562f">
-    <div style="max-width:1280px;margin:0 auto;padding:8px clamp(12px,3vw,24px);display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between" data-comment-anchor="6f7a4bc6e8-div">
-      <div style="font-size:11px;letter-spacing:0.1em;text-transform:uppercase;color:#e0a184;font-weight:600">Prototype control · not part of the product</div>
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap" data-comment-anchor="8bb013a21f-div">
-        <span style="font-size:12px;color:#9a978f">Open the tool as</span>
-        <select value="{{ persona }}" onChange="{{ setPersona }}" style="font-size:12.5px;padding:7px 10px;border:1px solid #4a4d55;background:#14161a;color:#e8e5dd;min-height:44px;max-width:260px">
-          <sc-for list="{{ personaOptions }}" as="p" hint-placeholder-count="7">
-            <option value="{{ p.key }}">{{ p.label }}</option>
-          </sc-for>
-        </select>
-      </div>
-    </div>
-  </div>
 
 
   <sc-if value="{{ authed }}" hint-placeholder-val="{{ true }}">
@@ -3015,10 +3002,6 @@
                 <div style="color:#5c6470;font-size:11.5px;margin-top:3px;line-height:1.5">{{ m.when }} → {{ m.to }}</div>
               </div>
             </sc-for>
-            <div style="padding:12px 15px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:#faf9f6">
-              <button type="button" onClick="{{ tick }}" style="appearance:none;border:1px solid #3a5a80;background:#fff;color:#3a5a80;font-size:12px;padding:10px 14px;cursor:pointer;min-height:44px" style-hover="background:#3a5a80;color:#fff">{{ tickLabel }}</button>
-              <span style="font-size:11.5px;color:#5c6470;line-height:1.5;max-width:56ch">{{ tickNote }}</span>
-            </div>
           </div>
         </div>
 
