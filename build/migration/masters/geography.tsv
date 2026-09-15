@@ -1,0 +1,99 @@
+group	region	zone	state	city
+Zone B	East	Bhubaneswar Odisha Zone	Odisha	Bhubaneswar
+Zone B	East	Bhubaneswar Odisha Zone	Odisha	Cuttack
+Zone B	East	Bhubaneswar Odisha Zone	Odisha	Rourkela
+Zone B	East	Bhubaneswar Odisha Zone	Odisha	Sambalpur
+Zone A	West	Bhopal MP Zone	Madhya Pradesh	Bhopal
+Zone A	West	Bhopal MP Zone	Madhya Pradesh	Indore
+Zone B	West	Bhopal MP Zone	Madhya Pradesh	Gwalior
+Zone B	West	Bhopal MP Zone	Madhya Pradesh	Jabalpur
+Zone B	West	Bhopal MP Zone	Madhya Pradesh	Ujjain
+Zone A	South	Bengaluru Zone	Karnataka	Bengaluru
+Zone B	South	Rest of Karnataka Zone	Karnataka	Mysuru
+Zone B	South	Rest of Karnataka Zone	Karnataka	Mangaluru
+Zone B	South	Rest of Karnataka Zone	Karnataka	Hubballi-Dharwad
+Zone B	South	Rest of Karnataka Zone	Karnataka	Belagavi
+Zone B	South	Rest of Karnataka Zone	Karnataka	Kalaburagi
+Zone B	South	Rest of Karnataka Zone	Karnataka	Shivamogga
+Zone B	South	Kerala Zone	Kerala	Kochi
+Zone B	South	Kerala Zone	Kerala	Thiruvananthapuram
+Zone B	South	Kerala Zone	Kerala	Kozhikode
+Zone B	South	Kerala Zone	Kerala	Thrissur
+Zone B	South	Kerala Zone	Kerala	Kollam
+Zone B	South	Kerala Zone	Kerala	Kottayam
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Coimbatore
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Madurai
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Tiruchirappalli
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Salem
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Tiruppur
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Erode
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Vellore
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Thoothukudi
+Zone B	South	Chennai Zone	Tamil Nadu	Chennai
+Zone A	North	Delhi Zone	Delhi	Delhi
+Zone B	North	Punjab Zone	Punjab	Amritsar
+Zone B	North	Punjab Zone	Punjab	Ludhiana
+Zone B	North	Punjab Zone	Punjab	Jalandhar
+Zone B	West	Gujarat Zone	Gujarat	Ahmedabad
+Zone B	West	Gujarat Zone	Gujarat	Vadodara
+Zone B	West	Gujarat Zone	Gujarat	Surat
+Zone B	West	Gujarat Zone	Gujarat	Rajkot
+Zone B	West	Gujarat Zone	Gujarat	Gandhinagar
+Zone B	West	Gujarat Zone	Gujarat	Bhavnagar
+Zone B	West	Gujarat Zone	Gujarat	Jamnagar
+Zone B	West	Gujarat Zone	Gujarat	Bharuch
+Zone B	West	Gujarat Zone	Gujarat	Vapi
+Zone B	East	Guwahati Assam Zone	Assam	Guwahati
+Zone B	East	Guwahati Assam Zone	Assam	Dibrugarh
+Zone B	East	Guwahati Assam Zone	Assam	Silchar
+Zone A	South	Hyderabad Zone	Telangana	Hyderabad
+Zone B	South	Hyderabad Zone	Telangana	Warangal
+Zone B	South	Hyderabad Zone	Telangana	Karimnagar
+Zone B	South	Hyderabad Zone	Telangana	Nizamabad
+Zone A	East	Kolkata Zone	West Bengal	Kolkata
+Zone B	East	Kolkata Zone	West Bengal	Asansol
+Zone B	East	Kolkata Zone	West Bengal	Durgapur
+Zone B	East	Kolkata Zone	West Bengal	Siliguri
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Lucknow
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Kanpur
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Agra
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Noida
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Ghaziabad
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Varanasi
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Prayagraj
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Meerut
+Zone B	North	Uttar Pradesh Zone	Uttar Pradesh	Gorakhpur
+Zone A	West	Mumbai Zone	Maharashtra	Mumbai
+Zone B	West	Goa Zone	Goa	Panaji
+Zone B	West	Goa Zone	Goa	Margao
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Amravati
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Chhatrapati Sambhajinagar
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Nagpur
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Nashik
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Kolhapur
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Jalgaon
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Latur
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Nanded
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Solapur
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Sangli
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Satara
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Ahmednagar
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Akola
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Ratnagiri
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Wardha
+Zone A	West	Pune Zone	Maharashtra	Pune
+Zone B	East	Patna Zone	Bihar	Patna
+Zone B	East	Patna Zone	Bihar	Muzaffarpur
+Zone B	East	Patna Zone	Bihar	Gaya
+Zone B	East	Patna Zone	Bihar	Bhagalpur
+Zone B	East	Rest of Jharkhand Zone	Jharkhand	Ranchi
+Zone B	East	Rest of Jharkhand Zone	Jharkhand	Jamshedpur
+Zone B	East	Rest of Jharkhand Zone	Jharkhand	Dhanbad
+Zone B	East	Rest of Chhattisgarh Zone	Chhattisgarh	Raipur
+Zone B	East	Rest of Chhattisgarh Zone	Chhattisgarh	Bilaspur
+Zone B	East	Rest of Chhattisgarh Zone	Chhattisgarh	Durg-Bhilai
+Zone B	West	Rest of Maharashtra Zone	Maharashtra	Rest of Maharashtra
+Zone B	South	Rest of Karnataka Zone	Karnataka	Rest of Karnataka
+Zone B	South	Rest of Tamil Nadu Zone	Tamil Nadu	Rest of Tamil Nadu
+Zone B	East	Rest of Bihar Zone	Bihar	Rest of Bihar
+Zone B	East	Rest of Jharkhand Zone	Jharkhand	Rest of Jharkhand
