@@ -73,5 +73,5 @@ select 'branch',
             else 'City "' || btrim(coalesce(b.city, b.state, b.zone)) || '" is not in the state table — which state?' end,
        concat_ws(' | ', nullif(btrim(b.address),''), nullif(btrim(b.zone),''), nullif(btrim(b.state),''), nullif(btrim(b.city),''))
 from stg.branches b
-where stg.present(b.code) or stg.present(b.name)
+where (stg.present(b.code) or stg.present(b.name))
   and not exists (select 1 from stg.city_state cs where lower(cs.city) = lower(btrim(b.city)));
