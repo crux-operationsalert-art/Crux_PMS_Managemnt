@@ -3,48 +3,111 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Crux — operating tool</title>
+<title>Crux</title>
 <link rel="icon" href="assets/crux-logo.png">
 <style>
   :root { color-scheme: light dark; }
-  body{margin:0;background:#f4f2ee;color:#3d434d;
-       font:15px/1.65 "Helvetica Neue",Helvetica,Arial,sans-serif;
-       display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
-  .card{max-width:620px}
-  h1{font-size:20px;margin:0 0 4px}
-  .sub{margin:0 0 26px;color:#6b7280}
-  .row{border:1px solid #d9d4cb;border-radius:10px;padding:18px 20px;margin:0 0 14px;background:#fffdf9}
-  .row h2{font-size:15px;margin:0 0 6px}
-  .row p{margin:0 0 12px;color:#5b616b}
-  a.btn{display:inline-block;padding:9px 16px;border-radius:7px;text-decoration:none;
-        background:#3a5a80;color:#fff;font-weight:600}
-  a.quiet{background:none;color:#3a5a80;border:1px solid #b9c5d4}
+  html,body{margin:0;height:100%}
+  #boot{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
+        background:#f4f2ee;color:#3d434d;
+        font:15px/1.6 "Helvetica Neue",Helvetica,Arial,sans-serif}
+  #boot .card{max-width:640px}
+  #boot h1{font-size:18px;margin:0 0 10px}
+  #boot p{margin:0 0 12px;color:#5b616b}
+  #boot pre{white-space:pre-wrap;word-break:break-word;background:#efece6;
+            border:1px solid #ddd8cf;border-radius:8px;padding:12px;
+            font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#3d434d}
+  #boot a{color:#3a5a80}
   @media (prefers-color-scheme: dark){
-    body{background:#1b1d21;color:#e6e3dd}
-    .row{background:#232629;border-color:#3a3f45}
-    .row p,.sub{color:#9aa1aa}
+    #boot{background:#1b1d21;color:#e6e3dd}
+    #boot p{color:#9aa1aa}
+    #boot pre{background:#232629;border-color:#3a3f45;color:#d8d4cc}
   }
 </style>
 </head>
 <body>
-<div class="card">
-  <h1>Crux</h1>
-  <p class="sub">Two different things live here. This page exists so they are not confused for each other.</p>
+<div id="boot"><div class="card"><h1>Crux</h1><p>Loading…</p></div></div>
 
-  <div class="row">
-    <h2>The tool</h2>
-    <p>The live application, on the live database. Sign in with your
-       <strong>@cruxindia.co.in</strong> Google account — the account has to be on the
-       people master first; signing in does not create anybody.</p>
-    <a class="btn" href="https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/crux/">Open the tool</a>
-  </div>
+<script>
+// =====================================================================
+// This page IS the tool. Not a copy of it, and not a link to it.
+//
+// The application is one row of app_page, served by the crux Edge Function.
+// That is deliberate: it is what makes changing a screen an UPDATE rather than
+// a redeploy. This file fetches that page and hands the browser over to it, so
+// there is exactly one copy of the application and this is where it opens.
+//
+// Why a fetch and not a link. Navigating a browser straight at a Supabase
+// function sends no apikey header, and the gateway can refuse the request
+// before the function ever runs — the page never appears and the reason is
+// invisible from the address bar. A fetch can send the header. So can every
+// call the application makes afterwards, which is what the wrapper below is
+// for: the application's own code is untouched and keeps calling fetch.
+//
+// The publishable key is not a secret. It names the project and nothing else;
+// it is in the page source of every application built on Supabase and grants
+// no access on its own. Who you are is settled by sign-in, and the session
+// token that comes out of it is what the API actually checks.
+// =====================================================================
+(function () {
+  var PROJECT = "https://oxpwqfbtbxlvuqpztbwg.supabase.co";
+  var ANON    = "sb_publishable_NvXprPt5EeNNVotu3qtOxg_mQlaiZ9z";
 
-  <div class="row">
-    <h2>The design</h2>
-    <p>The clickable blueprint the tool was built from. Its sign-in is simulated and its
-       numbers are illustrative — it is for reading the intended behaviour, not for working in.</p>
-    <a class="btn quiet" href="Crux%20App%20v2.dc.html">Open the design prototype</a>
-  </div>
-</div>
+  var realFetch = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var url = typeof input === "string" ? input : (input && input.url) || "";
+    if (url.indexOf(PROJECT) === 0) {
+      init = init || {};
+      var h = new Headers(init.headers || (typeof input === "object" && input.headers) || {});
+      if (!h.has("apikey")) h.set("apikey", ANON);
+      if (!h.has("authorization")) h.set("authorization", "Bearer " + ANON);
+      init.headers = h;
+    }
+    return realFetch(input, init);
+  };
+
+  function esc(s) {
+    return String(s).replace(/[&<]/g, function (c) { return c === "&" ? "&amp;" : "&lt;"; });
+  }
+
+  function fail(what, detail) {
+    document.getElementById("boot").innerHTML =
+      '<div class="card"><h1>Crux could not start</h1><p>' + esc(what) + '</p>' +
+      (detail ? '<pre>' + esc(detail).slice(0, 1200) + '</pre>' : '') +
+      '<p>This is about reaching the application, not about your account — ' +
+      'sign-in has not been attempted yet. If it persists, send this message on.</p>' +
+      '<p><a href="Crux%20App%20v2.dc.html">Open the design prototype</a> — the blueprint, ' +
+      'with simulated sign-in. It is not the tool and it reaches nothing.</p></div>';
+  }
+
+  fetch(PROJECT + "/functions/v1/crux/", { headers: { accept: "text/html" } })
+    .then(function (r) {
+      return r.text().then(function (body) {
+        if (!r.ok) throw new Error("HTTP " + r.status + " — " + body.slice(0, 400));
+        return body;
+      });
+    })
+    .then(function (html) {
+      if (html.lastIndexOf("<", 0) !== 0 && html.indexOf("<html") === -1) {
+        throw new Error("That did not come back as a page: " + html.slice(0, 300));
+      }
+      // app_page addresses the project absolutely, so nothing here rewrites it.
+      // If that ever regresses to location.origin, say so rather than serving a
+      // page whose every call would quietly go to the wrong host.
+      if (html.indexOf("location.origin") !== -1) {
+        throw new Error(
+          "The application still derives its API address from wherever it is served, " +
+          "so opened from here every call would go to the wrong host. " +
+          "Fix: pin it in app_page (migration crux_app_page_absolute_origin).");
+      }
+      document.open();
+      document.write(html);
+      document.close();
+    })
+    .catch(function (e) {
+      fail("The application could not be fetched from the database.", e && e.message);
+    });
+})();
+</script>
 </body>
 </html>
