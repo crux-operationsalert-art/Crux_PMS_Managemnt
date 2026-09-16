@@ -4,10 +4,41 @@ Two tracks that do not block each other. Yours needs the tool and your own
 company's decisions; mine needs the code. Where one genuinely waits on the
 other it says so.
 
-**The tool:** <https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/crux/>
+**The tool:** <https://crux-operationsalert-art.github.io/crux_pms_managemnt/>
+
+That page *is* the tool. It is not a copy and not a menu — it loads the
+application out of the database and hands the browser over to it, so there is
+still one copy of the application and this is where it opens.
+
 Sign in with your **@cruxindia.co.in** Google account. Two accounts are
 administrators — `operations.alert@` and `shantanu.suravase@` — and only an
 administrator sees Load a file, Settings and Empty the tool.
+
+### One thing to do first, in Google Cloud Console
+
+Google Sign-In checks which website is asking. The OAuth client knows about the
+Supabase address and not the GitHub one, so until you add it the sign-in button
+will not appear.
+
+1. <https://console.cloud.google.com/apis/credentials>, same project the client
+   id `1064617222271-…apps.googleusercontent.com` belongs to
+2. Open that OAuth 2.0 Client ID
+3. Under **Authorized JavaScript origins**, Add URI:
+   `https://crux-operationsalert-art.github.io`
+4. Save. It takes a minute or two to take effect.
+
+Leave **Authorized redirect URIs** alone. That list is for connecting Gmail, and
+its callback is still the Supabase address — the Mail screen prints the exact
+string to use.
+
+<details><summary>Why the Supabase link I gave you earlier did not open</summary>
+
+Typing a Supabase function address into a browser sends no project key with the
+request, and the gateway can refuse it before the application ever runs — so the
+page never appears and the address bar tells you nothing. A page can send that
+key; an address bar cannot. That is what the new front door does, and it is why
+it works where the raw link did not.
+</details>
 
 Signing in does not create anybody. An address that is not on the people master
 is refused, by design.
