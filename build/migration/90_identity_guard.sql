@@ -34,8 +34,13 @@ insert into email_domain_alias (wrong, correct, noted_by)
 values ('cruxinida.co.in', 'cruxindia.co.in', 'migration P-01')
 on conflict (wrong) do nothing;
 
+-- search_path is pinned: this function reads a table to decide whether an
+-- address is folded onto another domain, and a caller who can set the path
+-- could otherwise point it at a table of their own.
 create or replace function person_normalise_email() returns trigger
-language plpgsql as $$
+language plpgsql
+set search_path to 'public'
+as $$
 declare v_alias text;
 begin
   if new.work_email is null or btrim(new.work_email) = '' then

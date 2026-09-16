@@ -135,11 +135,29 @@ provider, a number, and approved message templates.
 - [x] `outbox.body` defect fixed — raising a case no longer 500s after committing
 - [x] The activation e-mail is a sentence, not a JSON blob
 - [x] Pages entry point separates the tool from the design prototype
-- [ ] Wire the design prototype's screens to the live API, or retire it
-- [ ] EMAIL_LOG and AUDIT_LOG staging (files handed over; historical, not blocking)
-- [ ] Recipient reconciliation: one parallel dispatch against the old EMAIL_LOG
-- [ ] Constraint proof: attempt the four known-bad writes and confirm all refused
-- [ ] Storm regression: force 100 chase attempts in one window, confirm one send
+- [x] The fourth identity guard — the misspelt-domain person is now refused
+- [x] Constraint proof: all four known-bad writes attempted, all four refused
+- [x] Storm regression: 100 identical attempts, one row
+- [x] Traceability: 20 of 20 sampled rows walk back to their sheet row
+- [x] The design prototype is kept as the design and says so on its own face
+- [ ] EMAIL_LOG and AUDIT_LOG staging — **waiting on you**, files handed over
+- [ ] Recipient reconciliation — needs the EMAIL_LOG staging above
+
+### The cut-over checks, as run
+
+| check | outcome |
+|---|---|
+| W-01 misspelt-domain person | refused |
+| W-02 overlapping coverage rule | refused |
+| W-03 duplicate branch code | refused |
+| W-04 duplicate idempotency key | refused |
+| S-01 storm regression | 1 row from 100 attempts |
+| T-01 traceability | 20 of 20 |
+| T-02 rows with no sheet reference | 17, all seeded demo people |
+
+The evidence is in the `cutover_check` table, with the database's own error text
+on each refusal, so it outlives this session. W-01 is the one that did not pass
+before today: `person.work_email` had no unique index at all.
 
 ### Not verified from this session
 
