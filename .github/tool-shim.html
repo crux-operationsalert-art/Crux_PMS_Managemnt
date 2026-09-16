@@ -1,0 +1,25 @@
+<script>
+/* Inserted into the published page by .github/workflows/publish-tool.yml.
+
+   Supabase's gateway wants a project key on every request, and the application
+   does not carry one — it was written for a time when it was served from the
+   project's own origin. Appending the key as a query parameter rather than a
+   header keeps each request "simple" in CORS terms, so there is no preflight
+   for the function's allowed-header list to refuse.
+
+   The key names the project and grants nothing on its own. It is in the page
+   source of every application built on Supabase. Sign-in decides who you are,
+   and the session token it returns is what the API actually checks. */
+(function () {
+  var PROJECT = "__PROJECT__", ANON = "__ANON__";
+  var real = window.fetch.bind(window);
+  window.fetch = function (input, init) {
+    var url = typeof input === "string" ? input : (input && input.url) || "";
+    if (url.indexOf(PROJECT) === 0 && url.indexOf("apikey=") < 0) {
+      url += (url.indexOf("?") < 0 ? "?" : "&") + "apikey=" + encodeURIComponent(ANON);
+      input = typeof input === "string" ? url : new Request(url, input);
+    }
+    return real(input, init);
+  };
+})();
+</script>

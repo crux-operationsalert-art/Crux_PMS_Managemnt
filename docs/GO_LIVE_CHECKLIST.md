@@ -4,11 +4,19 @@ Two tracks that do not block each other. Yours needs the tool and your own
 company's decisions; mine needs the code. Where one genuinely waits on the
 other it says so.
 
-**The tool:** <https://crux-operationsalert-art.github.io/crux_pms_managemnt/>
+**The tool:** <https://crux-operationsalert-art.github.io/Crux_PMS_Managemnt/>
 
-That page *is* the tool. It is not a copy and not a menu — it loads the
-application out of the database and hands the browser over to it, so there is
-still one copy of the application and this is where it opens.
+That page *is* the tool — a real file in this repository, served by GitHub
+Pages. Note the capitals: `Crux_PMS_Managemnt`. GitHub Pages URLs are
+case-sensitive, and the lowercase spelling gives a 404 that looks like the site
+does not exist.
+
+The application is authored as one row of `app_page`, which is what keeps a
+screen change an UPDATE rather than a redeploy. The **Publish the tool**
+workflow is the bridge: it fetches that page, adds the project key to its
+calls, and commits it here as `index.html`. Run it from the Actions tab after
+changing a screen, or let the nightly run pick it up. Do not edit `index.html`
+by hand — the workflow overwrites it.
 
 Sign in with your **@cruxindia.co.in** Google account. Two accounts are
 administrators — `operations.alert@` and `shantanu.suravase@` — and only an

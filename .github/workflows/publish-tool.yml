@@ -1,0 +1,89 @@
+# Builds the tool into this repository, so GitHub Pages serves a real file.
+#
+# The application is authored as one row of app_page, which is what makes a
+# screen change an UPDATE rather than a redeploy. This job is the bridge: it
+# fetches that page, adds the project key to its calls, and commits it as
+# index.html. GitHub then serves the tool as a static file, and Supabase is
+# left doing what it should — the database and the API behind it.
+#
+# Run it from the Actions tab after changing the application, or let the
+# nightly run pick the change up. Do not edit index.html by hand; this
+# overwrites it.
+name: Publish the tool
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/publish-tool.yml
+      - .github/tool-shim.html
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-tool
+  cancel-in-progress: true
+
+env:
+  # Neither is a secret. The project ref is in every URL, and the publishable
+  # key identifies the project and grants nothing on its own. Keeping them in
+  # the open means anyone can see exactly what this job talks to.
+  PROJECT: https://oxpwqfbtbxlvuqpztbwg.supabase.co
+  ANON: sb_publishable_NvXprPt5EeNNVotu3qtOxg_mQlaiZ9z
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the application
+        run: |
+          set -euo pipefail
+          code=$(curl -sS --max-time 60 -o app.raw -w '%{http_code}' \
+            -H "apikey: $ANON" -H "Authorization: Bearer $ANON" \
+            "$PROJECT/functions/v1/crux/")
+          echo "HTTP $code, $(wc -c < app.raw) bytes"
+          if [ "$code" != "200" ]; then
+            echo "::error::The application did not come back. HTTP $code"
+            head -c 800 app.raw
+            exit 1
+          fi
+
+      - name: Refuse anything that is not the application
+        run: |
+          set -euo pipefail
+          grep -q '<!doctype html' app.raw || { echo "::error::Not an HTML document."; head -c 500 app.raw; exit 1; }
+          grep -q 'id="signin"'   app.raw || { echo "::error::No sign-in screen in the page."; exit 1; }
+          grep -q "$PROJECT"      app.raw || { echo "::error::The page does not name the project."; exit 1; }
+          if grep -q 'location\.origin' app.raw; then
+            echo "::error::The application still takes its API address from wherever it is served."
+            echo "Served from github.io every call would go to the wrong host and nothing would say so."
+            echo "Pin it in app_page — migration crux_app_page_absolute_origin."
+            exit 1
+          fi
+
+      - name: Build index.html
+        run: |
+          set -euo pipefail
+          sed -e "s|__PROJECT__|$PROJECT|" -e "s|__ANON__|$ANON|" \
+            .github/tool-shim.html > shim.html
+          python3 .github/build-tool.py
+          rm -f app.raw shim.html
+
+      - name: Commit it if it changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- index.html; then
+            echo "The published tool already matches the application. Nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Publish the tool from app_page"
+          git push
