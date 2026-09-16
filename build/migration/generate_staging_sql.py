@@ -23,6 +23,11 @@ def lit(v):
         return 'null'
     if isinstance(v, (datetime.datetime, datetime.date)):
         v = v.isoformat(sep=' ')
+    # Excel stores whole numbers as floats, so a matrix Level of 1 arrives as
+    # 1.0. 40_matrix strips non-digits from it, which turns '1.0' into '10' and
+    # silently drops every row for failing `between 1 and 5`.
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
     s = str(v).strip()
     if s == '':
         return 'null'

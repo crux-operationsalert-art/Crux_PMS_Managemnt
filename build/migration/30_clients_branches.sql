@@ -25,7 +25,7 @@ on conflict do nothing;
 
 -- client zones keep the client's own vocabulary and point at our geography
 insert into client_zone (client_id, name, geo_node_id)
-select distinct cl.id, stg.norm_name(b.zone), null
+select distinct cl.id, stg.norm_name(b.zone), null::uuid
 from stg.branches b join client cl on cl.code = btrim(b.client_code)
 where stg.present(b.zone)
 on conflict do nothing;

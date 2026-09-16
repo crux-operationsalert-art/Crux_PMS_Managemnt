@@ -36,7 +36,11 @@ with per as (
   select person_id, role, count(*) as n_branches,
          count(distinct client_id) as n_clients,
          count(distinct client_zone_id) as n_zones,
-         min(client_id) as client_id, min(client_zone_id) as client_zone_id,
+         -- min() has no uuid overload in Postgres; this script could never run
+         -- as written. array_agg picks a representative, which is all that is
+         -- wanted here: these branches are only read when the group has one.
+         (array_agg(client_id))[1] as client_id,
+         (array_agg(client_zone_id) filter (where client_zone_id is not null))[1] as client_zone_id,
          min(ref) as ref
   from observed group by person_id, role
 ), whole_client as (
