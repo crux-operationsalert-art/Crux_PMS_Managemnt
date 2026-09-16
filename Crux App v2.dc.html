@@ -7,6 +7,18 @@
 <script src="./support.js"></script>
 </head>
 <body>
+<!-- This file is the design blueprint, not the running tool. Its sign-in is
+     simulated and its numbers are illustrative. The tool is the crux Edge
+     Function serving app_page against the live database. Somebody opening this
+     file directly, with no index.html around it, has no other way to know. -->
+<div id="crux-prototype-banner" style="position:sticky;top:0;z-index:99999;
+     background:#8a6d1f;color:#fff;font:13px/1.5 system-ui,-apple-system,sans-serif;
+     padding:9px 16px;display:flex;gap:12px;align-items:center;justify-content:center;
+     flex-wrap:wrap;text-align:center">
+  <span><strong>Design prototype.</strong> Sign-in is simulated and the numbers are illustrative — nothing here reaches the live database.</span>
+  <a href="https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/crux/"
+     style="color:#fff;font-weight:700;text-decoration:underline">Open the real tool</a>
+</div>
 <x-dc>
 <helmet>
 <meta name="viewport" content="width=device-width, initial-scale=1" />

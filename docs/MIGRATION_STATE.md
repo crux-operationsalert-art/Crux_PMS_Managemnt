@@ -328,3 +328,49 @@ recipients outright, so those 17 can neither sign in nor be written to.
 anywhere — no provider, no template, no send path. The row is a placeholder for
 a channel that has not been built. Connecting it is a piece of work, not a
 setting to fill in.
+
+
+## Cut-over checks run — 2026-09-16
+
+`IMPLEMENTATION.md` section 7 asks for four verifications before cut-over. Three
+can be run against the database, and now have been. They are attempts, not
+assertions: each known-bad write was actually made and the database's own
+refusal recorded, in `cutover_check`.
+
+| check | outcome | result |
+|---|---|---|
+| W-01 misspelt-domain person | refused | PASS |
+| W-02 overlapping coverage rule | refused | PASS |
+| W-03 duplicate branch code | refused | PASS |
+| W-04 duplicate idempotency key | refused | PASS |
+| S-01 storm regression | 1 row from 100 attempts | PASS |
+| T-01 traceability | 20 of 20 walk back to a staged row | PASS |
+| T-02 rows with no sheet reference | 17, all the seeded demo people | PASS |
+
+**W-01 did not pass before today.** Three of the four guards existed;
+`person.work_email` had **no unique index at all**, and nothing folded the
+misspelt domain — so the identity defect that produced 583 orphaned coverage
+rows could have recurred on the next write. `90_identity_guard.sql` adds both
+halves: an `email_domain_alias` table that folds a known-bad domain (a row, not
+a deploy, for the next typo) and a unique index on the live population that then
+refuses the duplicate the fold reveals. A superseded twin keeps its address,
+because that row is the audit trail of the merge.
+
+**T-01 found something on its first pass** worth keeping in the record: one
+sampled person had `source_ref = 'bulk upload'` rather than a `<tab>!<row>`
+reference. Seventeen rows carry it, and they are exactly the seeded demo chair
+holders. Nothing from the workbook is affected. Rather than soften the check to
+hide them, it is split — T-01 asserts traceability over migrated rows, T-02
+counts the exceptions and names what they are.
+
+**Check 1, recipient reconciliation**, needs `stg.email_log` loaded and is the
+one that cannot run from here.
+
+## The design prototype stays a prototype
+
+The last open question was whether to wire the prototype's screens to the live
+API. It is not worth doing: the running tool already implements sign-in, upload,
+mail, OGL and reset against the live database, and re-pointing a 400 KB file of
+illustrative data at the same endpoints would be rebuilding what exists. It is
+kept as the design record and now says so on its own face — a banner at the top
+of the file, for anyone who opens it without `index.html` around it.
