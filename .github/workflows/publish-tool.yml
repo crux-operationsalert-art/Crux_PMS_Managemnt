@@ -82,8 +82,15 @@ jobs:
             echo "The published tool already matches the application. Nothing to commit."
             exit 0
           fi
+          # Record which version of the application this is. Without it the
+          # history reads as a row of identical commits and there is no way to
+          # tell, later, which publish carried which change.
+          sum=$(sha256sum index.html | cut -c1-12)
+          bytes=$(wc -c < index.html)
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add index.html
-          git commit -m "Publish the tool from app_page"
+          git commit \
+            -m "Publish the tool from app_page ($sum, $bytes bytes)" \
+            -m "Built by .github/workflows/publish-tool.yml. Edit the application in app_page and re-run that workflow; index.html is overwritten, so a change made here by hand is lost at the next publish."
           git push
