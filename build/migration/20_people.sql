@@ -6,6 +6,7 @@
 --   P-02 an e-mail seen only in BRANCH_ASSIGNMENTS still creates a person
 --   P-03 twins merge into the older row; superseded_by is set, never deleted
 --   P-04 every merge writes migration_merge with the rule that decided it
+--   P-06 USERS.Role is the app role; anyone discovered elsewhere stays a VIEWER
 -- =====================================================================
 
 -- designations first: routing is by designation, so an unknown title is a gap
@@ -50,7 +51,7 @@ select coalesce(c.full_name, initcap(replace(split_part(c.email,'@',1), '.', ' '
        c.email,
        d.id,
        c.department,
-       case when c.best_pref = 1 then 'VIEWER' else 'VIEWER' end,
+       'VIEWER',   -- P-06 overwrites this from USERS.Role below
        case when upper(coalesce(c.status,'ACTIVE')) in ('INACTIVE','LEFT','EXITED') then 'INACTIVE' else 'ACTIVE' end,
        c.source_ref
 from cand c left join designation d on d.title = stg.norm_name(c.designation)
@@ -93,3 +94,26 @@ insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, n
 select null, 'MIGRATION_TOKEN_REVOKED', 'person', stg.norm_email(u.email),
        jsonb_build_object('had_standing_token', true), jsonb_build_object('sessions', 0)
 from stg.users u where stg.present(u.access_token);
+
+-- P-06 · roles from the USERS sheet.
+-- This line used to read `case when best_pref = 1 then 'VIEWER' else 'VIEWER' end`
+-- and made all 606 people VIEWERs, leaving the database with no administrator
+-- at all. USERS.Role already carries exactly the four labels of role_kind.
+update person p
+set app_role = upper(btrim(u.role))::role_kind,
+    updated_at = now()
+from stg.users u
+where p.work_email = stg.norm_email(u.email)
+  and p.superseded_by is null
+  and upper(btrim(u.role)) in ('ADMIN','MANAGER','LOCATION_HEAD','VIEWER')
+  and p.app_role <> upper(btrim(u.role))::role_kind;
+
+-- the sheet's PENDING accounts have no representation in entity_status
+-- (ACTIVE/INACTIVE only), so they are left ACTIVE and asked about, not guessed.
+insert into migration_review (entity_type, entity_ref, question, context)
+select 'person', 'USERS!' || u.row_no,
+       'USERS.Status is PENDING but employment_status only has ACTIVE/INACTIVE — activate this account or deactivate it?',
+       concat_ws(' | ', u.name, u.email, u.department, u.designation)
+from stg.users u
+where upper(coalesce(btrim(u.status),'')) not in ('ACTIVE','INACTIVE','')
+  and not exists (select 1 from migration_review r where r.entity_ref = 'USERS!' || u.row_no);

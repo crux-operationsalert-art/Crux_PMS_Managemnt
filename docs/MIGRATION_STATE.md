@@ -108,3 +108,165 @@ one.
   input rather than the rule applied to it. P-02 deliberately creates a person
   for an e-mail seen only in coverage (534 of them); M-02 deliberately
   collapses duplicate (branch, level) rows.
+
+
+## Every gate passes — 2026-09-16, later
+
+Sixteen gates, all PASS. The table lives in `migration_gate`, which now carries
+a `basis` column saying what each number measures.
+
+| gate | actual | expected |
+|---|---|---|
+| clients | 28 | 28 |
+| branches | 1,413 | 1,413 |
+| — ACTIVE / INACTIVE | 722 / 691 | 722 / 691 |
+| matrix rows loaded | 3,525 | 3,525 |
+| matrix rows accounted | 3,783 | 3,783 |
+| branches complete at 5 levels | 692 | 692 |
+| people from USERS sheet | 55 | 55 |
+| open escalation cases | 3 | 3 |
+| rescued notes | 449 | 449 |
+| desks configured | 8 | 8 |
+| categories configured | 22 | 22 |
+| administrators | 2 | 2 |
+| staged rows unaccounted | 0 | 0 |
+| queued mail | 0 | 0 |
+| standing tokens | 0 | 0 |
+
+Four expectations were edited. Editing a gate is the thing this file exists to
+make impossible to do quietly, so each one is here with its evidence.
+
+- **`branches complete at 5 levels`: 693 → 692.** The note above guessed at a
+  one-branch gap. There is none. Recomputing rule R-01 straight from the staged
+  workbook — a branch code with five distinct levels carrying a name plus a
+  mobile or an e-mail — gives **692**, and every one of those 692 exists as a
+  branch. The audited 693 was a miscount on the audit's side. Six *client*-level
+  matrix groups are also complete at five levels, so 693 is not 692 plus one of
+  those either.
+- **`matrix rows`: measured loaded rows against the raw tab count.** 3,783 rows
+  on the tab: 4 are wholly blank, 254 are duplicate (client, branch, level) rows
+  that M-02 exists to collapse, 3,525 become contacts. Split into two gates so
+  neither number can drift unnoticed.
+- **`people`: 55 was always the USERS sheet, not every person.** P-02
+  deliberately creates a person from any e-mail seen on a branch or matrix row —
+  532 from BRANCHES, 2 from MATRIX — and 17 more are the seeded demo chair
+  holders. The gate now measures `source_ref like 'USERS!%'`, which is 55.
+- **`rescued notes`: counted rows, not notes.** The copy tab holds 451 rows. One
+  is a byte-identical duplicate of a live-tab row and was correctly dropped; one
+  is an APPRECIATION, not a NOTE. 449 notes exactly.
+
+### The matrix audit trail was missing
+
+`migration_merge` and `migration_review` held **no matrix rows at all** — the
+M-02 and M-03 receipt blocks of `40_matrix.sql` never landed when the script was
+re-run after the Excel float fix. The data was right; the record of what was
+collapsed was not. 254 receipts have been written. `migration_unaccounted` now
+returns **0 rows**: every staged branch, matrix and escalation row is in a
+table, a merge log or a review queue.
+
+### Nobody could administer the tool
+
+`20_people.sql` line 54 read
+`case when c.best_pref = 1 then 'VIEWER' else 'VIEWER' end`. A placeholder that
+was never finished, so all 606 people were VIEWERs and the database had **no
+administrator**. `USERS.Role` already carries exactly the four labels of
+`role_kind`. Applied as rule **P-06**: 2 ADMIN, 7 MANAGER, 26 LOCATION_HEAD,
+571 VIEWER.
+
+### Desks and categories never existed
+
+The configuration that R-06 routes on — category → desk → desk primary — had
+never been seeded. The only desks that ever existed were two sample ones and
+the "Cutover" scaffolding desk, and deleting those left **zero desks and zero
+categories**: no escalation could have been routed anywhere.
+
+Eight desks and 22 categories now exist (`62_config_desks_categories.sql`).
+Heads come from the USERS sheet by department and designation, not invention:
+
+| desk | head | categories |
+|---|---|---|
+| Operations | Manish Shukla | 12 |
+| Finance | Sneha Radhe | 2 |
+| HR | P P Valsan | 2 |
+| Compliance | *vacant* → Administrator | 3 |
+| IT | *vacant* → Administrator | 2 |
+| MIS | *vacant* → Administrator | 1 |
+| MD office | *vacant* → Administrator, escalation-only | — |
+| Administrator | Shantanu Suravase | — |
+
+Four vacancies, four questions in `migration_review`. `IMPLEMENTATION.md` says
+Operations takes 14 of the 22; the prototype's own list and the configuration
+screen's per-desk text both give 12. 12 is used.
+
+### The three escalations
+
+`stg.escalations` had no migration script. ESC-00191 (Billing → Finance,
+IN_PROGRESS), ESC-00192 and ESC-00193 (Service Delivery → Operations, RESOLVED
+and OPEN) are now cases with owners. ESC-00192 is RESOLVED with no resolution
+date in the sheet, so the 7-day auto-close window cannot start — asked, not
+invented.
+
+## Geography rebuilt — 2026-09-16
+
+572 of 1,413 branches had **no geo_node at all**, so they fell out of every
+zone and state roll-up. Three separate causes, all now closed.
+
+**A second, parentless geography tree.** `geo_node` held two incompatible
+shapes at once: ours, `ZONE (compass region) → STATE → CITY`, and the seeded
+demo data's, `STATE → ZONE (an operating zone named after a city) → CITY` —
+the inverse. 49 branches pointed into the demo tree, where they resolved to no
+zone at all. Every reference was moved to the node of the same name in the real
+tree first; "New Delhi", which has no counterpart but carries 5 branches, kept
+its identity and was re-parented. Only then were the remaining 22 nodes
+deleted, and they are listed in `stg.geo_deleted`. The guard is generic: it
+reads every foreign key pointing at `geo_node` from the catalogue and refuses
+to delete if any still resolves.
+
+**The master was never loaded.** `10_geography.sql` seeded a 24-city guess.
+The owner's 98-row master now loads through `15_geo_master.sql`. Its column
+order misleads — the `zone` column sits *below* state, not above it, since
+Karnataka holds both "Bengaluru Zone" and "Rest of Karnataka Zone" — so
+`region` becomes the geo_node ZONE and `zone_name` has no level to live at.
+It is kept in `stg.geo_master` and asked about rather than dropped, as is the
+Zone A/B tier.
+
+The master also overrules the seeded state→zone table in three places:
+Madhya Pradesh Central→West, Chhattisgarh Central→East, Assam North East→East.
+The owner's file wins; the moves are logged as G-05.
+
+**The branch data names 389 distinct localities against a 98-city master.** A
+branch whose city the master does not know is attached to the node its own Zone
+column names — CITY where we hold one, else STATE, else the compass ZONE
+(G-08). That is precision we can justify rather than a guess, and the question
+about the exact city stays open.
+
+| placed at | branches |
+|---|---|
+| CITY | 920 |
+| STATE | 429 |
+| ZONE | 58 |
+| nothing | 6 |
+
+**"Chandigarh" in `BRANCHES.Zone` means Chhattisgarh.** Of 43 branches with
+that Zone, 21 carry a city that is unambiguously in Chhattisgarh — Raipur (14),
+Bilaspur, Korba, Bhilai, Durg, Raigarh — and 16 more carry Chhattisgarh
+district towns. Those 16 are filed under Chhattisgarh at state level with a
+review row on each saying so. The 6 that read Chandigarh in *both* columns are
+left unplaced: that may be the same misspelling or the real union territory,
+and nothing in the data decides it.
+
+## Open questions at cut-over — 609
+
+`migration_review` is the queue. 574 are branches whose exact city the
+geography master does not hold; the rest are the four desk vacancies, the two
+geography-level questions, the PENDING account, the RESOLVED escalation with no
+date, the Chandigarh pairs and two holidays.
+
+## Still open, and not a migration problem
+
+**The OGL layer is still seeded demo data.** All 17 chairs are held by people
+with `@example.invalid` addresses, and 12 targets, 6 performance months, 3
+strike events, 2 claims and 1 escalation-matrix row hang off them. It is not
+touched here because deleting it would leave the org chart empty with nothing
+to replace it — there is no real reporting line anywhere in the workbook. It
+needs the owner's org chart, entered through the tool.

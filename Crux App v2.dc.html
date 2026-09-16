@@ -6185,6 +6185,12 @@ class Component extends DCLogic {
   // ==================================================================
   static VTYPES = ['Resident Verification','Business Verification','Employee Verification','Quotation Verification'];
 
+  // The raise-escalation form reads Component.CATEGORIES, which this file never
+  // defined — the Category dropdown rendered with no options, so no escalation
+  // could be raised. These are the 22 categories the database now routes on;
+  // the order matches category.name in Supabase.
+  static CATEGORIES = ['Service Delivery','Delay/TAT','Report Quality','Data Accuracy','Staff Behaviour','Customer Handling','Communication','Assignment/Allocation','Client/Branch Mapping','Client Requirements','Billing','Payment','Compliance','Audit/Quality','Fraud/Integrity','Data Privacy','Technology','Access/Permissions','MIS/Reporting','Performance/KPI','Escalation/Complaint Handling','Vendor/Partner'];
+
   oglNewVals(){
     const S = this.state;
     if (!S.oglNew) return { oglNewOn:false };
