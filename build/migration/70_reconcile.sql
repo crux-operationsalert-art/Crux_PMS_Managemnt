@@ -103,3 +103,12 @@ select m.at, m.entity_type, m.rule,
        m.kept_id, m.rows_moved,
        case when m.reviewed_at is null then 'UNREVIEWED' else 'REVIEWED' end as state
 from migration_merge m order by m.entity_type, m.at;
+
+-- These views report over tables with RLS enabled. Left SECURITY DEFINER they
+-- would run as their creator and read straight past those policies, which is
+-- what the Supabase linter flags. None of them needs elevated rights.
+alter view migration_gate            set (security_invoker = true);
+alter view migration_coverage_shape  set (security_invoker = true);
+alter view migration_open_questions  set (security_invoker = true);
+alter view migration_merge_log       set (security_invoker = true);
+alter view migration_unaccounted     set (security_invoker = true);
