@@ -1,0 +1,18 @@
+-- =====================================================================
+-- 96 · CUT-OVER CHECK 1 · recipient reconciliation.
+--
+-- "One parallel dispatch, delivery vs the old EMAIL_LOG, recipient for
+-- recipient." It is the one check of the four that needs data this session
+-- could not load: stg.email_log is 2,229 rows and arrives through the SQL
+-- editor. So the check is written and left armed, and it refuses to report a
+-- result it has not earned — with no staged log it records 'not attempted',
+-- which is a FAIL, not a quiet absence.
+--
+--     select recipient_reconciliation();
+--
+-- The number that matters is the first one: recipients the old system reached
+-- that the new one cannot. Addresses the new system has and the old did not
+-- are expected — the matrix grew.
+-- =====================================================================
+-- (body applied as migration crux_recipient_reconciliation; see that ledger
+--  entry for the function, which is create-or-replace and safe to re-run)

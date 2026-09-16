@@ -374,3 +374,77 @@ mail, OGL and reset against the live database, and re-pointing a 400 KB file of
 illustrative data at the same endpoints would be rebuilding what exists. It is
 kept as the design record and now says so on its own face — a banner at the top
 of the file, for anyone who opens it without `index.html` around it.
+
+
+## The strike clock could not read the owner's holiday list — 2026-09-16
+
+The last substantial defect, and the one with money attached.
+
+`working_hours_after()` tested holidays like this:
+
+```sql
+or exists (select 1 from holiday h where h.day = cur::date and h.confirmed)
+```
+
+Location-blind. The owner's RBI 2026 list is **43 dates, 37 of them per banking
+centre** — Mumbai, Kolkata, Aizawl and 27 more. The clock had no way to ask
+"where?", so those 37 sat unconfirmed and counted for nothing: only the 6
+All-India dates ever moved a deadline. And confirming them would have made it
+worse, not better — a festival observed only in Aizawl would have stopped the
+clock on a Mumbai case, because any confirmed row anywhere stopped every clock.
+
+R-03 sets `next_chase_at`, which sets strikes, which set penalties. A deadline
+computed against the wrong calendar is money.
+
+**The fix is an overload, not a rewrite of the callers.**
+
+| | |
+|---|---|
+| `holiday_applies(day, centre)` | national, or that centre |
+| `working_hours_after(from, hrs, centre)` | the location-aware clock |
+| `working_hours_after(from, hrs)` | same signature, **new meaning: national only** |
+
+That last row is a deliberate behaviour change and is the reason it is written
+down here rather than discovered later. If the caller cannot say where the work
+is, the only holiday that can honestly be applied is a national one.
+
+`holiday_centre_alias` maps a branch city onto the centre whose list it follows.
+Ten cities match a centre by name and are seeded. The rest fall back to
+national-only — conservative, because it never invents a day off — and are one
+open question, since whether a Pune branch observes Mumbai's centre holidays is
+a business answer, not a geographic one.
+
+All 43 RBI rows are now confirmed. September's two test CSVs are untouched and
+asked about separately: their scopes read `Festival`, `National` and
+`Maharashtra`, and under the new rule a scope that is neither national nor a
+banking centre applies to nobody.
+
+**Proved, not assumed** — `cutover_check`, `R-03 holiday clock is location-aware`:
+
+- Republic Day, All India, asked from **Guwahati** → moves to the next day
+- 1 January, held by Aizawl and seven others, asked from **Aizawl** → moves to
+  Saturday 3 January, because Aizawl also holds 2 January
+- the same 1 January, asked from **Guwahati** → stays on 1 January
+
+Before this, either every one of those answers was "skip" or every one was
+"work". Neither was right.
+
+## Cut-over checks, final state
+
+Nine checks. Eight pass; the ninth is honest about needing data.
+
+| check | outcome | result |
+|---|---|---|
+| W-01 misspelt-domain person | refused | PASS |
+| W-02 overlapping coverage rule | refused | PASS |
+| W-03 duplicate branch code | refused | PASS |
+| W-04 duplicate idempotency key | refused | PASS |
+| S-01 storm regression | 1 row from 100 attempts | PASS |
+| T-01 traceability | 20 of 20 | PASS |
+| T-02 rows with no sheet reference | 17, all seeded demo people | PASS |
+| R-03 holiday clock is location-aware | behaved | PASS |
+| M-01 recipient reconciliation | **not attempted** | FAIL |
+
+M-01 is written, armed and deliberately recorded as FAIL rather than left
+absent: it needs `stg.email_log`, which is 2,229 rows arriving through the SQL
+editor. `select recipient_reconciliation();` reports for itself once that lands.
