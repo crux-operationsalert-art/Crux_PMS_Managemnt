@@ -74,6 +74,14 @@ Then set **from address**, **from name**, **reply-to**, and the **daily cap**
 Keys go in and never come back out. The status screen answers *whether* a secret
 is set, never what it is.
 
+> **Two escalations become due on 18 September.** ESC-00191 (Billing, Finance)
+> and ESC-00193 (Service Delivery, Operations) came across from the tracker with
+> no response deadline, so they would have sat open forever. Their clock now
+> starts at cut-over rather than at their August activity — chasing people for a
+> window that elapsed before the tool existed would be unfair and would look
+> broken. If mail is connected by then, they will chase on 18 September. If you
+> would rather they did not, resolve or close them first.
+
 ### 3 · Prove it sends, before it matters
 
 **Send a test message.** It queues one and pushes it straight out rather than
@@ -140,8 +148,12 @@ provider, a number, and approved message templates.
 - [x] Storm regression: 100 identical attempts, one row
 - [x] Traceability: 20 of 20 sampled rows walk back to their sheet row
 - [x] The design prototype is kept as the design and says so on its own face
-- [ ] EMAIL_LOG and AUDIT_LOG staging — **waiting on you**, files handed over
-- [ ] Recipient reconciliation — needs the EMAIL_LOG staging above
+- [x] The strike clock reads the owner's RBI list per banking centre
+- [x] The migrated escalations have a response deadline, starting at cut-over
+- [x] Recipient reconciliation written and armed — `select recipient_reconciliation();`
+- [ ] EMAIL_LOG and AUDIT_LOG staging — **waiting on you**, files handed over.
+      This is the only thing left on my track, and it is the input to the
+      reconciliation above.
 
 ### The cut-over checks, as run
 
@@ -154,6 +166,8 @@ provider, a number, and approved message templates.
 | S-01 storm regression | 1 row from 100 attempts |
 | T-01 traceability | 20 of 20 |
 | T-02 rows with no sheet reference | 17, all seeded demo people |
+| R-03 holiday clock is location-aware | behaved |
+| M-01 recipient reconciliation | not attempted — needs EMAIL_LOG |
 
 The evidence is in the `cutover_check` table, with the database's own error text
 on each refusal, so it outlives this session. W-01 is the one that did not pass
