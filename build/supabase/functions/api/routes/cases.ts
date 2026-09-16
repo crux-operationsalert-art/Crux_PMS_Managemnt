@@ -81,15 +81,31 @@ r.post('/', requireChair, async (req, res, next) => {
       return c;
     });
 
-    // level-1 notice, once, keyed to the case — a retry cannot duplicate it
+    // level-1 notice, once, keyed to the case — a retry cannot duplicate it.
+    // The body is written here rather than pulled from a template table: the
+    // recipient is a client's level-1 contact, and the first thing they should
+    // read is which branch, what was raised and by when.
     const l1 = await one(
-      `select email from branch_effective_matrix where branch_id = $1 and level = 1 and coalesce(btrim(email),'') <> ''`,
-      [branchId]
+      `select m.email, b.name as branch, b.code, cl.name as client, cat.name as category
+         from branch_effective_matrix m
+         join branch b on b.id = m.branch_id
+         join client cl on cl.id = b.client_id
+         cross join lateral (select name from category where id = $2) cat
+        where m.branch_id = $1 and m.level = 1 and coalesce(btrim(m.email),'') <> ''`,
+      [branchId, categoryId]
     );
     if (l1) await enqueue(req.person.id, {
       templateKey: 'ESCALATION_RAISED', recipient: l1.email,
       entityType: 'case', entityId: out.id, period: out.ref,
-      subject: out.ref + ' raised', body: null,
+      subject: out.ref + ' · ' + l1.category + ' · ' + l1.branch,
+      body: [
+        out.ref + ' has been raised against ' + l1.branch + ' (' + l1.code + '), ' + l1.client + '.',
+        'Category: ' + l1.category,
+        description || '(no description was given)',
+        'A reply is expected by ' + new Date(out.next_chase_at).toISOString().slice(0, 16).replace('T', ' ') +
+        '. If nothing is heard by then this is chased again and the desk is added.',
+        'Raised by ' + req.person.full_name + ' (' + req.person.work_email + ').',
+      ].join('\n\n'),
     });
     res.status(201).json(out);
   } catch (e) { next(e); }

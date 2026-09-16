@@ -143,6 +143,15 @@ export function Router(): _Router { return new _Router(); }
 // The key is derived, never passed in: same event + same recipient + same day
 // = same key = one row. A caller retrying is normal and must be harmless.
 export async function enqueue(_actorId: string | null, msg: Record<string, any>) {
+  // outbox.body is NOT NULL, and two callers used to pass a null or an object.
+  // A null tripped the constraint *after* the case had already committed, so
+  // the work was done and the request still 500'd; an object arrived as a JSON
+  // blob in somebody's inbox. A message with nothing to read is not a message.
+  const text = typeof msg.body === "string" ? msg.body.trim() : "";
+  if (!text) {
+    return { queued: false, reason: "no_body",
+             detail: "A queued message must carry the text a person will read." };
+  }
   const day = new Date().toISOString().slice(0, 10);
   const basis = [msg.templateKey, String(msg.recipient).toLowerCase(),
                  msg.entityType, msg.entityId, msg.period || day].join("|");
@@ -154,8 +163,7 @@ export async function enqueue(_actorId: string | null, msg: Record<string, any>)
      values ($1,$2,$3,$4,$5,$6,$7, coalesce($8, now()), 'QUEUED')
      on conflict (idempotency_key) do nothing
      returning id`,
-    [key, msg.templateKey, String(msg.recipient).toLowerCase(), msg.subject,
-     msg.body ? JSON.stringify(msg.body) : null,
+    [key, msg.templateKey, String(msg.recipient).toLowerCase(), msg.subject, text,
      msg.entityType, msg.entityId, msg.notBefore || null],
   );
   return r ? { queued: true, id: r.id, key } : { queued: false, reason: "duplicate", key };

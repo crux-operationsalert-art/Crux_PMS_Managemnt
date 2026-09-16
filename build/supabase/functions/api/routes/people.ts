@@ -135,7 +135,14 @@ r.post('/request/:id/seat', requireChair, async (req, res, next) => {
     await enqueue(req.person.id, {
       templateKey: 'ACTIVATION', recipient: seated.email,
       entityType: 'person', entityId: seated.personId,
-      subject: 'Activate your Crux account', body: { code },
+      subject: 'Activate your Crux account',
+      // Was `body: { code }`, which reached the person as a JSON blob and put
+      // the activation code through JSON.stringify on the way. It is a sentence.
+      body: [
+        'An account has been created for you on Crux.',
+        'Your activation code is ' + code + '. It is valid for 15 minutes.',
+        'Open Crux, choose "Activate", and enter the code. If you did not expect this, tell your administrator — the code is single-use and expires on its own.',
+      ].join('\n\n'),
     });
     res.status(201).json({ personId: seated.personId });
   } catch (e) { next(e); }

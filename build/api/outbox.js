@@ -20,13 +20,22 @@ const dayStamp = (d = new Date()) => d.toISOString().slice(0, 10);
 // Returns {queued:true} or {queued:false, reason:'duplicate'} — never throws on
 // a duplicate, because a caller retrying is normal and must be harmless.
 async function enqueue(actorId, msg) {
+  // outbox.body is NOT NULL, and two callers used to pass a null or an object.
+  // A null tripped the constraint *after* the case had already committed, so
+  // the work was done and the request still 500'd; an object arrived as a JSON
+  // blob in somebody's inbox. A message with nothing to read is not a message.
+  const body = typeof msg.body === 'string' ? msg.body.trim() : '';
+  if (!body) {
+    return { queued: false, reason: 'no_body',
+             detail: 'A queued message must carry the text a person will read.' };
+  }
   const key = idempotencyKey(msg);
   const r = await one(
     `insert into outbox (idempotency_key, template_key, recipient, subject, body, entity_type, entity_id, not_before, state)
      values ($1,$2,$3,$4,$5,$6,$7, coalesce($8, now()), 'QUEUED')
      on conflict (idempotency_key) do nothing
      returning id`,
-    [key, msg.templateKey, String(msg.recipient).toLowerCase(), msg.subject, msg.body,
+    [key, msg.templateKey, String(msg.recipient).toLowerCase(), msg.subject, body,
      msg.entityType, msg.entityId, msg.notBefore || null]
   );
   if (!r) return { queued: false, reason: 'duplicate', key };

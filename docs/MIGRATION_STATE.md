@@ -270,3 +270,61 @@ strike events, 2 claims and 1 escalation-matrix row hang off them. It is not
 touched here because deleting it would leave the org chart empty with nothing
 to replace it — there is no real reporting line anywhere in the workbook. It
 needs the owner's org chart, entered through the tool.
+
+
+## The tool is not the prototype — 2026-09-16, later still
+
+Worth stating plainly, because it had not been: **the live application is served
+by the `crux` Edge Function out of the `app_page` table**, at
+
+    https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/crux/
+
+The GitHub Pages site carries the *design prototype* — simulated sign-in,
+illustrative numbers. `index.html` now offers both and says which is which,
+rather than sending everyone to the prototype.
+
+The front door already implements, against the live database: Google sign-in
+restricted to the Workspace domain, password sign-in with a per-person scrypt
+salt and lock-out, the 13-kind bulk upload with validate → preview → apply →
+cancel, mail configuration for five transports, the Gmail OAuth consent round
+trip, the OGL workflow, and the data reset with a preview. None of it needed
+writing; it needed finding.
+
+### What the role fix actually unblocked
+
+Every administrator path in that function is gated on `app_role = 'ADMIN'`.
+Until P-06 ran, **all 606 people were VIEWERs**, so bulk upload, mail settings
+and the reset returned `admin_only` to everybody — including the owner. Two
+people are ADMIN now, and those screens are reachable.
+
+### Two defects on the path that is actually used
+
+- **`outbox.body` is NOT NULL and two callers passed something else.**
+  `routes/cases.js` passed `body: null` on the level-1 escalation notice, so
+  raising a case committed the case and *then* failed the insert — the work was
+  done and the request still 500'd. `routes/people.js` passed `body: { code }`,
+  which would have reached a new joiner as `{"code":"418322"}`. `enqueue` now
+  refuses a message with nothing to read, before the database sees it, and both
+  callers compose real text. Seven assertions in `build/api/test/outbox.test.js`.
+- The escalation notice now names the branch, the client, the category, the
+  deadline and who raised it, instead of being an empty message with a subject.
+
+### The chair gate
+
+`requireChair` guards nearly every route in the `api` function, and **no real
+person holds a chair** — all 17 chair holders are the seeded `@example.invalid`
+demo people. That is the rule working, not a bug: D8 says a person with no chair
+sees an empty set and a reason. It is also why the Chairs and People uploads are
+kinds 1 and 2 in load order. Loading them seats real people and the rest of the
+application comes alive; until then only the front-door screens work.
+
+The demo org chart is inert in the meantime: `auth_google` refuses anything that
+is not an `@cruxindia.co.in` address, and `mail_enqueue` skips `.invalid`
+recipients outright, so those 17 can neither sign in nor be written to.
+
+### WhatsApp
+
+`setting.whatsapp` reads `'Not connected'`, and there is no WhatsApp code
+anywhere — no provider, no template, no send path. The row is a placeholder for
+a channel that has not been built. Connecting it is a piece of work, not a
+setting to fill in.
