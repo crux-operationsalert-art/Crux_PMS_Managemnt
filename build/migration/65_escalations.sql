@@ -59,3 +59,38 @@ select 'case', 'ESCALATIONS!' || e.row_no,
 from stg.escalations e
 where upper(btrim(coalesce(e.status,''))) = 'RESOLVED' and not stg.present(e.resolved_at)
   and not exists (select 1 from migration_review r where r.entity_ref = 'ESCALATIONS!' || e.row_no);
+
+-- E-04 · the chase clock, started at cut-over.
+-- The three cases came across with no next_chase_at, so the chase job would
+-- never have looked at them: they would have sat open forever, which is the
+-- failure mode the escalation engine exists to prevent.
+--
+-- Computing the deadline from last_activity_at is literally correct and
+-- practically wrong. ESC-00191 and ESC-00193 have been open since late August,
+-- so every window would already be blown, and the first thing the tool would do
+-- on the day mail is connected is fire overdue chases for a period that elapsed
+-- while it did not exist.
+--
+-- So the clock starts at cut-over. History is not rewritten — last_activity_at
+-- still says August and the case ages from there on every report — but the
+-- obligation to respond is measured from the day the tool became real, and a
+-- case event records that, so nobody later reads the gap as a bug.
+with due as (
+  select c.id,
+         working_hours_after(now(),
+           coalesce(cat.chase_hours, (select value::numeric from setting where key = 'chase_hours'), 24),
+           branch_centre(c.branch_id)) as at
+  from "case" c
+  join category cat on cat.id = c.category_id
+  where c.status in ('OPEN','IN_PROGRESS') and c.next_chase_at is null
+)
+update "case" c set next_chase_at = due.at from due where due.id = c.id;
+
+insert into case_event (case_id, at, kind, actor_id, note)
+select c.id, now(), 'CHASE_SCHEDULED', null,
+       'Migrated from the tracker with no response deadline. The chase clock starts at '
+       || 'cut-over rather than at the original activity date, so this is not chased for a '
+       || 'window that elapsed before the tool existed. Due ' || c.next_chase_at::text || '.'
+from "case" c
+where c.status in ('OPEN','IN_PROGRESS') and c.next_chase_at is not null
+  and not exists (select 1 from case_event e where e.case_id = c.id and e.kind = 'CHASE_SCHEDULED');
