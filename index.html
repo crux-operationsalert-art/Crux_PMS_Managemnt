@@ -1,113 +1,1664 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Crux</title>
-<link rel="icon" href="assets/crux-logo.png">
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Crux — operating tool</title>
 <style>
-  :root { color-scheme: light dark; }
-  html,body{margin:0;height:100%}
-  #boot{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;
-        background:#f4f2ee;color:#3d434d;
-        font:15px/1.6 "Helvetica Neue",Helvetica,Arial,sans-serif}
-  #boot .card{max-width:640px}
-  #boot h1{font-size:18px;margin:0 0 10px}
-  #boot p{margin:0 0 12px;color:#5b616b}
-  #boot pre{white-space:pre-wrap;word-break:break-word;background:#efece6;
-            border:1px solid #ddd8cf;border-radius:8px;padding:12px;
-            font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#3d434d}
-  #boot a{color:#3a5a80}
-  @media (prefers-color-scheme: dark){
-    #boot{background:#1b1d21;color:#e6e3dd}
-    #boot p{color:#9aa1aa}
-    #boot pre{background:#232629;border-color:#3a3f45;color:#d8d4cc}
-  }
-</style>
-</head>
-<body>
-<div id="boot"><div class="card"><h1>Crux</h1><p>Loading…</p></div></div>
+/* ================================================================== tokens
+   Design language taken from "Crux App v2" — warm paper, ink, Georgia
+   headings, one blue for navigation and one terracotta for action.       */
+:root{
+  --paper:#f4f2ee;   --white:#fff;      --panel:#faf9f6;  --panel2:#fdfdfb;
+  --ink:#14161a;     --body:#3d434d;    --mute:#5c6470;
+  --line:#d8d5cd;    --line2:#eeece6;   --line3:#f0eee9;  --field:#cfcbc1;
+  --blue:#3a5a80;    --blue-dark:#243b55; --blue-press:#2c4665;
+  --terra:#b4562f;   --terra-ink:#a03f18; --terra-bg:#fdf6f3; --terra-line:#e6cfc4;
+  --terra-press:#94441f;
+  --gold:#8a6d1f;    --gold-ink:#7a5f18;
+  --green:#2f6b46;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+  --serif:Georgia,serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--paper);color:var(--ink);
+  font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;
+  font-size:13.5px;line-height:1.6}
+a{color:var(--blue);text-decoration:none}
+a:hover{color:var(--blue-dark);text-decoration:underline}
+input,select,textarea,button{font-family:inherit}
+input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{
+  outline:2px solid var(--blue);outline-offset:-1px}
+@keyframes shine{0%{background-position:0% 0}100%{background-position:220% 0}}
+
+h1{font-family:var(--serif);font-weight:400;font-size:clamp(21px,3.4vw,30px);
+  margin:0;letter-spacing:-.01em}
+h2{font-family:var(--serif);font-weight:400;font-size:18px;margin:0 0 12px}
+h3{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);
+  font-weight:600;margin:0}
+p{margin:0 0 10px}
+.mute{color:var(--mute);font-size:12.5px;line-height:1.55}
+.lede{font-size:13px;color:var(--mute);margin-top:5px;max-width:78ch;line-height:1.5}
+.hide{display:none!important}
+code,.mono{font-family:var(--mono);font-size:12.5px}
+
+/* =================================================================== shell */
+header{background:var(--white);border-bottom:1px solid var(--line);
+  position:sticky;top:0;z-index:30}
+.bar{max-width:1280px;margin:0 auto;padding:10px clamp(12px,3vw,24px);
+  display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;justify-content:space-between}
+.brandwrap{display:flex;align-items:baseline;gap:10px;min-width:0}
+.brand{font-family:var(--serif);font-size:17px}
+.dept{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.barright{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.who{text-align:right;line-height:1.3;min-width:0}
+.who .nm{display:block;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who .ch{display:block;font-size:11px;color:var(--mute);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+nav{max-width:1280px;margin:0 auto;padding:0 clamp(12px,3vw,24px);
+  display:flex;flex-wrap:wrap;align-items:center;gap:0 4px;border-top:1px solid var(--line2)}
+.navgroup{display:flex;flex-wrap:wrap;align-items:center;gap:0 2px}
+.navlabel{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute);
+  padding:0 8px 0 10px;border-left:1px solid var(--line2)}
+.navgroup:first-child .navlabel{border-left:none;padding-left:0}
+nav a{appearance:none;background:none;border:none;padding:10px 12px 8px;font-size:13.5px;
+  cursor:pointer;min-height:44px;color:var(--ink);text-decoration:none;display:block}
+nav a:hover{background:var(--panel);color:var(--ink);text-decoration:none}
+nav a .rule{height:2px;background:transparent;margin-top:7px}
+nav a.on .rule{background:var(--blue)}
+nav a .badge{margin-left:6px;font-size:11px;background:var(--terra);color:#fff;
+  padding:1px 6px;border-radius:9px}
+
+main{flex:1;max-width:1280px;width:100%;margin:0 auto;
+  padding:clamp(14px,3vw,26px) clamp(12px,3vw,24px) 96px}
+.page-head{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;
+  justify-content:space-between;margin-bottom:16px}
+
+/* ============================================================== components */
+.card{background:var(--white);border:1px solid var(--line);margin-bottom:16px}
+.card>h2,.card>.cardhead{padding:11px 15px;border-bottom:1px solid #e2e0da;
+  background:var(--panel);margin:0;font-family:inherit;font-size:11px;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--mute);font-weight:600}
+.card>*:not(h2):not(.cardhead):not(table):not(.scroll):not(.rowline){
+  padding-left:15px;padding-right:15px}
+.card>h2+*,.card>.cardhead+*{padding-top:14px}
+.card>*:not(h2):not(.cardhead):not(table):not(.scroll):not(.rowline):first-child{padding-top:14px}
+.card>*:not(table):not(.scroll):last-child{padding-bottom:14px}
+.card>.scroll:last-child,.card>table:last-child{margin-bottom:0}
+.card>table tr:last-child td{border-bottom:none}
+.card.action{border-color:var(--terra)}
+.card.action>h2,.card.action>.cardhead{background:var(--terra-bg);color:var(--terra-ink)}
+.rowline{padding:12px 15px;border-bottom:1px solid var(--line3)}
+.rowline:last-child{border-bottom:none}
+
+label{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--mute);margin:0 0 5px}
+input,select,textarea{width:100%;padding:11px 10px;border:1px solid var(--field);
+  background:var(--white);color:var(--ink);font-size:13.5px;line-height:1.5;min-height:44px;
+  border-radius:0}
+textarea{min-height:66px;resize:vertical}
+.row{display:flex;gap:12px;flex-wrap:wrap}
+.row>div{flex:1 1 210px;margin-bottom:14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+
+button{appearance:none;border:1px solid var(--terra);background:var(--terra);color:#fff;
+  font-size:13.5px;padding:12px 20px;cursor:pointer;min-height:46px;border-radius:0}
+button:hover{background:var(--terra-press);border-color:var(--terra-press)}
+button:disabled{opacity:.45;cursor:not-allowed}
+button:disabled:hover{background:var(--terra);border-color:var(--terra)}
+button.ghost{border:1px solid var(--line);background:var(--white);color:var(--ink);font-weight:400}
+button.ghost:hover{border-color:var(--blue);color:var(--blue);background:var(--white)}
+button.go{border-color:var(--blue);background:var(--blue);color:#fff}
+button.go:hover{background:var(--blue-press);border-color:var(--blue-press)}
+button.danger{border-color:var(--terra-ink);background:var(--terra-ink)}
+button.danger:hover{background:#83320f;border-color:#83320f}
+button.sm{padding:9px 14px;font-size:12.5px;min-height:44px}
+td button,.rowline button{border:1px solid var(--blue);background:var(--white);
+  color:var(--blue);font-size:12.5px;padding:10px 14px;min-height:44px;white-space:nowrap}
+td button:hover,.rowline button:hover{background:var(--blue);color:#fff}
+td button.ghost,.rowline button.ghost{border-color:var(--line);color:var(--ink)}
+td button.ghost:hover,.rowline button.ghost:hover{background:var(--white);border-color:var(--blue);color:var(--blue)}
+td button.danger,.rowline button.danger{border-color:var(--terra-ink);background:var(--terra-ink);color:#fff}
+button.link{border:none;background:none;color:var(--blue);text-decoration:underline;
+  padding:8px 0;min-height:44px;font-size:12.5px}
+button.link:hover{background:none;color:var(--blue-dark)}
+
+.msg{padding:11px 14px;font-size:12.5px;line-height:1.55;margin:12px 0;border:1px solid}
+.msg.ok{background:#f1f6f2;color:var(--green);border-color:#c8ded1}
+.msg.bad{background:var(--terra-bg);color:var(--terra-ink);border-color:var(--terra-line)}
+.msg.warn{background:#fdfaf0;color:var(--gold-ink);border-color:#e3d9b8}
+.empty{padding:26px 15px;color:var(--mute);font-size:13px;line-height:1.6;max-width:70ch}
+
+.scroll{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line3);vertical-align:top}
+th{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+  font-weight:600;white-space:nowrap;background:var(--panel);border-bottom:1px solid #e2e0da}
+tr.click{cursor:pointer}
+tr.click:hover td{background:var(--panel)}
+td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+
+.pill{display:inline-block;font-size:11px;border:1px solid var(--line);padding:4px 8px;
+  color:var(--body);background:none;white-space:nowrap}
+.pill.ok{border-color:#9dc4ae;color:var(--green)}
+.pill.bad{border-color:var(--terra);color:var(--terra-ink)}
+.pill.warn{border-color:var(--gold);color:var(--gold-ink)}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+
+.tiles{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  margin-bottom:16px}
+.tile{background:var(--white);border:1px solid var(--line);padding:14px 16px;
+  display:flex;flex-direction:column;gap:5px;min-height:98px}
+.tile b{font-family:var(--serif);font-weight:400;font-size:clamp(24px,3.4vw,32px);line-height:1}
+.tile span{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute);
+  font-weight:600;order:-1}
+.counters{display:flex;gap:8px;flex-wrap:wrap}
+.counter{background:var(--white);border:1px solid var(--line);padding:9px 15px;min-width:96px}
+.counter b{display:block;font-family:var(--serif);font-weight:400;font-size:20px}
+.counter span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+
+.askbar{background:var(--ink);color:#fff;padding:14px 16px;margin-bottom:16px;
+  display:flex;flex-wrap:wrap;gap:8px 18px;justify-content:space-between;align-items:center}
+.askline{font-family:var(--serif);font-size:clamp(15px,2.2vw,19px);min-width:0}
+button.onink{border:1px solid rgba(255,255,255,.5);background:none;color:#fff;font-size:13px;
+  padding:10px 16px;min-height:44px;white-space:nowrap}
+button.onink:hover{background:#fff;color:var(--ink);border-color:#fff}
+.drop{border:1px dashed var(--field);padding:24px;text-align:center;color:var(--mute);
+  cursor:pointer;background:var(--panel2)}
+.drop.over{border-color:var(--blue);color:var(--blue);background:var(--white)}
+.tree{list-style:none;margin:0;padding-left:18px;border-left:1px solid var(--line2)}
+.tree>li{padding:4px 0}
+.tree .node{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.tree .t{font-weight:600}
+
+/* ================================================================= sign in */
+#signin{flex:1;display:flex;align-items:center;justify-content:center;
+  padding:clamp(16px,5vw,48px)}
+.signcard{width:100%;max-width:940px;display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:0;
+  border:1px solid var(--line);background:var(--white);
+  box-shadow:0 10px 40px rgba(20,22,26,.09)}
+.signdark{background:var(--ink);color:#e8e5dd;padding:clamp(22px,4vw,34px);
+  display:flex;flex-direction:column;justify-content:space-between;gap:24px}
+.signdark .bw{font-family:var(--serif);font-size:24px}
+.signdark .co{font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:#9a978f;margin-top:5px}
+.signdark .quote{font-family:var(--serif);font-size:clamp(17px,2.4vw,21px);line-height:1.45;
+  color:var(--paper);margin-top:24px}
+.signdark .by{font-size:12px;color:#9a978f;margin-top:9px}
+.signdark h4{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#e0a184;
+  font-weight:600;margin:0}
+.signdark .facts{display:grid;gap:7px;margin-top:11px}
+.signdark .fact{display:flex;gap:10px;align-items:baseline;padding:8px 11px;
+  background:rgba(224,161,132,.09);border-left:2px solid #e0a184}
+.signdark .fact b{font-family:var(--serif);font-weight:400;font-size:15px;color:#e0a184}
+.signdark .fact .l1{font-size:13.5px;color:var(--paper);font-weight:600}
+.signdark .fact .l2{display:block;font-size:11.5px;color:#9a978f;margin-top:2px}
+.signlight{padding:clamp(22px,4vw,34px);display:flex;flex-direction:column;gap:16px}
+.signlight h2{font-family:var(--serif);font-size:21px;margin:0}
+.signlight .lead{font-size:13px;line-height:1.6;color:var(--body);margin-top:7px}
+.signlight label{margin-top:2px}
+#gbtn{min-height:44px}
+.or{display:flex;align-items:center;gap:10px;color:var(--mute);font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;margin:2px 0}
+.or:before,.or:after{content:"";flex:1;height:1px;background:var(--line2)}
+
+/* ================================================================== mobile */
+#mobbar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:46;background:var(--white);
+  border-top:1px solid var(--line);box-shadow:0 -2px 12px rgba(20,22,26,.07)}
+#mobbar a{flex:1 1 0;min-width:0;border:0;background:none;padding:9px 4px 8px;cursor:pointer;
+  min-height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:5px;font-size:12px;color:var(--mute);text-decoration:none;text-align:center}
+#mobbar a.on{color:var(--terra-ink);font-weight:600}
+#mobbar a .badge{font-size:11px;background:var(--terra);color:#fff;padding:1px 6px;border-radius:8px}
+#mobsheet{display:none;position:fixed;left:0;right:0;top:0;bottom:64px;background:var(--white);
+  z-index:45;overflow-y:auto;border-bottom:1px solid var(--line)}
+#mobsheet .sh{padding:14px 16px;border-bottom:1px solid var(--line2);background:var(--panel)}
+#mobsheet .sh b{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+#mobsheet .sh p{font-size:12.5px;color:var(--mute);margin:4px 0 0;line-height:1.5}
+#mobsheet .grp{border-bottom:1px solid var(--line2)}
+#mobsheet .grp>b{display:block;padding:11px 16px 5px;font-size:11px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mute)}
+#mobsheet a{display:flex;width:100%;text-align:left;align-items:center;
+  justify-content:space-between;gap:10px;border-top:1px solid #f4f2ed;background:var(--white);
+  padding:15px 16px;min-height:52px;font-size:14.5px;color:var(--ink);text-decoration:none}
+#mobsheet a .badge{font-size:11px;background:var(--terra);color:#fff;padding:2px 8px;border-radius:9px}
+@media (max-width:720px){
+  nav{display:none}
+  #mobbar{display:flex}
+  body.sheet-open{overflow:hidden}
+  body.sheet-open #mobsheet{display:block}
+  .bar{padding:9px 14px}
+  .signcard{box-shadow:none}
+}
+</style></head><body>
+
+<!-- ============================================================== sign in -->
+<div id="signin" style="min-height:100vh">
+  <div class="signcard">
+
+    <div class="signdark">
+      <div>
+        <div class="bw">Crux</div>
+        <div class="co">Risk Management Pvt Ltd</div>
+        <div class="quote">Nothing here is decided by opinion. Every clock, every
+          escalation and every strike is worked out from the rule that was in force
+          on the day.</div>
+        <div class="by">How this tool behaves</div>
+      </div>
+      <div>
+        <h4>What the tool holds</h4>
+        <div class="facts" id="signfacts">
+          <div class="fact"><b>1</b><span><span class="l1">One clock</span>
+            <span class="l2">Business minutes only — weekends and confirmed holidays do not count</span></span></div>
+          <div class="fact"><b>2</b><span><span class="l1">One record</span>
+            <span class="l2">Escalations, on-ground verification, penalties and appraisal on the same case</span></span></div>
+          <div class="fact"><b>3</b><span><span class="l1">One rule</span>
+            <span class="l2">Every strike and every escalation is derived, never typed in by hand</span></span></div>
+        </div>
+        <div class="by" id="signnote">Sign in to see your own desk.</div>
+      </div>
+    </div>
+
+    <div class="signlight">
+      <div>
+        <h2>Sign in</h2>
+        <div class="lead">Escalations, on-ground verification, compliance and
+          performance — one record, one clock.</div>
+      </div>
+      <div id="gbtn"></div>
+      <div class="mute" id="ghint"></div>
+      <div class="or">or sign in with a password</div>
+      <div><label for="em">Work e-mail</label>
+        <input id="em" type="email" autocomplete="username" placeholder="yourname@cruxindia.co.in"></div>
+      <div><label for="pw">Password</label>
+        <input id="pw" type="password" autocomplete="current-password"></div>
+      <div><button id="go" class="go" style="width:100%">Sign in</button></div>
+      <div id="loginMsg"></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ================================================================== app -->
+<div id="app" class="hide" style="min-height:100vh;display:flex;flex-direction:column">
+<header>
+  <div class="bar">
+    <div class="brandwrap">
+      <span class="brand">Crux</span>
+      <span class="dept" id="dept"></span>
+    </div>
+    <div class="barright">
+      <span class="who"><span class="nm" id="who"></span><span class="ch" id="whochair"></span></span>
+      <button class="ghost sm" id="out">Sign out</button>
+    </div>
+  </div>
+  <nav id="nav"></nav>
+</header>
+<main id="view"></main>
+</div>
+
+<div id="mobsheet">
+  <div class="sh"><b>Everywhere else</b>
+    <p>The four in the bar are what you do daily. Everything your chair can reach is here.</p></div>
+  <div id="mobmore"></div>
+  <div style="padding:16px"><button class="ghost" id="mobout" style="width:100%">Sign out</button></div>
+</div>
+<div id="mobbar"></div>
 
 <script>
-// =====================================================================
-// This page IS the tool. Not a copy of it, and not a link to it.
-//
-// The application is one row of app_page, served by the crux Edge Function.
-// That is deliberate: it is what makes changing a screen an UPDATE rather than
-// a redeploy. This file fetches that page and hands the browser over to it, so
-// there is exactly one copy of the application and this is where it opens.
-//
-// Why a fetch and not a link. Navigating a browser straight at a Supabase
-// function sends no apikey header, and the gateway can refuse the request
-// before the function ever runs — the page never appears and the reason is
-// invisible from the address bar. A fetch can send the header. So can every
-// call the application makes afterwards, which is what the wrapper below is
-// for: the application's own code is untouched and keeps calling fetch.
-//
-// The publishable key is not a secret. It names the project and nothing else;
-// it is in the page source of every application built on Supabase and grants
-// no access on its own. Who you are is settled by sign-in, and the session
-// token that comes out of it is what the API actually checks.
-// =====================================================================
-(function () {
-  var PROJECT = "https://oxpwqfbtbxlvuqpztbwg.supabase.co";
-  var ANON    = "sb_publishable_NvXprPt5EeNNVotu3qtOxg_mQlaiZ9z";
+/* Inserted into the published page by .github/workflows/publish-tool.yml.
 
-  var realFetch = window.fetch.bind(window);
+   Supabase's gateway wants a project key on every request, and the application
+   does not carry one — it was written for a time when it was served from the
+   project's own origin. Appending the key as a query parameter rather than a
+   header keeps each request "simple" in CORS terms, so there is no preflight
+   for the function's allowed-header list to refuse.
+
+   The key names the project and grants nothing on its own. It is in the page
+   source of every application built on Supabase. Sign-in decides who you are,
+   and the session token it returns is what the API actually checks. */
+(function () {
+  var PROJECT = "https://oxpwqfbtbxlvuqpztbwg.supabase.co", ANON = "sb_publishable_NvXprPt5EeNNVotu3qtOxg_mQlaiZ9z";
+  var real = window.fetch.bind(window);
   window.fetch = function (input, init) {
     var url = typeof input === "string" ? input : (input && input.url) || "";
-    if (url.indexOf(PROJECT) === 0) {
-      init = init || {};
-      var h = new Headers(init.headers || (typeof input === "object" && input.headers) || {});
-      if (!h.has("apikey")) h.set("apikey", ANON);
-      if (!h.has("authorization")) h.set("authorization", "Bearer " + ANON);
-      init.headers = h;
+    if (url.indexOf(PROJECT) === 0 && url.indexOf("apikey=") < 0) {
+      url += (url.indexOf("?") < 0 ? "?" : "&") + "apikey=" + encodeURIComponent(ANON);
+      input = typeof input === "string" ? url : new Request(url, input);
     }
-    return realFetch(input, init);
+    return real(input, init);
   };
-
-  function esc(s) {
-    return String(s).replace(/[&<]/g, function (c) { return c === "&" ? "&amp;" : "&lt;"; });
-  }
-
-  function fail(what, detail) {
-    document.getElementById("boot").innerHTML =
-      '<div class="card"><h1>Crux could not start</h1><p>' + esc(what) + '</p>' +
-      (detail ? '<pre>' + esc(detail).slice(0, 1200) + '</pre>' : '') +
-      '<p>This is about reaching the application, not about your account — ' +
-      'sign-in has not been attempted yet. If it persists, send this message on.</p>' +
-      '<p><a href="Crux%20App%20v2.dc.html">Open the design prototype</a> — the blueprint, ' +
-      'with simulated sign-in. It is not the tool and it reaches nothing.</p></div>';
-  }
-
-  fetch(PROJECT + "/functions/v1/crux/", { headers: { accept: "text/html" } })
-    .then(function (r) {
-      return r.text().then(function (body) {
-        if (!r.ok) throw new Error("HTTP " + r.status + " — " + body.slice(0, 400));
-        return body;
-      });
-    })
-    .then(function (html) {
-      if (html.lastIndexOf("<", 0) !== 0 && html.indexOf("<html") === -1) {
-        throw new Error("That did not come back as a page: " + html.slice(0, 300));
-      }
-      // app_page addresses the project absolutely, so nothing here rewrites it.
-      // If that ever regresses to location.origin, say so rather than serving a
-      // page whose every call would quietly go to the wrong host.
-      if (html.indexOf("location.origin") !== -1) {
-        throw new Error(
-          "The application still derives its API address from wherever it is served, " +
-          "so opened from here every call would go to the wrong host. " +
-          "Fix: pin it in app_page (migration crux_app_page_absolute_origin).");
-      }
-      document.open();
-      document.write(html);
-      document.close();
-    })
-    .catch(function (e) {
-      fail("The application could not be fetched from the database.", e && e.message);
-    });
 })();
 </script>
-</body>
-</html>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script>
+var CRUX = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/crux";
+var API  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/api";
+var token = localStorage.getItem("cruxToken") || "";
+var me = null, scope = null;
+
+function el(id){ return document.getElementById(id); }
+function esc(s){ return String(s===null||s===undefined?"":s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function msg(k,t){ return t ? '<div class="msg '+k+'">'+esc(t)+'</div>' : ""; }
+function when(s){ if(!s) return ""; var d=new Date(s);
+  return isNaN(d) ? String(s) : d.toLocaleString("en-IN",{dateStyle:"medium",timeStyle:"short"}); }
+function day(s){ if(!s) return ""; var d=new Date(s);
+  return isNaN(d) ? String(s) : d.toLocaleDateString("en-IN",{dateStyle:"medium"}); }
+function money(n){ return n==null?"":"₹"+Number(n).toLocaleString("en-IN"); }
+
+async function call(base, path, opts){
+  opts = opts || {};
+  opts.headers = Object.assign({"content-type":"application/json"}, opts.headers||{});
+  if (token) opts.headers["x-crux-token"] = token;
+  if (opts.body && typeof opts.body !== "string") opts.body = JSON.stringify(opts.body);
+  var r = await fetch(base + path, opts);
+  var ct = r.headers.get("content-type")||"";
+  var b = ct.indexOf("json")>=0 ? await r.json() : { _text: await r.text() };
+  b._status = r.status;
+  if (r.status === 401) { signOut(); }
+  return b;
+}
+var api  = function(p,o){ return call(API,  p, o); };
+var crux = function(p,o){ return call(CRUX, p, o); };
+
+/* ------------------------------------------------------------- sign in */
+async function boot(){
+  var cfg = await fetch(CRUX + "/api/config").then(function(r){return r.json()}).catch(function(){return{}});
+  if (cfg.googleClientId && window.google && google.accounts) {
+    google.accounts.id.initialize({
+      client_id: cfg.googleClientId,
+      callback: async function(resp){
+        var out = await crux("/api/google", { method:"POST", body:{ credential: resp.credential } });
+        if (out.error) { el("loginMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+        token = out.token; localStorage.setItem("cruxToken", token); start(out.person);
+      }
+    });
+    google.accounts.id.renderButton(el("gbtn"), { theme:"outline", size:"large", width:340 });
+    el("ghint").textContent = "Use your " + (cfg.workspaceDomain||"work") + " account.";
+  } else {
+    el("ghint").textContent = "Google sign-in is still loading, or is not configured yet.";
+  }
+  if (token) { var p = await crux("/api/me"); if (p && p.id) return start(p); }
+}
+
+el("go").onclick = async function(){
+  var b = el("go"); b.disabled = true; el("loginMsg").innerHTML = "";
+  try {
+    var out = await crux("/api/login", { method:"POST",
+      body:{ email: el("em").value.trim(), password: el("pw").value } });
+    if (out.error) { el("loginMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    token = out.token; localStorage.setItem("cruxToken", token); el("pw").value = "";
+    start(out.person);
+  } catch(e){ el("loginMsg").innerHTML = msg("bad", String(e)); }
+  finally { b.disabled = false; }
+};
+el("pw").addEventListener("keydown", function(e){ if (e.key==="Enter") el("go").click(); });
+
+function signOut(){
+  token=""; localStorage.removeItem("cruxToken"); me=null;
+  el("app").classList.add("hide"); el("signin").classList.remove("hide");
+  document.body.classList.remove("sheet-open"); badges={};
+}
+async function doSignOut(){ await crux("/api/logout",{method:"POST"}).catch(function(){}); signOut(); }
+el("out").onclick = doSignOut;
+el("mobout").onclick = doSignOut;
+
+/* --------------------------------------------------------------- shell
+   Nav is grouped the way the v2 design groups it: what you work on, what
+   you are measured by, and what an administrator keeps.                 */
+var NAV = [
+  { label:"",           items:[ ["today","Today"] ] },
+  { label:"Work",       items:[ ["ogl","OGL"], ["cases","Escalations"], ["matrix","Matrix"] ] },
+  { label:"Standing",   items:[ ["pms","Performance"], ["penalties","Penalties"],
+                                ["people","People"] ] },
+  { label:"Keep",       items:[ ["data","Data setup"], ["mail","Mail"] ] }
+];
+var ADMIN_TABS = { data:1, mail:1 };
+var MOB_BAR = ["today","ogl","cases","more"];
+var TABS = [];
+NAV.forEach(function(g){ g.items.forEach(function(t){ TABS.push(t); }); });
+var LABEL = {}; TABS.forEach(function(t){ LABEL[t[0]] = t[1]; });
+var badges = {};
+
+function allowed(key){ return !ADMIN_TABS[key] || (me && me.app_role === "ADMIN"); }
+function badgeHtml(key, cls){
+  var n = badges[key];
+  return n ? '<span class="'+(cls||"badge")+'">'+esc(n)+'</span>' : "";
+}
+
+function paintNav(){
+  var cur = currentTab();
+
+  el("nav").innerHTML = NAV.map(function(g){
+    var items = g.items.filter(function(t){ return allowed(t[0]); });
+    if (!items.length) return "";
+    return '<div class="navgroup">' +
+      (g.label ? '<span class="navlabel">'+esc(g.label)+'</span>' : "") +
+      items.map(function(t){
+        return '<a href="#'+t[0]+'" data-t="'+t[0]+'"'+(t[0]===cur?' class="on"':'')+'>' +
+          '<span>'+esc(t[1])+'</span>'+badgeHtml(t[0]) +
+          '<div class="rule"></div></a>';
+      }).join("") + '</div>';
+  }).join("");
+
+  el("mobbar").innerHTML = MOB_BAR.map(function(k){
+    if (k === "more")
+      return '<a href="#" data-more="1"><span>More</span></a>';
+    if (!allowed(k)) return "";
+    return '<a href="#'+k+'"'+(k===cur?' class="on"':'')+'>' +
+      '<span>'+esc(LABEL[k]||k)+'</span>'+badgeHtml(k)+'</a>';
+  }).join("");
+  var more = el("mobbar").querySelector('[data-more]');
+  if (more) more.onclick = function(e){
+    e.preventDefault(); document.body.classList.toggle("sheet-open"); };
+
+  el("mobmore").innerHTML = NAV.map(function(g){
+    var items = g.items.filter(function(t){
+      return allowed(t[0]) && MOB_BAR.indexOf(t[0]) < 0; });
+    if (!items.length) return "";
+    return '<div class="grp">' + (g.label ? '<b>'+esc(g.label)+'</b>' : "") +
+      items.map(function(t){
+        return '<a href="#'+t[0]+'"><span>'+esc(t[1])+'</span>'+badgeHtml(t[0])+'</a>';
+      }).join("") + '</div>';
+  }).join("");
+  Array.prototype.forEach.call(el("mobmore").querySelectorAll("a"), function(a){
+    a.addEventListener("click", function(){ document.body.classList.remove("sheet-open"); });
+  });
+}
+
+async function start(person){
+  me = person;
+  el("signin").classList.add("hide");
+  el("app").classList.remove("hide");
+  el("who").textContent = person.full_name || "";
+  el("whochair").textContent = person.chair_title || person.app_role || "";
+  el("dept").textContent = person.department || person.app_role || "";
+  paintNav();
+  window.onhashchange = route;
+  route();
+  refreshBadges();
+}
+
+function currentTab(){
+  var t = (location.hash||"#today").slice(1).split("/")[0];
+  if (!TABS.some(function(x){ return x[0]===t && allowed(t); })) t = "today";
+  return t;
+}
+
+function route(){
+  document.body.classList.remove("sheet-open");
+  var t = currentTab();
+  paintNav();
+  el("view").innerHTML = '<p class="mute">Loading…</p>';
+  var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms,
+    people:vPeople, penalties:vPenalties, data:vData, mail:vMail}[t];
+  Promise.resolve().then(run).catch(function(e){
+    el("view").innerHTML = '<h1>' + esc(LABEL[t] || t) + '</h1>' +
+      msg("bad", "This screen could not be drawn. " + ((e && e.message) || e)) +
+      '<p class="mute">The failure is here in the page, not in your account. ' +
+      'Nothing has been changed by it.</p>';
+  });
+}
+
+/* Counts that sit on the tabs. Anything that fails is simply not shown —
+   a badge is a convenience, never a reason for the page to break.        */
+async function refreshBadges(){
+  try {
+    var o = await crux("/api/ogl");
+    var list = o.assignments || [];
+    var n = list.filter(function(a){
+      return a.sla_status === "AT_RISK" || a.sla_status === "BREACHED"; }).length;
+    if (n) badges.ogl = n;
+  } catch(e){}
+  try {
+    var c = await api("/cases");
+    var n2 = (c.cases||[]).filter(function(x){ return x.status !== "CLOSED"; }).length;
+    if (n2) badges.cases = n2;
+  } catch(e){}
+  paintNav();
+}
+
+/* --------------------------------------------------------------- today */
+async function vToday(){
+  var r = await Promise.all([
+    api("/people/me"), api("/cases"), crux("/api/ogl"), api("/matrix/incomplete"), api("/pms/cycle/current")
+  ]);
+  var meR = r[0], cases = r[1], ogl = r[2], mx = r[3], pms = r[4];
+
+  /* Every one of these can come back refused, and the refusal carries the
+     reason. Showing zeros without it is what made this screen look broken. */
+  var refused = [meR, cases, ogl, mx, pms]
+    .map(function(x){ return x && (x.reason || x.empty); })
+    .filter(function(t, i, a){ return t && a.indexOf(t) === i; });
+  var noChair = !meR || !meR.chairs || !meR.chairs.length;
+  var why = refused.length
+    ? msg("warn", refused.join("  ")) +
+      (noChair
+        ? '<p class="mute">A chair is what the tool resolves your view from — ' +
+          'which branches, which cases, whose scores. Nobody holds one yet, so ' +
+          'these panels have nothing to draw. Load <b>Chairs</b> and then ' +
+          '<b>People</b> under Data setup and they fill in. ' +
+          'Data setup and Mail work now and do not need a chair.</p>'
+        : "")
+    : "";
+  scope = meR;
+  var open = (cases.cases||[]).filter(function(c){ return c.status!=="CLOSED"; }).length;
+  var risky = (ogl.assignments||[]).filter(function(a){
+    return a.sla_status==="AT_RISK" || a.sla_status==="BREACHED"; }).length;
+
+  var owed = open + risky + (mx.branches||[]).length;
+  var ask = owed
+    ? owed + (owed === 1 ? " thing is" : " things are") + " waiting on your chair."
+    : "Nothing is waiting on your chair right now.";
+
+  el("view").innerHTML =
+    '<div class="page-head">' +
+      '<div><h1>Today</h1><div class="lede">' +
+        esc(meR.primaryChair ? meR.primaryChair.title : "No chair held") + '</div></div>' +
+    '</div>' +
+    why +
+    '<div class="tiles">' +
+      tile(open, "escalations open") +
+      tile(risky, "OGL at risk or breached") +
+      tile((mx.branches||[]).length, "branches missing matrix levels") +
+      tile(pms.score && pms.score.final != null ? Number(pms.score.final).toFixed(1) : "-", "your score") +
+    '</div>' +
+    '<div class="askbar"><div class="askline">' + esc(ask) + '</div>' +
+      '<button class="onink" onclick="location.hash=\'#ogl\'">See what is owed</button></div>' +
+    '<div class="card"><h2>Your appraisal cycle</h2>' + pmsSummary(pms) + '</div>' +
+    (cases.empty ? '<div class="card"><h2>Escalations</h2>' + msg("warn", cases.empty) + '</div>' : "");
+}
+
+function tile(v,l){ return '<div class="tile"><b>'+esc(v)+'</b><span>'+esc(l)+'</span></div>'; }
+
+/* ---------------------------------------------------------- escalations */
+async function vCases(){
+  var part = (location.hash||"").split("/")[1];
+  if (part) return caseDetail(part);
+  var out = await api("/cases");
+  var rows = out.cases || [];
+  el("view").innerHTML = '<h1>Escalations</h1>' +
+    '<div style="margin:12px 0"><button id="newCase">Raise an escalation</button></div>' +
+    (out.empty ? msg("warn", out.empty) : "") +
+    '<div class="card">' + (rows.length ? '<div class="scroll"><table>' +
+      '<tr><th>Ref</th><th>Status</th><th>Client</th><th>Branch</th><th>Category</th><th>Last activity</th></tr>' +
+      rows.map(function(c){
+        return '<tr class="click" onclick="location.hash=\'#cases/'+esc(c.id)+'\'">' +
+          '<td><b>'+esc(c.ref)+'</b></td><td>'+statusPill(c.status)+'</td>' +
+          '<td>'+esc(c.client)+'</td><td>'+esc(c.branch||"-")+'</td>' +
+          '<td>'+esc(c.category)+'</td><td>'+esc(when(c.last_activity_at))+'</td></tr>';
+      }).join("") + '</table></div>'
+      : '<div class="empty">Nothing open.</div>') + '</div>';
+  el("newCase").onclick = raiseCaseForm;
+}
+function statusPill(s){
+  var k = s==="CLOSED"||s==="RESOLVED" ? "ok" : s==="BLOCKED" ? "bad" : "warn";
+  return '<span class="pill '+k+'">'+esc(s)+'</span>';
+}
+async function raiseCaseForm(){
+  var refs = await crux("/api/refs");
+  el("view").innerHTML = '<h1>Raise an escalation</h1><div class="card">' +
+    '<div class="row"><div><label>Client</label><select id="cl">' +
+      (refs.clients||[]).map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join("") +
+    '</select></div><div><label>Branch</label><select id="br"><option value="">-</option>' +
+      (refs.branches||[]).map(function(b){ return '<option value="'+esc(b.id)+'" data-c="'+esc(b.client_id)+'">'+esc(b.name)+'</option>'; }).join("") +
+    '</select></div><div><label>Category</label><select id="cat">' +
+      (refs.categories||[]).map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.name)+'</option>'; }).join("") +
+    '</select></div></div>' +
+    '<div><label>What happened</label><textarea id="desc" placeholder="The facts, as the responder will read them."></textarea></div>' +
+    '<div style="margin-top:14px;display:flex;gap:10px"><button id="save">Raise</button>' +
+    '<button class="ghost" onclick="route()">Cancel</button></div><div id="m"></div></div>';
+  el("save").onclick = async function(){
+    var out = await api("/cases", { method:"POST", body:{
+      clientId: el("cl").value, branchId: el("br").value || null,
+      categoryId: el("cat").value, description: el("desc").value, kind:"ESCALATION" } });
+    el("m").innerHTML = out.error ? msg("bad", out.reason || out.error)
+      : msg("ok", "Raised as " + out.ref + ". First chase " + when(out.next_chase_at) + ".");
+    if (!out.error) setTimeout(function(){ location.hash = "#cases"; route(); }, 1200);
+  };
+}
+async function caseDetail(id){
+  var out = await api("/cases/" + id);
+  if (out.error) return el("view").innerHTML = '<h1>Escalation</h1>' + msg("bad", out.reason || out.error);
+  var c = out.case;
+  el("view").innerHTML = '<h1>' + esc(c.ref) + ' ' + statusPill(c.status) + '</h1>' +
+    '<p class="mute">Raised ' + esc(when(c.created_at)) + '</p>' +
+    '<div class="card"><h2>Description</h2><p>' + esc(c.description || "-") + '</p></div>' +
+    '<div class="card"><h2>What you can do</h2>' +
+      ((out.actions||[]).length
+        ? (out.actions.map(function(a){
+            return '<button class="ghost" style="margin:0 8px 8px 0" data-a="'+esc(a.code)+'" data-n="'+(a.needs_note?1:0)+'">'+esc(a.label)+'</button>';
+          }).join("") + '<div id="note" class="hide" style="margin-top:10px"><label>Note</label><textarea id="nt"></textarea><div style="margin-top:10px"><button id="doIt">Confirm</button></div></div>')
+        : '<p class="mute">Your part on this case carries no actions in its current state.</p>') +
+      '<div id="m"></div></div>' +
+    '<div class="card"><h2>History</h2><div class="scroll"><table><tr><th>When</th><th>What</th><th>Note</th></tr>' +
+      (out.events||[]).map(function(e){
+        return '<tr><td>'+esc(when(e.at))+'</td><td>'+esc(e.kind)+'</td><td>'+esc(e.note||"")+'</td></tr>';
+      }).join("") + '</table></div></div>';
+
+  var chosen = null;
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-a]"), function(b){
+    b.onclick = function(){
+      chosen = b.dataset.a;
+      el("note").classList.toggle("hide", b.dataset.n !== "1");
+      if (b.dataset.n !== "1") act(id, chosen, null);
+    };
+  });
+  if (el("doIt")) el("doIt").onclick = function(){ act(id, chosen, el("nt").value); };
+}
+async function act(id, code, note){
+  var out = await api("/cases/" + id + "/action", { method:"POST", body:{ code: code, note: note } });
+  el("m").innerHTML = out.error ? msg("bad", out.reason || out.error)
+    : msg("ok", out.ref + " is now " + out.status + ".");
+  if (!out.error) setTimeout(function(){ caseDetail(id); }, 900);
+}
+
+/* ------------------------------------------------------------------ OGL */
+async function vOgl(){
+  var part = (location.hash||"").split("/")[1];
+  if (part) return oglDetail(part);
+
+  var r = await Promise.all([crux("/api/ogl"), crux("/api/ogl/tray"), crux("/api/ogl/decisions")]);
+  var rows = r[0].assignments || [], tray = r[1].segments || [], dec = r[2].decisions || [];
+
+  el("view").innerHTML = '<h1>OGL assignments</h1>' +
+    '<p class="mute">A breached assignment is still in its state. The clock is a separate fact.</p>' +
+    '<div style="margin:12px 0"><button id="newOgl">Raise an assignment</button></div>' +
+    '<div id="newOglForm"></div>' +
+    (dec.length ? '<div class="card"><h2>Repeated Point IDs waiting on you</h2>' +
+      '<p class="mute">A Point ID keyed twice is not a duplicate to refuse - it is a decision ' +
+      'to route, and it is yours. Nothing on these assignments starts until you make it.</p>' +
+      '<div class="scroll"><table><tr><th>Point ID</th><th>On</th><th>Applicant</th>' +
+      '<th>Address then</th><th>Address now</th><th>Match</th><th>We suggest</th><th></th></tr>' +
+      dec.map(function(d){
+        var k = d.address_match==="DIFFERENT"?"bad":d.address_match==="FUZZY"?"warn":"ok";
+        return '<tr><td><b>'+esc(d.force1_point_id)+'</b></td>' +
+          '<td>'+esc(d.ref)+'<br><span class="mute">was '+esc(d.prior_ref||"-")+'</span></td>' +
+          '<td>'+esc(d.applicant_name)+'</td>' +
+          '<td class="mute">'+esc(d.prior_address)+'</td><td class="mute">'+esc(d.new_address)+'</td>' +
+          '<td><span class="pill '+k+'">'+esc(d.address_match)+' '+esc(d.match_score)+'</span></td>' +
+          '<td>'+esc(d.proposed)+'</td>' +
+          '<td><button onclick="oglDecide(\'' + esc(d.id) + '\',\'' + esc(d.proposed) + '\')">Decide</button></td></tr>';
+      }).join("") + '</table></div><div id="decForm"></div></div>' : "") +
+    (tray.length ? '<div class="card"><h2>Confirm attribution</h2>' +
+      '<p class="mute">These delays were accepted because nobody reviewed them in time. ' +
+      'The time counts against the deadline; it counts against nobody\'s record until you say whose it was.</p>' +
+      '<div class="scroll"><table><tr><th>Ref</th><th>Allocated to</th><th>Minutes</th><th>Reason given</th><th></th></tr>' +
+      tray.map(function(s){
+        return '<tr><td><b>'+esc(s.ref)+'</b></td><td>'+esc(s.allocated_to||"-")+'</td>' +
+          '<td>'+esc(s.minutes)+'</td><td>'+esc(s.reason_text||"-")+'</td>' +
+          '<td><button class="ghost" onclick="attribute(\'' + esc(s.segment_id) + '\')">Confirm</button></td></tr>';
+      }).join("") + '</table></div><div id="attrForm"></div></div>' : "") +
+    '<div class="card">' + (rows.length ? '<div class="scroll"><table>' +
+      '<tr><th>Ref</th><th>State</th><th>SLA</th><th>Open request</th><th>Due</th><th>Applicant</th><th>Client</th><th>Location</th><th>With</th></tr>' +
+      rows.map(function(a){
+        var k = a.sla_status==="BREACHED"?"bad":a.sla_status==="AT_RISK"?"warn":"ok";
+        return '<tr class="click" onclick="location.hash=\'#ogl/'+esc(a.id)+'\'">' +
+          '<td><b>'+esc(a.ref)+'</b></td><td><span class="pill">'+esc(a.current_state)+'</span></td>' +
+          '<td>'+(a.sla_status?'<span class="pill '+k+'">'+esc(a.sla_status)+'</span>':'&mdash;')+'</td>' +
+          '<td>'+(a.open_request_type?'<span class="pill warn">'+esc(a.open_request_type)+'</span>':'&mdash;')+'</td>' +
+          '<td>'+esc(when(a.due_at))+'</td><td>'+esc(a.applicant_name)+'</td>' +
+          '<td>'+esc(a.client)+'</td><td>'+esc(a.location)+'</td><td>'+esc(a.next_action_owner||"-")+'</td></tr>';
+      }).join("") + '</table></div>'
+      : '<div class="empty">No assignments.</div>') + '</div>';
+
+  el("newOgl").onclick = oglNew;
+}
+
+/* Raising one. The form is deliberately one screen: a case, an applicant, a
+   place, and the points to verify. Everything else the workflow works out. */
+async function oglNew(){
+  var refs = await crux("/api/refs");
+  function opts(list, val, lab){
+    return list.map(function(x){ return '<option value="'+esc(x[val])+'">'+esc(x[lab])+'</option>'; }).join("");
+  }
+  el("newOglForm").innerHTML = '<div class="card"><h2>Raise an assignment</h2>' +
+    '<div class="row">' +
+      '<div><label>Force1 case id</label><input id="nCase" placeholder="F1-2026-0001"></div>' +
+      '<div><label>Client</label><select id="nClient">' + opts(refs.clients||[], "code", "name") + '</select></div>' +
+      '<div><label>Verify in</label><select id="nTo">' + opts(refs.zones||[], "name", "name") + '</select></div>' +
+      '<div><label>Raised from</label><select id="nFrom"><option value="">Same place</option>' +
+        opts(refs.zones||[], "name", "name") + '</select></div>' +
+    '</div>' +
+    '<div class="row">' +
+      '<div><label>Applicant</label><input id="nName"></div>' +
+      '<div><label>Contact</label><input id="nContact"></div>' +
+      '<div><label>Pincode</label><input id="nPin"></div>' +
+    '</div>' +
+    '<div class="row"><div><label>Address</label><textarea id="nAddr" rows="2"></textarea></div></div>' +
+    '<div class="row"><div><label>Allocate to (optional)</label><select id="nAlloc">' +
+      '<option value="">Decide later</option>' + opts(refs.people||[], "work_email", "full_name") +
+    '</select></div></div>' +
+    '<h3 style="font-size:14px;margin:18px 0 8px">What is to be verified</h3>' +
+    '<div id="nPoints"></div>' +
+    '<button class="ghost" id="nAdd" type="button">Add another</button>' +
+    '<div style="margin-top:16px"><button id="nSave">Raise it</button> ' +
+      '<button class="ghost" onclick="el(\'newOglForm\').innerHTML=\'\'">Cancel</button></div>' +
+    '<div id="nMsg"></div></div>';
+
+  var n = 0;
+  function addPoint(){
+    n++;
+    var d = document.createElement("div");
+    d.className = "row";
+    d.innerHTML =
+      '<div><label>Party</label><select class="pRole">' +
+        '<option>APPLICANT</option><option>CO_APPLICANT</option><option>GUARANTOR</option></select></div>' +
+      '<div><label>Name</label><input class="pName" placeholder="same as applicant"></div>' +
+      '<div><label>Type</label><select class="pType">' + opts(refs.verification_types||[], "code", "label") + '</select></div>' +
+      '<div><label>Point ID</label><input class="pId"></div>' +
+      '<div><label>Address (if different)</label><input class="pAddr"></div>';
+    el("nPoints").appendChild(d);
+  }
+  el("nAdd").onclick = addPoint; addPoint();
+
+  el("nSave").onclick = async function(){
+    el("nSave").disabled = true;
+    var vs = [];
+    Array.prototype.forEach.call(el("nPoints").children, function(row){
+      var id = row.querySelector(".pId").value.trim();
+      if (!id) return;
+      vs.push({ party_role: row.querySelector(".pRole").value,
+                name: row.querySelector(".pName").value.trim(),
+                type: row.querySelector(".pType").value,
+                point_id: id,
+                address: row.querySelector(".pAddr").value.trim() });
+    });
+    var out = await crux("/api/ogl/create", { method:"POST", body:{
+      force1_case_id: el("nCase").value.trim(),
+      client_code: el("nClient").value,
+      to_location: el("nTo").value,
+      from_location: el("nFrom").value,
+      applicant_name: el("nName").value.trim(),
+      applicant_contact: el("nContact").value.trim(),
+      applicant_address: el("nAddr").value.trim(),
+      pincode: el("nPin").value.trim(),
+      allocated_to: el("nAlloc").value,
+      verifications: vs } });
+    el("nSave").disabled = false;
+    if (out.error) { el("nMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    el("nMsg").innerHTML = msg(out.points_held ? "warn" : "ok", out.ref + " - " + out.note);
+    setTimeout(function(){ location.hash = "#ogl/" + out.id; }, out.points_held ? 2500 : 1200);
+  };
+}
+
+/* The assignor's call on a repeated Point ID. The proposal is shown and never
+   applied by itself. */
+function oglDecide(id, proposed){
+  el("decForm").innerHTML =
+    '<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">' +
+    '<div class="row"><div><label>What is it?</label><select id="dChoice">' +
+      ['REVISIT','REOPEN','NEW_ASSIGNMENT','REFUSED_DUPLICATE'].map(function(c){
+        return '<option value="'+c+'"'+(c===proposed?" selected":"")+'>'+
+          ({REVISIT:"A revisit - new work on the same point",
+            REOPEN:"Reopen the previous one - its report stays readable",
+            NEW_ASSIGNMENT:"Unrelated new work at a different address",
+            REFUSED_DUPLICATE:"Keyed in error - refuse it"})[c] + '</option>'; }).join("") +
+    '</select></div></div>' +
+    '<div class="row"><div><label>Why</label><textarea id="dWhy" rows="2"></textarea></div></div>' +
+    '<button id="dGo">Decide</button> ' +
+    '<button class="ghost" onclick="el(\'decForm\').innerHTML=\'\'">Cancel</button>' +
+    '<div id="dMsg"></div></div>';
+  el("dGo").onclick = async function(){
+    el("dGo").disabled = true;
+    var out = await crux("/api/ogl/decide", { method:"POST",
+      body:{ id:id, choice: el("dChoice").value, reason: el("dWhy").value } });
+    el("dGo").disabled = false;
+    if (out.error) { el("dMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+async function oglSubmit(id){
+  var out = await crux("/api/ogl/submit", { method:"POST", body:{ id:id } });
+  if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+  oglReload();
+}
+
+async function oglAllocate(id){
+  var refs = await crux("/api/refs");
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<div class="row"><div><label>Allocate to</label><select id="aTo">' +
+      (refs.people||[]).map(function(p){
+        return '<option value="'+esc(p.id)+'">'+esc(p.full_name)+
+               (p.designation?' - '+esc(p.designation):'')+'</option>'; }).join("") +
+    '</select></div></div>' +
+    '<button id="aGo">Allocate</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+  el("aGo").onclick = async function(){
+    el("aGo").disabled = true;
+    var out = await crux("/api/ogl/allocate", { method:"POST",
+      body:{ id:id, person: el("aTo").value } });
+    el("aGo").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+/* Upheld means the report was wrong, and that is a strike. Not upheld means
+   the dispute was wrong, and that waives one - visibly, with a reason. */
+function oglClassify(request){
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<div class="row"><div><label>The dispute was</label><select id="cOut">' +
+      '<option value="UPHELD">Upheld - the report was wrong</option>' +
+      '<option value="NOT_UPHELD">Not upheld - the report stands</option>' +
+    '</select></div></div>' +
+    '<div class="row"><div><label>Why</label><textarea id="cWhy" rows="2"></textarea></div></div>' +
+    '<button id="cGo">Record it</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+  el("cGo").onclick = async function(){
+    el("cGo").disabled = true;
+    var out = await crux("/api/ogl/dispute-classify", { method:"POST",
+      body:{ request:request, outcome: el("cOut").value, reason: el("cWhy").value } });
+    el("cGo").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+async function oglArbitrate(id){
+  var arb = await crux("/api/ogl/arbiter?id=" + encodeURIComponent(id));
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<p class="mute">Arbiter: ' + esc(arb.name || "-") + ' &mdash; ' + esc(arb.how || "") + '</p>' +
+    '<div class="row"><div><label>Decision</label><select id="rOut">' +
+      '<option value="REWORK">Send it back for rework</option>' +
+      '<option value="CLOSED">Close it as it stands</option>' +
+    '</select></div></div>' +
+    '<div class="row"><div><label>Reasoning</label><textarea id="rWhy" rows="3"></textarea></div></div>' +
+    '<button id="rGo">Decide</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+  el("rGo").onclick = async function(){
+    el("rGo").disabled = true;
+    var out = await crux("/api/ogl/arbitrate", { method:"POST",
+      body:{ id:id, outcome: el("rOut").value, reason: el("rWhy").value } });
+    el("rGo").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+/* What the assignee actually does. Each point gets its own finding, and
+   anything but a clean positive has to say what was seen. */
+async function oglReport(id){
+  var p = await crux("/api/ogl/points?id=" + encodeURIComponent(id));
+  var pts = p.points || [];
+  if (!pts.length) { el("oglMsg").innerHTML = msg("ok","Every point is already reported."); return; }
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<div class="row"><div><label>Which point</label><select id="pSel">' +
+      pts.map(function(x){
+        return '<option value="'+esc(x.id)+'">'+esc(x.force1_point_id)+' &mdash; '+
+          esc(x.verification_type)+' for '+esc(x.party)+'</option>'; }).join("") +
+    '</select></div></div>' +
+    '<div id="pAddr" class="mute" style="margin:-6px 0 12px"></div>' +
+    '<div class="row"><div><label>What was found</label><select id="pOut">' +
+      '<option value="POSITIVE">Positive &mdash; confirmed as stated</option>' +
+      '<option value="NEGATIVE">Negative &mdash; contradicted</option>' +
+      '<option value="PARTIAL">Partial &mdash; some of it stands</option>' +
+      '<option value="REFER">Refer &mdash; needs a decision above me</option>' +
+      '<option value="UNTRACEABLE">Untraceable &mdash; could not be found</option>' +
+    '</select></div></div>' +
+    '<div class="row"><div><label>What was seen</label>' +
+      '<textarea id="pRem" rows="3" placeholder="Required for anything but a clean positive."></textarea></div></div>' +
+    '<button id="pGo">Record it</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+  function showAddr(){
+    var s = pts.filter(function(x){ return x.id === el("pSel").value; })[0];
+    el("pAddr").innerHTML = s && s.address ? "At: " + esc(s.address) : "";
+  }
+  el("pSel").onchange = showAddr; showAddr();
+  el("pGo").onclick = async function(){
+    el("pGo").disabled = true;
+    var out = await crux("/api/ogl/report", { method:"POST",
+      body:{ requirement: el("pSel").value, outcome: el("pOut").value, remarks: el("pRem").value } });
+    el("pGo").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    if (out.still_to_report > 0) { el("oglMsg").innerHTML = msg("ok", out.note); oglReport(id); }
+    else oglReload();
+  };
+}
+
+/* Completion is a delivery, not a state change somebody types. The channel
+   and the reference are the evidence that it went. */
+function oglFinish(id){
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<div class="row"><div><label>How was the report delivered?</label><select id="fCh">' +
+      '<option value="FORCE1">Force1</option><option value="EMAIL">E-mail</option>' +
+      '<option value="WHATSAPP">WhatsApp</option><option value="PORTAL">Client portal</option>' +
+      '<option value="HAND">By hand</option>' +
+    '</select></div>' +
+    '<div><label>To whom</label><input id="fTo" placeholder="address, number or name"></div>' +
+    '<div><label>Reference</label><input id="fRef" placeholder="Force1 ref or message id"></div></div>' +
+    '<div class="row"><div><label>Anything else</label><textarea id="fRem" rows="2"></textarea></div></div>' +
+    '<button id="fGo">Complete</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+  el("fGo").onclick = async function(){
+    el("fGo").disabled = true;
+    var out = await crux("/api/ogl/complete", { method:"POST",
+      body:{ id:id, channel: el("fCh").value, recipient: el("fTo").value,
+             reference: el("fRef").value, remarks: el("fRem").value } });
+    el("fGo").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+async function oglAccept(id){
+  var why = prompt("Anything to note before closing it?") ;
+  if (why === null) return;
+  var out = await crux("/api/ogl/accept", { method:"POST", body:{ id:id, remarks: why } });
+  if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+  oglReload();
+}
+
+/* Helping with a case is a recorded act with an end date. */
+async function oglLend(id){
+  var refs = await crux("/api/refs");
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<div class="row"><div><label>Lend access to</label><select id="lWho">' +
+      (refs.people||[]).map(function(p){
+        return '<option value="'+esc(p.id)+'">'+esc(p.full_name)+'</option>'; }).join("") +
+    '</select></div><div><label>For how many hours</label><input id="lHrs" value="72"></div></div>' +
+    '<div class="row"><div><label>Why</label><textarea id="lWhy" rows="2"></textarea></div></div>' +
+    '<button id="lGo">Lend it</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+  el("lGo").onclick = async function(){
+    el("lGo").disabled = true;
+    var out = await crux("/api/ogl/participant", { method:"POST",
+      body:{ id:id, person: el("lWho").value, reason: el("lWhy").value,
+             hours: Number(el("lHrs").value) || 72 } });
+    el("lGo").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    el("oglMsg").innerHTML = msg("ok", "Lent for " + out.expires_in_hours + " hours.");
+  };
+}
+
+/* One assignment. current_state is the operational position; the SLA status,
+   the open request and the escalation level sit beside it as separate facts,
+   which is the whole design of the module. */
+async function oglDetail(id){
+  var r = await Promise.all([
+    crux("/api/ogl/detail?id=" + encodeURIComponent(id)),
+    crux("/api/ogl/actions?id=" + encodeURIComponent(id))
+  ]);
+  var d = r[0], acts = r[1];
+  if (d.error) {
+    el("view").innerHTML = '<p><a href="#ogl">&larr; All assignments</a></p>' +
+      msg("bad", d.reason || d.error);
+    return;
+  }
+  var a = d.assignment, s = d.sla;
+  var k = s && s.sla_status==="BREACHED"?"bad":(s && s.sla_status==="AT_RISK"?"warn":"ok");
+
+  el("view").innerHTML =
+    '<p><a href="#ogl">&larr; All assignments</a></p>' +
+    '<h1>' + esc(a.ref) + '</h1>' +
+    '<p class="mute">' + esc(d["case"] ? d["case"].applicant_name : "") + ' &middot; ' +
+      esc(d["case"] ? d["case"].client : "") + ' &middot; ' + esc(a.location || "") + '</p>' +
+    '<div class="tiles" style="margin:16px 0">' +
+      '<div class="tile"><b>' + esc(a.current_state) + '</b><span>state</span></div>' +
+      (s ? '<div class="tile"><b class="' + k + '">' + esc(s.sla_status) + '</b><span>SLA</span></div>' +
+           '<div class="tile"><b>' + esc(s.elapsed_minutes) + ' / ' + esc(s.tat_business_minutes) +
+             '</b><span>business minutes used</span></div>' +
+           '<div class="tile"><b>' + esc(s.due_ist) + '</b><span>due (IST)</span></div>'
+         : '<div class="tile"><b>&mdash;</b><span>no clock running</span></div>') +
+      '<div class="tile"><b>' + esc(a.open_request_type || "&mdash;") + '</b><span>open request</span></div>' +
+      '<div class="tile"><b>' + esc((d.escalations||[]).length) + '</b><span>escalations</span></div>' +
+    '</div>' +
+
+    '<div class="card"><h2>What you can do</h2>' +
+      ((acts.actions||[]).length
+        ? '<div class="row" style="flex-wrap:wrap;gap:8px">' + acts.actions.map(function(x){
+            var g = ' class="ghost"';
+            if (x.kind === "transition")
+              return '<button'+g+' onclick="oglMove(\'' + esc(id) + '\',\'' + esc(x.to) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "request")
+              return '<button onclick="oglAsk(\'' + esc(id) + '\',\'' + esc(x.type) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "resolve")
+              return '<button onclick="oglAnswer(\'' + esc(x.request) + '\',\'' + esc(x.type) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "submit")
+              return '<button onclick="oglSubmit(\'' + esc(id) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "allocate")
+              return '<button onclick="oglAllocate(\'' + esc(id) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "classify")
+              return '<button onclick="oglClassify(\'' + esc(x.request) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "arbitrate")
+              return '<button onclick="oglArbitrate(\'' + esc(id) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "lend")
+              return '<button'+g+' onclick="oglLend(\'' + esc(id) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "report")
+              return '<button onclick="oglReport(\'' + esc(id) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "complete")
+              return '<button onclick="oglFinish(\'' + esc(id) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "accept")
+              return '<button onclick="oglAccept(\'' + esc(id) + '\')">' + esc(x.label) + '</button>';
+            if (x.kind === "decide")
+              return '<button onclick="location.hash=\'#ogl\'">' + esc(x.label) + '</button>';
+            return "";
+          }).join("") + '</div>'
+        : '<div class="empty">Nothing is yours to do on this one right now.</div>') +
+      '<div id="oglForm"></div><div id="oglMsg"></div></div>' +
+
+    '<div class="card"><h2>Evidence</h2>' +
+      '<p class="mute">A field verification without a photograph is one person\'s word. ' +
+      'Photographs and PDFs only; the file goes straight to storage and the link below ' +
+      'is good for fifteen minutes at a time.</p>' +
+      '<div id="evi">Loading...</div></div>' +
+
+    (s && s.attribution_pending ? msg("warn",
+      "Some of this assignment's time is not attributed yet. No strike can be generated until it is.") : "") +
+
+    '<div class="card"><h2>Requests</h2>' + ((d.requests||[]).length
+      ? '<div class="scroll"><table><tr><th>Raised</th><th>Kind</th><th>Reason</th><th>By</th>' +
+        '<th>Sub-TAT</th><th>Pause</th><th>Outcome</th></tr>' +
+        d.requests.map(function(q){
+          return '<tr><td>'+esc(when(q.raised_at))+'</td><td><span class="pill">'+esc(q.request_type)+'</span></td>' +
+            '<td>'+esc(q.reason||"-")+(q.remarks?'<br><span class="mute">'+esc(q.remarks)+'</span>':"")+'</td>' +
+            '<td>'+esc(q.raised_by_name||"-")+'</td>' +
+            '<td>'+(q.sub_tat_due_at ? esc(when(q.sub_tat_due_at)) + (q.sub_tat_breached ? ' <span class="pill bad">missed</span>' : "") : "&mdash;")+'</td>' +
+            '<td>'+(q.pause_granted ? esc(q.pause_minutes_credited) + ' min' : "none")+'</td>' +
+            '<td>'+(q.resolution ? '<span class="pill">'+esc(q.resolution)+'</span>' : '<span class="pill warn">open</span>')+'</td></tr>';
+        }).join("") + '</table></div>' : '<div class="empty">None.</div>') + '</div>' +
+
+    '<div class="card"><h2>The clock, segment by segment</h2>' +
+      '<p class="mute">Elapsed and exposure are added up from these. Nothing is stored twice.</p>' +
+      ((d.segments||[]).length
+      ? '<div class="scroll"><table><tr><th>#</th><th>State</th><th>Whose time</th><th>Counts to SLA</th>' +
+        '<th>Counts to strike</th><th>Minutes</th><th>Why</th></tr>' +
+        d.segments.map(function(g){
+          return '<tr><td>'+esc(g.seq_no)+'</td><td>'+esc(g.segment_state)+'</td>' +
+            '<td><span class="pill'+(g.attribution==="PENDING_REVIEW"?" warn":"")+'">'+esc(g.attribution)+'</span></td>' +
+            '<td>'+(g.counts_to_sla?"yes":"no")+'</td><td>'+(g.counts_to_strike?"yes":"no")+'</td>' +
+            '<td>'+esc(g.business_minutes==null?"running":g.business_minutes)+'</td>' +
+            '<td>'+esc(g.reason_text||"-")+'</td></tr>';
+        }).join("") + '</table></div>' : '<div class="empty">No clock.</div>') + '</div>' +
+
+    ((d.escalations||[]).length ? '<div class="card"><h2>Escalations</h2><div class="scroll"><table>' +
+      '<tr><th>Raised</th><th>Level</th><th>Because</th><th>Reached</th><th>Routed by</th></tr>' +
+      d.escalations.map(function(e){
+        return '<tr><td>'+esc(when(e.raised_at))+'</td><td>'+esc(e.escalation_level)+'</td>' +
+          '<td>'+esc(e.trigger_code)+'</td><td>'+esc(e.to||"-")+'</td>' +
+          '<td>'+(e.fallback_used?'<span class="pill warn">hierarchy walk</span>':'the matrix')+'</td></tr>' +
+          (e.fallback_used ? '<tr><td colspan="5" class="mute">'+esc(e.fallback_reason)+'</td></tr>' : "");
+      }).join("") + '</table></div></div>' : "") +
+
+    ((d.strikes||[]).length ? '<div class="card"><h2>Strikes</h2><div class="scroll"><table>' +
+      '<tr><th>When</th><th>Because</th><th>Minutes attributed</th><th>Status</th></tr>' +
+      d.strikes.map(function(x){
+        return '<tr><td>'+esc(when(x.occurred_at))+'</td><td>'+esc(x.trigger_code)+'</td>' +
+          '<td>'+esc(x.attributable_minutes)+'</td><td><span class="pill'+(x.status==="WAIVED"?"":" bad")+'">'+
+          esc(x.status)+'</span>'+(x.waived_reason?'<br><span class="mute">'+esc(x.waived_reason)+'</span>':"")+'</td></tr>';
+      }).join("") + '</table></div></div>' : "") +
+
+    '<div class="card"><h2>Everything that happened</h2><div class="scroll"><table>' +
+      '<tr><th>When</th><th>What</th><th>By</th></tr>' +
+      (d.events||[]).map(function(v){
+        return '<tr><td>'+esc(when(v.at))+'</td><td>'+esc(v.type.replace(/_/g," ").toLowerCase()) +
+          (v["from"] && v.to ? ' <span class="mute">'+esc(v["from"])+' &rarr; '+esc(v.to)+'</span>' : "") + '</td>' +
+          '<td>'+esc(v.by || (v.system ? "the system" : "-"))+'</td></tr>';
+      }).join("") + '</table></div></div>';
+
+  oglEvidence(id);
+}
+
+/* The browser never holds a key. It asks for a URL that is good for one
+   file, in one place, for a few minutes, and puts the bytes there itself. */
+async function oglEvidence(id){
+  var out = await crux("/api/ogl/attachments?id=" + encodeURIComponent(id));
+  var list = out.attachments || [];
+  el("evi").innerHTML =
+    (list.length ? '<div class="scroll"><table>' +
+      '<tr><th>File</th><th>Point</th><th>Note</th><th>By</th><th>When</th><th></th></tr>' +
+      list.map(function(t){
+        return '<tr><td><a href="'+esc(t.url||"#")+'" target="_blank" rel="noopener">' +
+            esc(t.file_name)+'</a>'+(t.bytes?' <span class="mute">'+Math.round(t.bytes/1024)+' KB</span>':'')+'</td>' +
+          '<td>'+esc(t.point||"-")+'</td><td>'+esc(t.caption||"")+'</td>' +
+          '<td>'+esc(t.by||"-")+'</td><td>'+esc(when(t.at))+'</td>' +
+          '<td><button class="ghost danger" onclick="oglUnattach(\'' + esc(t.id) + '\',\'' + esc(id) + '\')">Remove</button></td></tr>';
+      }).join("") + '</table></div>'
+      : '<div class="empty">Nothing attached yet.</div>') +
+    '<div class="row" style="margin-top:14px">' +
+      '<div><label>Add a file</label><input id="evFile" type="file" accept=".jpg,.jpeg,.png,.heic,.pdf"></div>' +
+      '<div><label>Note (optional)</label><input id="evCap" placeholder="what it shows"></div></div>' +
+    '<div id="evMsg"></div>';
+
+  el("evFile").onchange = async function(){
+    var f = el("evFile").files[0];
+    if (!f) return;
+    el("evMsg").innerHTML = msg("warn","Preparing " + f.name + "...");
+    var b = await crux("/api/ogl/attach/begin", { method:"POST",
+      body:{ id:id, fileName: f.name } });
+    if (b.error) { el("evMsg").innerHTML = msg("bad", b.reason || b.error); return; }
+    if (f.size > b.max_bytes) {
+      el("evMsg").innerHTML = msg("bad", "That file is " + Math.round(f.size/1048576) +
+        " MB. The limit here is " + Math.round(b.max_bytes/1048576) + " MB.");
+      return;
+    }
+    el("evMsg").innerHTML = msg("warn","Uploading...");
+    var put = await fetch(b.uploadUrl, { method:"PUT",
+      headers:{ "content-type": f.type || b.mime }, body: f });
+    if (!put.ok) {
+      el("evMsg").innerHTML = msg("bad","Storage refused the file: " + put.status + " " +
+        (await put.text()).slice(0,200));
+      return;
+    }
+    var d = await crux("/api/ogl/attach/done", { method:"POST",
+      body:{ id:id, key: b.key, fileName: f.name, mime: f.type || b.mime,
+             bytes: f.size, caption: el("evCap").value } });
+    if (d.error) { el("evMsg").innerHTML = msg("bad", d.reason || d.error); return; }
+    el("evMsg").innerHTML = "";
+    oglEvidence(id);
+  };
+}
+
+async function oglUnattach(attachment, id){
+  if (!confirm("Remove it? The record of it having been there stays.")) return;
+  var out = await crux("/api/ogl/attach/remove", { method:"POST", body:{ id: attachment } });
+  if (out.error) { el("evMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+  oglEvidence(id);
+}
+
+function oglReload(){ el("view").innerHTML = '<p class="mute">Loading...</p>'; route(); }
+
+async function oglMove(id, to){
+  var reason = (to === "REOPENED" || to === "CANCELLED")
+    ? prompt("Why? This is the first thing anyone will ask.") : null;
+  if ((to === "REOPENED" || to === "CANCELLED") && !reason) return;
+  var out = await crux("/api/ogl/transition", { method:"POST", body:{ id:id, to:to, reason:reason } });
+  if (out.error) { el("oglMsg").innerHTML = msg("bad", (out.reason||out.error) + (out.hint ? " " + out.hint : "")); return; }
+  oglReload();
+}
+
+/* Raising a request. For an RFI the pause arithmetic is fetched the moment a
+   reason is chosen and shown in full - the three conditions and the numbers
+   behind them - so the decision is visible before anything is submitted. */
+async function oglAsk(id, type){
+  var rs = await crux("/api/ogl/reasons?context=" + type);
+  var list = rs.reasons || [];
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<h3 style="font-size:14px;margin:0 0 10px">' + esc(type) + '</h3>' +
+    '<div class="row"><div><label>Reason</label><select id="rsn">' +
+      '<option value="">Choose one</option>' +
+      list.map(function(x){ return '<option value="'+esc(x.id)+'">'+esc(x.label)+'</option>'; }).join("") +
+    '</select></div></div>' +
+    '<div id="pausePanel"></div>' +
+    '<div class="row"><div><label>What happened</label>' +
+      '<textarea id="rmk" rows="2" placeholder="A sentence is enough."></textarea></div></div>' +
+    (type === "DELAY" ? '<div class="row"><div><label>When will it be done?</label>' +
+      '<input id="exp" type="datetime-local"></div></div>' : "") +
+    '<button id="sendReq">Submit</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+
+  if (type === "RFI") {
+    el("rsn").onchange = async function(){
+      if (!el("rsn").value) { el("pausePanel").innerHTML = ""; return; }
+      var p = await crux("/api/ogl/pause-preview", { method:"POST",
+        body:{ id:id, reason: el("rsn").value } });
+      el("pausePanel").innerHTML = '<div class="card" style="margin:12px 0;background:var(--bg)">' +
+        '<b>' + (p.eligible ? "The clock will stop." : "The clock will keep running.") + '</b>' +
+        '<ul style="margin:8px 0 0;padding-left:18px">' +
+        (p.conditions||[]).map(function(c){
+          return '<li>' + (c.pass ? "&#10003; " : "&#10007; ") + esc(c.test) +
+                 ' <span class="mute">&mdash; ' + esc(c.detail) + '</span></li>'; }).join("") +
+        '</ul><p class="mute" style="margin:10px 0 0">' + esc(p.plain || p.reason || "") + '</p></div>';
+    };
+  }
+
+  el("sendReq").onclick = async function(){
+    el("sendReq").disabled = true;
+    var body = { id:id, type:type, reason: el("rsn").value, remarks: el("rmk").value };
+    if (type === "DELAY" && el("exp").value) body.expected = new Date(el("exp").value).toISOString();
+    var out = await crux("/api/ogl/raise", { method:"POST", body:body });
+    el("sendReq").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+async function oglAnswer(request, type){
+  var opts = type === "RFI" ? [["ANSWERED","Answer it"],["REJECTED_INVALID","Not a valid request"]]
+           : type === "DELAY" ? [["ACCEPTED","Accept the delay"],["DENIED","Do not accept it"]]
+           : [["RELEASED","Release the hold"]];
+  el("oglForm").innerHTML =
+    '<div style="margin-top:16px;border-top:1px solid var(--line);padding-top:16px">' +
+    '<div class="row"><div><label>Your answer</label><select id="res">' +
+      opts.map(function(o){ return '<option value="'+o[0]+'">'+esc(o[1])+'</option>'; }).join("") +
+    '</select></div></div>' +
+    '<div class="row"><div><label>Remarks</label><textarea id="rrm" rows="2"></textarea></div></div>' +
+    '<button id="sendRes">Submit</button> ' +
+    '<button class="ghost" onclick="el(\'oglForm\').innerHTML=\'\'">Cancel</button></div>';
+  el("sendRes").onclick = async function(){
+    el("sendRes").disabled = true;
+    var out = await crux("/api/ogl/resolve", { method:"POST",
+      body:{ request:request, resolution: el("res").value, remarks: el("rrm").value } });
+    el("sendRes").disabled = false;
+    if (out.error) { el("oglMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+async function attribute(segment){
+  var rs = await crux("/api/ogl/reasons?context=ATTRIBUTION");
+  el("attrForm").innerHTML =
+    '<div style="margin-top:14px;border-top:1px solid var(--line);padding-top:14px">' +
+    '<div class="row"><div><label>Whose time was it?</label><select id="arsn">' +
+      (rs.reasons||[]).map(function(x){ return '<option value="'+esc(x.id)+'">'+esc(x.label)+'</option>'; }).join("") +
+    '</select></div></div>' +
+    '<div class="row"><div><label>Why</label><textarea id="armk" rows="2"></textarea></div></div>' +
+    '<button id="sendAttr">Confirm</button> ' +
+    '<button class="ghost" onclick="el(\'attrForm\').innerHTML=\'\'">Cancel</button>' +
+    '<div id="attrMsg"></div></div>';
+  el("sendAttr").onclick = async function(){
+    el("sendAttr").disabled = true;
+    var out = await crux("/api/ogl/attribute", { method:"POST",
+      body:{ segment:segment, reason: el("arsn").value, remarks: el("armk").value } });
+    el("sendAttr").disabled = false;
+    if (out.error) { el("attrMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    oglReload();
+  };
+}
+
+async function vMatrix(){
+  var part = (location.hash||"").split("/")[1];
+  if (part) return matrixBranch(part);
+  var out = await api("/matrix/incomplete");
+  var rows = out.branches || [];
+  el("view").innerHTML = '<h1>Escalation matrix</h1>' +
+    '<p class="mute">Five levels per branch. Completeness is computed, never stored.</p>' +
+    (out.empty ? msg("warn", out.empty) : "") +
+    '<div class="card"><h2>Branches still missing levels</h2>' +
+      (rows.length ? '<div class="scroll"><table><tr><th>Branch</th><th>Client</th><th>Complete</th><th>Missing</th></tr>' +
+        rows.map(function(b){
+          return '<tr class="click" onclick="location.hash=\'#matrix/'+esc(b.id)+'\'">' +
+            '<td><b>'+esc(b.name)+'</b> <span class="mute">'+esc(b.code)+'</span></td>' +
+            '<td>'+esc(b.client)+'</td><td>'+esc(b.complete_levels)+' of 5</td>' +
+            '<td><span class="pill bad">'+esc(b.missing)+'</span></td></tr>';
+        }).join("") + '</table></div>'
+        : '<div class="empty">Every branch in your coverage has all five levels.</div>') + '</div>';
+}
+async function matrixBranch(id){
+  var out = await api("/matrix/branch/" + id);
+  if (out.error) return el("view").innerHTML = '<h1>Branch matrix</h1>' + msg("bad", out.reason || out.error);
+  el("view").innerHTML = '<h1>Branch matrix</h1>' +
+    '<p class="mute">' + esc(out.completeLevels) + ' of 5 complete' +
+      (out.dispatchEligible ? ' - <span class="pill ok">dispatch eligible</span>' : '') + '</p>' +
+    '<div class="card"><div class="scroll"><table>' +
+    '<tr><th>Level</th><th>Name</th><th>Mobile</th><th>E-mail</th><th>Source</th><th></th></tr>' +
+    [1,2,3,4,5].map(function(lv){
+      var r = (out.levels||[]).filter(function(x){ return Number(x.level)===lv; })[0] || {};
+      return '<tr><td><b>'+lv+'</b> <span class="mute">'+esc(r.level_name||"")+'</span></td>' +
+        '<td><input id="n'+lv+'" value="'+esc(r.name||"")+'"></td>' +
+        '<td><input id="m'+lv+'" value="'+esc(r.mobile||"")+'"></td>' +
+        '<td><input id="e'+lv+'" value="'+esc(r.email||"")+'"></td>' +
+        '<td>'+(r.inherited?'<span class="pill">inherited</span>':'')+'</td>' +
+        '<td><button class="sm" data-lv="'+lv+'">Save</button></td></tr>';
+    }).join("") + '</table></div><div id="m"></div></div>' +
+    '<button class="ghost" onclick="location.hash=\'#matrix\'">Back</button>';
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-lv]"), function(b){
+    b.onclick = async function(){
+      var lv = b.dataset.lv;
+      var out2 = await api("/matrix/branch/" + id + "/level/" + lv, { method:"PUT", body:{
+        name: el("n"+lv).value, mobile: el("m"+lv).value, email: el("e"+lv).value } });
+      el("m").innerHTML = out2.error ? msg("bad", out2.reason || out2.error)
+        : msg("ok", "Saved. " + out2.completeLevels + " of 5 complete.");
+    };
+  });
+}
+
+/* ---------------------------------------------------------- performance */
+function pmsSummary(p){
+  if (!p || p.cycle === null) return '<div class="empty">' + esc(p && p.empty || "No cycle is open.") + '</div>';
+  var s = p.score || {};
+  return (p.blocked ? msg("warn", p.blocked) : "") +
+    (p.unscored ? msg("warn", p.unscored) : "") +
+    '<div class="tiles">' +
+      tile(s.attribute != null ? Number(s.attribute).toFixed(1) : "-", "attributes") +
+      tile(s.kpi != null ? Number(s.kpi).toFixed(1) : "-", "KPI") +
+      tile(s.final != null ? Number(s.final).toFixed(1) : "-", "final") +
+    '</div>' +
+    ((p.ledger||[]).length ? '<h2 style="margin-top:18px">Movements</h2><div class="scroll"><table>' +
+      '<tr><th>When</th><th>Cause</th><th>Half</th><th>Points</th><th>Reason</th><th></th></tr>' +
+      p.ledger.map(function(l){
+        return '<tr><td>'+esc(when(l.at))+'</td><td>'+esc(l.source_kind)+'</td><td>'+esc(l.half)+'</td>' +
+          '<td>'+esc(l.points)+'</td><td>'+esc(l.reason)+'</td>' +
+          '<td>'+(l.applied?'':'<span class="pill bad">over cap</span>')+'</td></tr>';
+      }).join("") + '</table></div>' : "");
+}
+async function vPms(){
+  var p = await api("/pms/cycle/current");
+  var today = new Date().toISOString().slice(0,10);
+  el("view").innerHTML = '<h1>Performance</h1>' +
+    '<div class="card"><h2>Your cycle</h2>' + pmsSummary(p) + '</div>' +
+    '<div class="card"><h2>File today\'s numbers</h2>' +
+      '<p class="mute">One filing per day, carrying every figure. The day closes at 23:59.</p>' +
+      '<div class="row"><div><label>Date</label><input id="cd" type="date" value="'+today+'"></div></div>' +
+      '<div><label>Figures</label><textarea id="vals" placeholder=\'{"Field verifications completed": 42}\'>{}</textarea></div>' +
+      '<div style="margin-top:12px"><button id="fileIt">File</button></div><div id="dm"></div></div>' +
+    '<div class="card"><h2>Raise against someone</h2>' +
+      '<p class="mute">This moves their score. Raise it when the outcome is decided, not when it is alleged.</p>' +
+      '<div class="row"><div><label>Person</label><select id="ab"></select></div>' +
+      '<div><label>Kind</label><select id="kd">' +
+        ["ESCALATION","WARNING","APPRECIATION","ASSISTANCE"].map(function(k){
+          return '<option>'+k+'</option>'; }).join("") + '</select></div></div>' +
+      '<div><label>Body</label><textarea id="bd"></textarea></div>' +
+      '<div style="margin-top:12px"><button id="raiseIt">Raise</button></div><div id="rm"></div></div>';
+
+  var team = await api("/people/team");
+  el("ab").innerHTML = (team.team||[]).filter(function(t){ return t.person_id; })
+    .map(function(t){ return '<option value="'+esc(t.person_id)+'">'+esc(t.full_name)+' - '+esc(t.title)+'</option>'; }).join("")
+    || '<option value="">Nobody reports to you</option>';
+
+  el("fileIt").onclick = async function(){
+    var v; try { v = JSON.parse(el("vals").value || "{}"); }
+    catch(e){ el("dm").innerHTML = msg("bad","That is not valid JSON."); return; }
+    var out = await api("/pms/daily", { method:"POST", body:{ countDate: el("cd").value, values: v } });
+    el("dm").innerHTML = out.error ? msg("bad", out.reason || out.error) : msg("ok","Filed for " + day(out.count_date) + ".");
+  };
+  el("raiseIt").onclick = async function(){
+    var out = await api("/pms/raise", { method:"POST", body:{
+      kind: el("kd").value, aboutPersonId: el("ab").value, body: el("bd").value } });
+    el("rm").innerHTML = out.error ? msg("bad", out.reason || out.error)
+      : msg("ok", "Raised as " + out.ref + ". " + (out.movements||[]).length + " movement(s) recorded.");
+  };
+}
+
+/* --------------------------------------------------------------- people */
+async function vPeople(){
+  var r = await Promise.all([api("/people/org"), api("/people/team")]);
+  var chairs = r[0].chairs || [], team = r[1].team || [];
+  var byParent = {};
+  chairs.forEach(function(c){ (byParent[c.parent_id||"root"] = byParent[c.parent_id||"root"] || []).push(c); });
+  function branch(key){
+    var kids = byParent[key] || [];
+    if (!kids.length) return "";
+    return '<ul class="tree">' + kids.map(function(c){
+      var st = c.vacant ? '<span class="pill bad">vacant</span>'
+             : c.overdue_days > 0 ? '<span class="pill warn">'+c.overdue_days+'d overdue</span>' : '';
+      return '<li><div class="node"><span class="t">'+esc(c.title)+'</span>' +
+        '<span class="mute">'+esc(c.full_name || "-")+'</span>'+st+'</div>' + branch(c.id) + '</li>';
+    }).join("") + '</ul>';
+  }
+  el("view").innerHTML = '<h1>People</h1>' +
+    '<div class="card"><h2>Your team</h2>' +
+      (team.length ? '<div class="scroll"><table><tr><th>Chair</th><th>Who</th><th>State</th></tr>' +
+        team.map(function(t){
+          return '<tr><td>'+esc(t.title)+'</td><td>'+esc(t.full_name||"-")+'</td>' +
+            '<td>'+esc(t.state||"")+'</td></tr>'; }).join("") + '</table></div>'
+        : '<div class="empty">Nobody reports to your chair.</div>') + '</div>' +
+    '<div class="card"><h2>The structure</h2>' +
+      (chairs.length ? branch("root") : '<div class="empty">No chairs loaded yet.</div>') + '</div>';
+}
+
+/* ------------------------------------------------------------ penalties */
+async function vPenalties(){
+  var r = await Promise.all([api("/penalties/rules"), api("/penalties/ledger")]);
+  var rules = r[0].rules || [], led = r[1].ledger || [];
+  el("view").innerHTML = '<h1>Penalties</h1>' +
+    '<div class="card"><h2>The ledger</h2>' +
+      (led.length ? '<div class="scroll"><table>' +
+        '<tr><th>Period</th><th>Who</th><th>Rule</th><th>Amount</th><th>Evidence</th><th>Recovered by</th></tr>' +
+        led.map(function(l){
+          return '<tr><td>'+esc(l.period)+'</td><td>'+esc(l.full_name)+'</td>' +
+            '<td>'+esc(l.what)+'</td><td>'+esc(money(l.amount))+'</td>' +
+            '<td class="mute">'+esc(l.evidence)+'</td><td>'+esc(l.recovered_by)+'</td></tr>';
+        }).join("") + '</table></div>' : '<div class="empty">Nothing has been raised.</div>') + '</div>' +
+    '<div class="card"><h2>The rules</h2><div class="scroll"><table>' +
+      '<tr><th>Code</th><th>What</th><th>In plain words</th><th>Cutoff</th><th>Amount</th><th></th></tr>' +
+      rules.map(function(x){
+        return '<tr><td><code>'+esc(x.code)+'</code></td><td>'+esc(x.what)+'</td>' +
+          '<td class="mute">'+esc(x.plain_language)+'</td><td>'+esc(x.cutoff_spec||"")+'</td>' +
+          '<td>'+esc(money(x.amount))+'</td>' +
+          '<td>'+(x.active?'<span class="pill ok">active</span>':'<span class="pill">off</span>')+'</td></tr>';
+      }).join("") + '</table></div></div>';
+}
+
+/* ----------------------------------------------------------- data setup */
+async function vData(){
+  var kinds = await crux("/api/kinds");
+  var hist = await crux("/api/history");
+  el("view").innerHTML = '<h1>Data setup</h1>' +
+    '<div class="card"><h2>Load a file</h2>' +
+      '<p class="mute">Validate, preview, then apply. A file with any error applies zero rows.</p>' +
+      '<div class="row"><div><label>File kind</label><select id="kind">' +
+        (kinds.kinds||[]).map(function(k){
+          return '<option value="'+esc(k.kind)+'">'+esc(k.load_order)+". "+esc(k.kind)+'</option>'; }).join("") +
+      '</select></div><div style="flex:0 0 auto;display:flex;align-items:flex-end">' +
+        '<button class="ghost" id="tpl">Download template</button></div></div>' +
+      '<div class="drop" id="drop">Drop a CSV here, or click to choose one' +
+        '<input id="file" type="file" accept=".csv,text/csv" class="hide"></div>' +
+      '<div id="upMsg"></div><div id="preview"></div></div>' +
+    '<div class="card"><h2>Recent loads</h2>' +
+      ((hist.batches||[]).length ? '<div class="scroll"><table>' +
+        '<tr><th>When</th><th>Kind</th><th>File</th><th>State</th><th>Rows</th><th>Errors</th></tr>' +
+        hist.batches.map(function(b){
+          return '<tr><td>'+esc(when(b.uploaded_at))+'</td><td>'+esc(b.kind)+'</td>' +
+            '<td>'+esc(b.file_name)+'</td><td>'+esc(b.state)+'</td>' +
+            '<td>'+esc(b.rows_total)+'</td><td>'+esc(b.rows_error)+'</td></tr>';
+        }).join("") + '</table></div>' : '<div class="empty">Nothing loaded yet.</div>') + '</div>' +
+    '<div class="card action"><h2>Empty the tool</h2>' +
+      '<p class="mute">Removes every person, client, branch, case and filing — the demo data and anything else. ' +
+      'Keeps your configuration, the audit trail, your own account and the chair you sit in.</p>' +
+      '<div id="resetPreview"><button class="ghost" id="showReset">Show me what would go</button></div></div>';
+
+  el("tpl").onclick = function(){
+    var k = el("kind").value;
+    fetch(CRUX + "/api/template?kind=" + encodeURIComponent(k), { headers:{ "x-crux-token": token } })
+      .then(function(r){ return r.blob(); }).then(function(b){
+        var a = document.createElement("a"); a.href = URL.createObjectURL(b);
+        a.download = "crux-" + k.replace(/\s+/g,"-").toLowerCase() + "-template.csv";
+        document.body.appendChild(a); a.click(); a.remove();
+      });
+  };
+  var drop = el("drop"), file = el("file");
+  drop.onclick = function(){ file.click(); };
+  drop.ondragover = function(e){ e.preventDefault(); drop.classList.add("over"); };
+  drop.ondragleave = function(){ drop.classList.remove("over"); };
+  drop.ondrop = function(e){ e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer.files[0]) send(e.dataTransfer.files[0]); };
+  file.onchange = function(){ if (file.files[0]) send(file.files[0]); };
+  el("showReset").onclick = resetPanel;
+}
+
+async function send(f){
+  el("upMsg").innerHTML = msg("warn", "Validating " + f.name + "...");
+  var csv = await f.text();
+  var out = await crux("/api/upload", { method:"POST",
+    body:{ kind: el("kind").value, fileName: f.name, csv: csv } });
+  el("file").value = "";
+  if (out.error) { el("upMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+  el("upMsg").innerHTML = "";
+  el("preview").innerHTML =
+    '<div class="tiles" style="margin:14px 0">' + tile(out.rows_total,"rows read") +
+      tile(out.rows_ok,"would load") + tile(out.rows_error,"errors") + '</div>' +
+    msg(out.rows_error ? "bad" : "ok", out.note) +
+    ((out.errors||[]).length ? '<div class="scroll"><table><tr><th>Line</th><th>Problem</th></tr>' +
+      out.errors.map(function(e){ return '<tr><td>'+esc(e.row_no)+'</td><td>'+esc(e.error)+'</td></tr>'; }).join("") +
+      '</table></div>' : "") +
+    '<div style="margin-top:14px"><button id="apply"'+(out.applicable?"":" disabled")+'>Apply</button></div>' +
+    '<div id="am"></div>';
+  if (el("apply")) el("apply").onclick = async function(){
+    el("apply").disabled = true;
+    var a = await crux("/api/apply", { method:"POST", body:{ id: out.batchId } });
+    el("am").innerHTML = a.error ? msg("bad", a.reason || a.error) : msg("ok","Loaded " + a.applied + " row(s).");
+    if (!a.error) setTimeout(vData, 1200);
+  };
+}
+
+async function resetPanel(){
+  var p = await crux("/api/reset/preview");
+  var rows = p.tables || [];
+  el("resetPreview").innerHTML = (rows.length
+    ? '<div class="scroll"><table><tr><th>Table</th><th>Rows that would go</th></tr>' +
+      rows.map(function(t){ return '<tr><td>'+esc(t.table_name)+'</td><td>'+esc(t.rows)+'</td></tr>'; }).join("") +
+      '</table></div>'
+    : '<div class="empty">There is nothing to remove.</div>') +
+    (rows.length ? '<p class="mute" style="margin-top:14px">Type <code>DELETE ALL DATA</code> to confirm. ' +
+      'This cannot be undone.</p>' +
+      '<div class="row"><div><input id="confirm" placeholder="DELETE ALL DATA"></div>' +
+      '<div style="flex:0 0 auto"><button class="danger" id="doReset">Empty the tool</button></div></div>' : "") +
+    '<div id="rm2"></div>';
+  if (el("doReset")) el("doReset").onclick = async function(){
+    el("doReset").disabled = true;
+    var out = await crux("/api/reset", { method:"POST", body:{ confirm: el("confirm").value } });
+    el("rm2").innerHTML = out.error ? msg("bad", (out.reason||out.error) + (out.hint ? " " + out.hint : ""))
+      : msg("ok", out.deleted + " rows removed. " + out.kept);
+    el("doReset").disabled = false;
+    if (!out.error) setTimeout(vData, 1600);
+  };
+}
+
+/* ------------------------------------------------------------------ mail */
+/* The one screen where a secret goes in. Nothing here ever reads one back:
+   the status says whether a key is set, never what it is. */
+async function vMail(){
+  var m = await crux("/api/mail");
+  var providers = [["","Not set"],["resend","Resend"],["sendgrid","SendGrid"],
+                   ["brevo","Brevo"],["postmark","Postmark"],["gmail_oauth","Gmail (your own mailbox)"]];
+
+  el("view").innerHTML = '<h1>Mail</h1>' +
+    '<p class="mute">Everything the tool needs to tell somebody goes into the outbox. ' +
+    'This is how it gets out of the building.</p>' +
+
+    '<div class="tiles" style="margin:16px 0">' +
+      '<div class="tile"><b>' + (m.ready ? "Ready" : "Not sending") + '</b><span>status</span></div>' +
+      '<div class="tile"><b>' + esc(m.provider || "&mdash;") + '</b><span>provider</span></div>' +
+      '<div class="tile"><b>' + esc(m.queued) + '</b><span>waiting</span></div>' +
+      '<div class="tile"><b>' + esc(m.deferred) + '</b><span>deferred</span></div>' +
+      '<div class="tile"><b>' + esc(m.sent) + '</b><span>sent</span></div>' +
+      '<div class="tile"><b>' + esc(m.abandoned) + '</b><span>given up on</span></div>' +
+      '<div class="tile"><b>' + esc(m.sentToday) + ' / ' + esc(m.cap) + '</b><span>today</span></div>' +
+    '</div>' +
+
+    (m.lastError ? msg("bad", "Last failure: " + m.lastError) : "") +
+    (!m.provider ? msg("warn", "No provider is set, so nothing is being sent. " +
+      "The queue is intact and waiting - nothing is being lost.") : "") +
+
+    '<div class="card"><h2>Three ways, and what each one needs</h2>' +
+      '<p class="mute">You do not administer the Google Workspace this sits in, so the ' +
+      'first two need nobody\'s permission but yours.</p>' +
+      '<div class="scroll"><table><tr><th>Route</th><th>What it needs</th></tr>' +
+      '<tr><td><b>A transactional provider</b><br><span class="mute">Resend, Brevo, SendGrid, Postmark</span></td>' +
+        '<td>An account, and two or three DNS records on a domain you control - SPF, DKIM, ' +
+        'and usually DMARC. No Workspace console. This is the route that scales and the one ' +
+        'whose failures you can read.</td></tr>' +
+      '<tr><td><b>Gmail, your own mailbox</b></td>' +
+        '<td>The OAuth client you already own, with the <code>gmail.send</code> scope added, and ' +
+        'this address listed as an authorised redirect. You consent for your own mailbox; ' +
+        'no administrator is involved. Google\'s own sending limits apply.</td></tr>' +
+      '<tr><td><b>SMTP or an app password</b></td>' +
+        '<td><b>Not possible here.</b> This tool runs as an edge function, which may make an ' +
+        'HTTPS request and nothing else. There is no socket to port 587 from inside it, so an ' +
+        'app password has nowhere to go. Saying so now is cheaper than finding out later.</td></tr>' +
+      '</table></div></div>' +
+
+    '<div class="card"><h2>Settings</h2>' +
+      '<div class="row"><div><label>Provider</label><select id="mp">' +
+        providers.map(function(p){ return '<option value="'+p[0]+'"'+(m.provider===p[0]?" selected":"")+'>'+esc(p[1])+'</option>'; }).join("") +
+      '</select></div>' +
+      '<div><label>Daily cap</label><input id="mcap" value="'+esc(m.cap)+'"></div></div>' +
+      '<div class="row"><div><label>From address</label>' +
+        '<input id="mfrom" value="'+esc(m.from||"")+'" placeholder="alerts@yourdomain.com"></div>' +
+        '<div><label>From name</label><input id="mname" value="'+esc(m.fromName||"")+'"></div></div>' +
+      '<div class="row"><div><label>Reply-to (optional)</label>' +
+        '<input id="mrep" value="'+esc(m.replyTo||"")+'"></div></div>' +
+
+      '<div id="keyBox"></div>' +
+
+      '<div style="margin-top:14px"><button id="msave">Save</button> ' +
+        '<button class="ghost" id="mtest">Send me a test</button> ' +
+        '<button class="ghost" id="mdrain">Send what is waiting</button> ' +
+        '<button class="ghost danger" id="mforget">Forget the keys</button></div>' +
+      '<div id="mmsg"></div></div>' +
+
+    '<div class="card"><h2>Recent messages</h2>' +
+      ((m.recent||[]).length ? '<div class="scroll"><table>' +
+        '<tr><th>When</th><th>Kind</th><th>To</th><th>Subject</th><th>State</th><th>Tries</th><th>Last error</th></tr>' +
+        m.recent.map(function(x){
+          var k = x.state==="SENT"?"ok":x.state==="ABANDONED"?"bad":"warn";
+          return '<tr><td>'+esc(when(x.created_at))+'</td><td>'+esc(x.template_key)+'</td>' +
+            '<td>'+esc(x.recipient)+'</td><td>'+esc(x.subject)+'</td>' +
+            '<td><span class="pill '+k+'">'+esc(x.state)+'</span></td><td>'+esc(x.attempts)+'</td>' +
+            '<td class="mute">'+esc(x.last_error||"")+'</td></tr>';
+        }).join("") + '</table></div>' : '<div class="empty">Nothing has been queued yet.</div>') + '</div>';
+
+  function keyBox(){
+    var p = el("mp").value;
+    if (p === "gmail_oauth") {
+      el("keyBox").innerHTML =
+        '<div class="row"><div><label>OAuth client id</label>' +
+          '<input id="moid" value="'+esc(m.oauthClientId||"")+'"></div></div>' +
+        '<div class="row"><div><label>OAuth client secret</label>' +
+          '<input id="mosec" type="password" placeholder="'+(m.oauthSet?"already set - leave blank to keep it":"paste it once")+'"></div></div>' +
+        '<p class="mute">Add <code>' + esc("https://oxpwqfbtbxlvuqpztbwg.supabase.co") + '/functions/v1/crux/api/mail/oauth/callback</code> ' +
+        'to the authorised redirect URIs on that client first, and add the ' +
+        '<code>gmail.send</code> scope. Then save, and connect.</p>' +
+        '<button class="ghost" id="mconnect">Connect Gmail</button>';
+      el("mconnect").onclick = async function(){
+        var out = await crux("/api/mail/oauth/start", { method:"POST", body:{} });
+        if (out.error) { el("mmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+        window.open(out.url, "_blank", "noopener");
+        el("mmsg").innerHTML = msg("warn", "A Google tab has opened. Consent there, then come back and send a test.");
+      };
+    } else if (p) {
+      el("keyBox").innerHTML = '<div class="row"><div><label>API key</label>' +
+        '<input id="mkey" type="password" placeholder="'+(m.keySet?"already set - leave blank to keep it":"paste it once")+'"></div></div>' +
+        '<p class="mute">The key is stored in the database and read only by the sender. ' +
+        'Nothing in this screen can show it to you again.</p>';
+    } else {
+      el("keyBox").innerHTML = "";
+    }
+  }
+  el("mp").onchange = keyBox; keyBox();
+
+  el("msave").onclick = async function(){
+    el("msave").disabled = true;
+    var body = { provider: el("mp").value, from: el("mfrom").value,
+      fromName: el("mname").value, replyTo: el("mrep").value, cap: el("mcap").value };
+    if (el("mkey")) body.apiKey = el("mkey").value;
+    if (el("moid")) body.oauthClientId = el("moid").value;
+    if (el("mosec")) body.oauthClientSecret = el("mosec").value;
+    var out = await crux("/api/mail/configure", { method:"POST", body:body });
+    el("msave").disabled = false;
+    if (out.error) { el("mmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    el("mmsg").innerHTML = msg("ok", "Saved.");
+    setTimeout(vMail, 800);
+  };
+
+  el("mtest").onclick = async function(){
+    el("mtest").disabled = true;
+    el("mmsg").innerHTML = msg("warn","Queuing and sending...");
+    var out = await crux("/api/mail/test", { method:"POST", body:{} });
+    el("mtest").disabled = false;
+    if (out.error) { el("mmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    var d = out.drain || {};
+    el("mmsg").innerHTML = d.sent ? msg("ok", "Sent to " + out.to + ". Check that inbox.")
+      : msg("bad", "Queued for " + out.to + ", but not sent: " +
+          (d.reason || (d.errors||[]).join("; ") || d.held || d.error || "no answer from the sender."));
+    setTimeout(vMail, 1500);
+  };
+
+  el("mdrain").onclick = async function(){
+    var out = await crux("/api/mail/drain", { method:"POST", body:{} });
+    el("mmsg").innerHTML = out.sent
+      ? msg("ok", out.sent + " sent, " + (out.failed||0) + " failed.")
+      : msg("warn", out.reason || out.note || out.held || "Nothing was waiting.");
+    setTimeout(vMail, 1200);
+  };
+
+  el("mforget").onclick = async function(){
+    if (!confirm("Clear the API key, the OAuth secret and the Gmail grant? Sending stops until you set them again.")) return;
+    var out = await crux("/api/mail/forget", { method:"POST", body:{} });
+    el("mmsg").innerHTML = out.error ? msg("bad", out.reason||out.error) : msg("ok","Forgotten.");
+    setTimeout(vMail, 900);
+  };
+}
+
+boot();
+</script></body></html>
