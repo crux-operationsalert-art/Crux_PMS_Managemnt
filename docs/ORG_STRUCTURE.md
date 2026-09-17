@@ -100,3 +100,55 @@ python3 build/migration/org_model.py     # -> org_model.json, 34 seats
 ```
 
 Both print their counts and assert the ones the document states.
+
+## Who is seated
+
+54 of the 55 people on the USERS sheet now hold a chair, across 18 of the 34
+seats. Three people hold two chairs; everyone has exactly one *primary* chair.
+
+Source order: the structure document where it names a holder, otherwise the
+sheet's own designation and department. The one rule that needed evidence
+rather than a guess is **Executive**, which the sheet does not qualify — the
+document is explicit that field executives report to the Branch Manager and
+back-office executives to the Team Leader, so each Executive is placed by who
+their manager is.
+
+The owner confirmed four names are one person each, and the USERS sheet
+spelling is now used everywhere:
+
+| document | people master |
+|---|---|
+| Viren Pal | Virendra Pal |
+| PP Valsan | P P Valsan |
+| Vrunda Potadar | Vrunda Potdar |
+| Shivkumar | Shivakumar V |
+
+**`operations.alert@` is deliberately not seated.** It is designated Executive
+on the sheet but reads as a shared alert mailbox rather than a person, and
+seating it would give an inbox one chair's scoped view of client data. It is
+an administrator, so Data setup, Mail and the Org chart are open to it either
+way. The decision is recorded as a question, not buried.
+
+### A holder knows its place
+
+`chair_holder.seating_id` records which of a chair's places a person holds.
+Without it, one Branch Manager chair held in six places meant all sixteen
+branch managers appeared against Pune, and against Thane, and against every
+other place. It is nullable on purpose: most people were seated from the USERS
+sheet, which names no location, so theirs comes from `coverage_rule` as it
+always did. The chart says which is which rather than implying a placement it
+does not have.
+
+### Still open
+
+Six chairs name a holder who has **no account in the system at all** — Accounts
+(Maruf Shaikh), Accounts Executives, Central Collections Executives, Finance
+Executive, Regional Manager — North East & East (Shiladitya) and Technology
+(Vishal Pandey). They are left for an administrator rather than created here: a
+person row without an e-mail would collide with the real one when HR uploads
+it, which is exactly how the old system ended up with a duplicate person
+holding 583 coverage rows.
+
+22 of the 55 people have a mobile, taken from the escalation matrix as they
+stand. A missing mobile no longer blocks the People upload; it is recorded as a
+question for HR instead.
