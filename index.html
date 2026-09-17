@@ -536,10 +536,11 @@ async function vOrg(){
   function node(c){
     var places = (c.seatings || []).map(function(p){ return p.scope; })
       .filter(function(v){ return v; });
-    var held = (c.holders || []).map(function(h){ return h.name; });
-    var who = held.length ? held.join(", ")
+    var n = c.headcount || 0;
+    var who = n ? (n === 1 ? "1 person" : n + " people")
       : (c.seatings || []).map(function(p){ return p.holder; })
-          .filter(function(v,i,a){ return v && a.indexOf(v) === i; }).join(" · ");
+          .filter(function(v,i,a){ return v && a.indexOf(v) === i; })
+          .join(" · ") || "vacant";
     return "<li>" +
       "<a class=\"orgnode\" href=\"#org\" data-chair=\"" + esc(c.code) + "\">" +
         "<span class=\"orgsg\">" + esc(c.sg) + "</span>" +
@@ -588,10 +589,18 @@ async function showChair(code){
       arr.map(function(x){ return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
   }
   var places = (c.seatings || []).map(function(p){
-    return "<li><b>" + esc(p.scope || "no place attached") + "</b> — " +
-      esc(p.holder || "vacant") +
+    var sitting = (p.people || []).length ? esc(p.people.join(", "))
+      : "<span class=\"mute\">nobody seated here yet</span>";
+    return "<li><b>" + esc(p.scope || "no place attached") + "</b> — " + sitting +
+      (p.holder && p.people.indexOf(p.holder) < 0
+        ? " <span class=\"mute\">(structure document says: " + esc(p.holder) + ")</span>" : "") +
       (p.note ? "<div class=\"mute\">" + esc(p.note) + "</div>" : "") + "</li>";
   }).join("");
+  var unplaced = (c.unplaced || []).length
+    ? "<h3>On this chair, place not yet recorded</h3><p>" + esc(c.unplaced.join(", ")) +
+      "</p><p class=\"mute\">They were seated from the USERS sheet, which names no " +
+      "location. Where they work comes from their coverage, not from this chart.</p>"
+    : "";
   var levels = (c.levels || []).map(function(l){
     return "<tr><td><b>" + esc(l.level) + "</b> " + esc(l.name) + "</td>" +
       "<td>" + esc(l.requirement) + "</td>" +
@@ -607,6 +616,7 @@ async function showChair(code){
       ((c.reports || []).length ? " · " + esc(c.reports.length) + " chairs report here" : "") +
       (c.track ? " · capability track: " + esc(c.track) : "") + "</p>" +
     (places ? "<h3>Held in</h3><ul>" + places + "</ul>" : "") +
+    unplaced +
     block("Accountable for", c.accountabilities) +
     block("Measured on", c.measures) +
     block("Can decide alone", c.decides) +
