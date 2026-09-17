@@ -6,6 +6,11 @@
 # index.html. GitHub then serves the tool as a static file, and Supabase is
 # left doing what it should — the database and the API behind it.
 #
+# The page talks to three functions: crux (sign-in, upload, mail, OGL), api
+# (cases, matrix, performance, people, penalties) and org (the operating
+# structure behind the Org chart tab). All three do their own authentication,
+# so the key added here only names the project.
+#
 # Run it from the Actions tab after changing the application, or let the
 # nightly run pick the change up. Do not edit index.html by hand; this
 # overwrites it.
