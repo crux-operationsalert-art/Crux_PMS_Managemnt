@@ -393,6 +393,8 @@ async function call(base, path, opts){
 var ORG  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/org";
 var api  = function(p,o){ return call(API,  p, o); };
 var org  = function(p,o){ return call(ORG,  p, o); };
+var WA   = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/wa";
+var wa   = function(p,o){ return call(WA,   p, o); };
 var crux = function(p,o){ return call(CRUX, p, o); };
 
 /* ------------------------------------------------------------- sign in */
@@ -445,9 +447,9 @@ var NAV = [
   { label:"Work",       items:[ ["ogl","OGL"], ["cases","Escalations"], ["matrix","Matrix"] ] },
   { label:"Standing",   items:[ ["pms","Performance"], ["penalties","Penalties"],
                                 ["people","People"], ["org","Org chart"] ] },
-  { label:"Keep",       items:[ ["data","Data setup"], ["mail","Mail"] ] }
+  { label:"Keep",       items:[ ["data","Data setup"], ["mail","Mail"], ["whatsapp","WhatsApp"] ] }
 ];
-var ADMIN_TABS = { data:1, mail:1 };
+var ADMIN_TABS = { data:1, mail:1, whatsapp:1 };
 var MOB_BAR = ["today","ogl","cases","more"];
 var TABS = [];
 NAV.forEach(function(g){ g.items.forEach(function(t){ TABS.push(t); }); });
@@ -647,13 +649,151 @@ async function showChair(code){
   box.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+/* -------------------------------------------------------------- whatsapp
+   The same shape as Mail, because it is the same job: say what is set, what
+   is waiting, and what failed - then let one button prove it.              */
+async function vWhats(){
+  var w = await wa("/");
+  if (w.error) {
+    el("view").innerHTML = "<h1>WhatsApp</h1>" + msg("bad", w.reason || w.error);
+    return;
+  }
+  var providers = [["", "Not set"],
+                   ["meta", "WhatsApp Cloud API (Meta)"],
+                   ["twilio", "Twilio"]];
+
+  el("view").innerHTML = "<h1>WhatsApp</h1>" +
+    "<p class=\"mute\">A second way out of the building, for the messages people " +
+    "actually read. It has its own queue, its own daily cap and its own key.</p>" +
+
+    "<div class=\"tiles\" style=\"margin:16px 0\">" +
+      "<div class=\"tile\"><b>" + (w.ready ? "Ready" : "Not sending") + "</b><span>status</span></div>" +
+      "<div class=\"tile\"><b>" + esc(w.provider || "—") + "</b><span>provider</span></div>" +
+      "<div class=\"tile\"><b>" + esc(w.queued) + "</b><span>waiting</span></div>" +
+      "<div class=\"tile\"><b>" + esc(w.deferred) + "</b><span>deferred</span></div>" +
+      "<div class=\"tile\"><b>" + esc(w.sent) + "</b><span>sent</span></div>" +
+      "<div class=\"tile\"><b>" + esc(w.abandoned) + "</b><span>given up on</span></div>" +
+      "<div class=\"tile\"><b>" + esc(w.sentToday) + " / " + esc(w.cap) + "</b><span>today</span></div>" +
+      "<div class=\"tile\"><b>" + esc(w.reachable) + "</b><span>have a mobile</span></div>" +
+    "</div>" +
+
+    (w.lastError ? msg("bad", "Last failure: " + w.lastError) : "") +
+    (!w.ready ? msg("warn", "No sender is configured, so nothing is going out. " +
+      "The queue is intact and waiting — nothing is being lost.") : "") +
+
+    "<div class=\"card\"><h2>Two ways, and what each one needs</h2>" +
+      "<div class=\"scroll\"><table><tr><th>Route</th><th>What it needs</th></tr>" +
+      "<tr><td><b>WhatsApp Cloud API</b><br><span class=\"mute\">Meta, direct</span></td>" +
+        "<td>A Meta Business account with WhatsApp added, a verified business, and a " +
+        "sending number. Put the <b>Phone Number ID</b> in <i>From</i> and a permanent " +
+        "access token in <i>Token</i>. Cheapest per message, and the failures are readable.</td></tr>" +
+      "<tr><td><b>Twilio</b></td>" +
+        "<td>A Twilio account. Put the sending number in <i>From</i> as " +
+        "<code>whatsapp:+14155238886</code>, the <b>Account SID</b> in <i>Account</i>, and the " +
+        "auth token in <i>Token</i>. Quicker to start, more per message.</td></tr>" +
+      "</table></div>" +
+      "<p class=\"mute\">Outside the 24 hours after somebody messages you first, WhatsApp " +
+      "only accepts a template you have had approved. Free text works inside that window; " +
+      "anything the tool sends unprompted needs a registered template name.</p></div>" +
+
+    "<div class=\"card\"><h2>Settings</h2>" +
+      "<div class=\"row\"><div><label>Provider</label><select id=\"wp\">" +
+        providers.map(function(p){
+          return "<option value=\"" + p[0] + "\"" + (w.provider === p[0] ? " selected" : "") +
+                 ">" + esc(p[1]) + "</option>"; }).join("") +
+      "</select></div>" +
+      "<div><label>Daily cap</label><input id=\"wcap\" value=\"" + esc(w.cap) + "\"></div></div>" +
+      "<div class=\"row\">" +
+        "<div><label>From — Phone Number ID, or whatsapp:+number</label>" +
+          "<input id=\"wfrom\" value=\"" + esc(w.from || "") + "\"></div>" +
+        "<div><label>Account SID — Twilio only</label>" +
+          "<input id=\"wacct\" value=\"" + esc(w.account || "") + "\"></div></div>" +
+      "<div class=\"row\">" +
+        "<div><label>Token" + (w.tokenSet ? " — one is already set" : "") + "</label>" +
+          "<input id=\"wtok\" type=\"password\" autocomplete=\"new-password\" placeholder=\"" +
+          (w.tokenSet ? "leave blank to keep the one you have" : "paste it here") + "\"></div>" +
+        "<div><label>Country code for bare numbers</label>" +
+          "<input id=\"wcc\" value=\"" + esc(w.countryCode || "91") + "\"></div></div>" +
+      "<div class=\"row\"><div><label>Also send by WhatsApp</label>" +
+        "<input id=\"wmir\" value=\"" + esc(w.mirror || "all") + "\"></div></div>" +
+      "<p class=\"mute\">Every notification that has an e-mail also goes by WhatsApp to " +
+      "anyone with a mobile number on record. Put <code>off</code> to stop that, or list " +
+      "the template keys you do want, separated by commas.</p>" +
+      "<p class=\"mute\">The token goes in and never comes back out. Nothing on this screen " +
+      "will ever show it to you again, including to an administrator.</p>" +
+
+      "<div style=\"margin-top:14px\"><button id=\"wsave\">Save</button> " +
+        "<button class=\"ghost\" id=\"wtest\">Send me a test</button> " +
+        "<button class=\"ghost\" id=\"wdrain\">Send what is waiting</button> " +
+        "<button class=\"ghost danger\" id=\"wforget\">Forget the token</button></div>" +
+      "<div id=\"wmsg\"></div></div>" +
+
+    "<div class=\"card\"><h2>Recent messages</h2>" +
+      ((w.recent || []).length ? "<div class=\"scroll\"><table>" +
+        "<tr><th>When</th><th>Kind</th><th>To</th><th>State</th><th>Tries</th><th>Last error</th></tr>" +
+        w.recent.map(function(x){
+          return "<tr><td>" + esc(when(x.created_at)) + "</td><td>" + esc(x.template_key) +
+            "</td><td>" + esc(x.recipient) + "</td><td>" + esc(x.state) +
+            "</td><td>" + esc(x.attempts) + "</td><td>" + esc(x.last_error || "") + "</td></tr>";
+        }).join("") + "</table></div>"
+        : "<p class=\"mute\">Nothing has been queued yet.</p>") +
+    "</div>";
+
+  function say(kind, text){ el("wmsg").innerHTML = msg(kind, text); }
+
+  el("wsave").onclick = async function(){
+    say("", "Saving…");
+    var out = await wa("/configure", { method: "POST", body: {
+      provider: el("wp").value,
+      from: el("wfrom").value.trim(),
+      account: el("wacct").value.trim(),
+      token: el("wtok").value,
+      cap: el("wcap").value.trim(),
+      countryCode: el("wcc").value.trim(),
+      mirror: el("wmir").value.trim()
+    }});
+    if (out.error) { say("bad", out.reason || out.error); return; }
+    vWhats();
+  };
+
+  el("wtest").onclick = async function(){
+    say("", "Sending…");
+    var to = prompt("Send the test to which number? Leave blank to use your own.", "");
+    if (to === null) { say("", ""); return; }
+    var out = await wa("/test", { method: "POST", body: { to: to.trim() || null } });
+    if (out.error) { say("bad", out.reason || out.error); return; }
+    var d = out.drain || {};
+    say(d.sent ? "good" : "warn",
+      d.sent ? "Sent. If it does not arrive, the number is not on WhatsApp or the " +
+               "24-hour window has closed and a template is needed."
+             : "Queued, but nothing went out: " + (d.reason || (d.failed + " failed")) +
+               ". The message is still in the queue.");
+    setTimeout(vWhats, 1200);
+  };
+
+  el("wdrain").onclick = async function(){
+    say("", "Sending what is waiting…");
+    var out = await wa("/drain", { method: "POST" });
+    say("good", "Tried " + (out.drained || 0) + ", sent " + (out.sent || 0) +
+      ", failed " + (out.failed || 0) + (out.reason ? " — " + out.reason : "") + ".");
+    setTimeout(vWhats, 1200);
+  };
+
+  el("wforget").onclick = async function(){
+    if (!confirm("Forget the WhatsApp token? Nothing will send until a new one is saved.")) return;
+    var out = await wa("/forget", { method: "POST" });
+    if (out.error) { say("bad", out.reason || out.error); return; }
+    vWhats();
+  };
+}
+
 function route(){
   document.body.classList.remove("sheet-open");
   var t = currentTab();
   paintNav();
   el("view").innerHTML = '<p class="mute">Loading…</p>';
   var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms,
-    people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail}[t];
+    people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail, whatsapp:vWhats}[t];
   Promise.resolve().then(run).catch(function(e){
     el("view").innerHTML = '<h1>' + esc(LABEL[t] || t) + '</h1>' +
       msg("bad", "This screen could not be drawn. " + ((e && e.message) || e)) +
