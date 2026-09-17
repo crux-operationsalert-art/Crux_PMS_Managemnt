@@ -20,6 +20,7 @@ on:
     paths:
       - .github/workflows/publish-tool.yml
       - .github/tool-shim.html
+      - .github/build-tool.py
 
 permissions:
   contents: write

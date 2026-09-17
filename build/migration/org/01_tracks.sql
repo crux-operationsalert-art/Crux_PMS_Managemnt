@@ -1,0 +1,23 @@
+-- 21 capability tracks
+insert into capability_track (name, knowledge_test, unlock) values
+('Board Governance','Enterprise Leadership Review','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Enterprise Leadership','Enterprise Leadership Review','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Operations Leadership','Operations Leadership Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Regional Management','Regional Business Management Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Branch Management','Branch P&L, Collections & Compliance Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Team Supervision','Team Supervision & TAT Management Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Back Office Processing','Case Processing & Report Quality Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Credit & Collections','Credit Control & Collections Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Business Development','Commercial, Bidding & Contract Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Field Verification','Field Verification & Fraud Detection Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Administration','HR Operations & Labour Law Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Finance Leadership','Order-to-Cash & Financial Control Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Accounting & Statutory','Accounting, Tax & Statutory Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Undefined — scope pending','To be defined once the chair has an output','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Assurance & Compliance','Assurance, Audit & Compliance Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('HR Operations','HR Operations & Labour Law Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Business Excellence','Process Design & Project Governance Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Technology','Technology & Information Security Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('MIS & Analytics','Data Governance & MIS Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Bids & Contracts','Commercial, Bidding & Contract Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.'),
+('Company Secretarial','Corporate Governance & Secretarial Test','Clearing L5 unlocks Assessment for the next chair. Eligibility only — a vacancy, a business need and management approval are all additionally required.');
