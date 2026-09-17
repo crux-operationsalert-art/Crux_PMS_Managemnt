@@ -230,6 +230,37 @@ button.onink:hover{background:#fff;color:var(--ink);border-color:#fff}
   .bar{padding:9px 14px}
   .signcard{box-shadow:none}
 }
+
+/* ------------------------------------------------------------------- org */
+.orgtree ul{list-style:none;margin:0;padding-left:20px;border-left:1px solid var(--line2)}
+.orgtree>ul{padding-left:0;border-left:0}
+.orgnode{display:grid;grid-template-columns:46px 1fr auto auto;gap:12px;align-items:baseline;
+  padding:8px 11px;border:1px solid var(--line2);border-radius:5px;margin:4px 0;
+  background:var(--panel2);text-decoration:none;color:var(--ink)}
+.orgnode:hover{border-color:var(--blue);background:var(--white)}
+.orgnode.on{border-color:var(--terra);background:var(--white)}
+.orgsg{font:600 10px/1.7 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.06em;
+  color:var(--blue);background:var(--line3);border-radius:3px;padding:1px 0;text-align:center}
+.orgt{font-weight:600}
+.orgwhere{font-size:12px;color:var(--terra)}
+.orgwho{font-size:12px;color:var(--mute);white-space:nowrap}
+.orgcard{margin-top:20px;border:1px solid var(--line);border-radius:6px;
+  background:var(--panel);padding:18px 20px}
+.orgcard h3{margin:18px 0 6px;font-size:13px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--mute)}
+.orgcard ul{margin:0;padding-left:20px}
+.orgcard li{margin:3px 0}
+.orgref{font:600 11px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--blue);
+  margin-right:6px}
+.orgtbl{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.orgtbl th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--mute);border-bottom:1px solid var(--line);padding:6px 8px 6px 0}
+.orgtbl td{border-bottom:1px solid var(--line3);padding:7px 8px 7px 0;vertical-align:top}
+@media(max-width:760px){
+  .orgnode{grid-template-columns:44px 1fr;row-gap:3px}
+  .orgwhere,.orgwho{grid-column:2}
+  .orgtbl th:nth-child(3),.orgtbl td:nth-child(3){display:none}
+}
 </style></head><body>
 
 <!-- ============================================================== sign in -->
@@ -359,7 +390,9 @@ async function call(base, path, opts){
   if (r.status === 401) { signOut(); }
   return b;
 }
+var ORG  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/org";
 var api  = function(p,o){ return call(API,  p, o); };
+var org  = function(p,o){ return call(ORG,  p, o); };
 var crux = function(p,o){ return call(CRUX, p, o); };
 
 /* ------------------------------------------------------------- sign in */
@@ -411,7 +444,7 @@ var NAV = [
   { label:"",           items:[ ["today","Today"] ] },
   { label:"Work",       items:[ ["ogl","OGL"], ["cases","Escalations"], ["matrix","Matrix"] ] },
   { label:"Standing",   items:[ ["pms","Performance"], ["penalties","Penalties"],
-                                ["people","People"] ] },
+                                ["people","People"], ["org","Org chart"] ] },
   { label:"Keep",       items:[ ["data","Data setup"], ["mail","Mail"] ] }
 ];
 var ADMIN_TABS = { data:1, mail:1 };
@@ -486,13 +519,131 @@ function currentTab(){
   return t;
 }
 
+/* ------------------------------------------------------------------- org
+   Drawn from chair and chair_seating on every open, so a structural change
+   is an UPDATE rather than a redraw. One chair, many holders, each with
+   their own places: the location lives on the seating, not on the chair.  */
+var orgCache = null;
+async function vOrg(){
+  var d = orgCache || (orgCache = await org("/"));
+  if (d.error) { orgCache = null;
+    el("view").innerHTML = "<h1>Org chart</h1>" + msg("bad", d.reason || d.error); return; }
+  var seats = d.seats || [], s = d.stats || {};
+  var kids = {};
+  seats.forEach(function(x){ var k = x.parent || "_root";
+    (kids[k] = kids[k] || []).push(x); });
+
+  function node(c){
+    var places = (c.seatings || []).map(function(p){ return p.scope; })
+      .filter(function(v){ return v; });
+    var held = (c.holders || []).map(function(h){ return h.name; });
+    var who = held.length ? held.join(", ")
+      : (c.seatings || []).map(function(p){ return p.holder; })
+          .filter(function(v,i,a){ return v && a.indexOf(v) === i; }).join(" · ");
+    return "<li>" +
+      "<a class=\"orgnode\" href=\"#org\" data-chair=\"" + esc(c.code) + "\">" +
+        "<span class=\"orgsg\">" + esc(c.sg) + "</span>" +
+        "<span class=\"orgt\">" + esc(c.title) + "</span>" +
+        (places.length ? "<span class=\"orgwhere\">" + esc(places.join(" · ")) + "</span>" : "") +
+        "<span class=\"orgwho\">" + esc(who || "vacant") + "</span>" +
+      "</a>" +
+      ((kids[c.code] || []).length
+        ? "<ul>" + kids[c.code].map(node).join("") + "</ul>" : "") +
+    "</li>";
+  }
+
+  el("view").innerHTML =
+    "<h1>Org chart</h1>" +
+    "<p class=\"mute\">" + esc(s.seats) + " chairs, held in " + esc(s.seatings) +
+      " places, across " + esc(s.tracks) + " capability tracks, owning " +
+      esc(s.processes) + " processes with one accountable owner each. " +
+      (s.people ? esc(s.people) + " people are seated."
+        : "No real people are seated yet - load Chairs, then People, under Data setup.") +
+      "</p>" +
+    "<p class=\"mute\">A chair is a seat. Where it is held is shown beside it, " +
+      "because one Branch Manager chair is held in many places at once.</p>" +
+    "<div class=\"orgtree\"><ul>" + (kids._root || []).map(node).join("") + "</ul></div>" +
+    "<div id=\"orgdetail\"></div>";
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-chair]"), function(a){
+    a.onclick = function(e){
+      e.preventDefault();
+      Array.prototype.forEach.call(el("view").querySelectorAll(".orgnode"),
+        function(n){ n.classList.remove("on"); });
+      a.classList.add("on");
+      showChair(a.getAttribute("data-chair"));
+    };
+  });
+}
+
+async function showChair(code){
+  var box = el("orgdetail");
+  box.innerHTML = "<p class=\"mute\">Loading…</p>";
+  var c = await org("/chair?code=" + encodeURIComponent(code));
+  if (c.error) { box.innerHTML = msg("bad", c.reason || c.error); return; }
+
+  function block(title, arr){
+    if (!arr || !arr.length) return "";
+    return "<h3>" + esc(title) + "</h3><ul>" +
+      arr.map(function(x){ return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>";
+  }
+  var places = (c.seatings || []).map(function(p){
+    return "<li><b>" + esc(p.scope || "no place attached") + "</b> — " +
+      esc(p.holder || "vacant") +
+      (p.note ? "<div class=\"mute\">" + esc(p.note) + "</div>" : "") + "</li>";
+  }).join("");
+  var levels = (c.levels || []).map(function(l){
+    return "<tr><td><b>" + esc(l.level) + "</b> " + esc(l.name) + "</td>" +
+      "<td>" + esc(l.requirement) + "</td>" +
+      "<td>" + esc(l.experience || "—") + "</td>" +
+      "<td>" + esc(l.test || "—") + "</td>" +
+      "<td>" + esc(l.evidence || "—") + "</td></tr>";
+  }).join("");
+
+  box.innerHTML = "<div class=\"orgcard\">" +
+    "<h2>" + esc(c.title) + " <span class=\"orgsg\">" + esc(c.sg) + "</span></h2>" +
+    (c.purpose ? "<p>" + esc(c.purpose) + "</p>" : "") +
+    "<p class=\"mute\">Reports to " + esc(c.parent || "the company") +
+      ((c.reports || []).length ? " · " + esc(c.reports.length) + " chairs report here" : "") +
+      (c.track ? " · capability track: " + esc(c.track) : "") + "</p>" +
+    (places ? "<h3>Held in</h3><ul>" + places + "</ul>" : "") +
+    block("Accountable for", c.accountabilities) +
+    block("Measured on", c.measures) +
+    block("Can decide alone", c.decides) +
+    block("Must escalate", c.escalates) +
+    ((c.tasks || []).length ? "<h3>Tasks</h3><ul>" + c.tasks.map(function(t){
+        return "<li><b>" + esc(t.task) + "</b>" +
+          ((t.subtasks || []).length ? "<ul>" + t.subtasks.map(function(x){
+            return "<li>" + esc(x) + "</li>"; }).join("") + "</ul>" : "") + "</li>";
+      }).join("") + "</ul>" : "") +
+    ((c.owns || []).length ? "<h3>Owns these processes</h3><ul>" + c.owns.map(function(p){
+        return "<li><span class=\"orgref\">" + esc(p.ref) + "</span>" + esc(p.name) + "</li>";
+      }).join("") + "</ul>" : "") +
+    ((c.receives || []).length ? "<h3>Needs, and who supplies it</h3><ul>" +
+      c.receives.map(function(r){
+        return "<li>" + esc(r.what) + " <span class=\"mute\">from " + esc(r["from"]) +
+          "</span></li>"; }).join("") + "</ul>" : "") +
+    ((c.supplies || []).length ? "<h3>Supplies to others</h3><ul>" +
+      c.supplies.map(function(r){
+        return "<li>" + esc(r.what) + " <span class=\"mute\">to " + esc(r.to) +
+          "</span></li>"; }).join("") + "</ul>" : "") +
+    (levels ? "<h3>Clearance levels · " + esc(c.track) + "</h3>" +
+       "<table class=\"orgtbl\"><thead><tr><th>Level</th><th>What it means</th>" +
+       "<th>Experience</th><th>Test</th><th>Evidence to clear it</th></tr></thead><tbody>" +
+       levels + "</tbody></table>" +
+       (c.knowledge_test ? "<p class=\"mute\">Knowledge test: " + esc(c.knowledge_test) + "</p>" : "")
+     : "") +
+    "</div>";
+  box.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function route(){
   document.body.classList.remove("sheet-open");
   var t = currentTab();
   paintNav();
   el("view").innerHTML = '<p class="mute">Loading…</p>';
   var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms,
-    people:vPeople, penalties:vPenalties, data:vData, mail:vMail}[t];
+    people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail}[t];
   Promise.resolve().then(run).catch(function(e){
     el("view").innerHTML = '<h1>' + esc(LABEL[t] || t) + '</h1>' +
       msg("bad", "This screen could not be drawn. " + ((e && e.message) || e)) +
