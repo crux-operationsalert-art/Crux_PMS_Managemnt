@@ -565,8 +565,11 @@ async function vOrg(){
       "</p>" +
     "<p class=\"mute\">A chair is a seat. Where it is held is shown beside it, " +
       "because one Branch Manager chair is held in many places at once.</p>" +
+    "<div id=\"orgfix\"></div>" +
     "<div class=\"orgtree\"><ul>" + (kids._root || []).map(node).join("") + "</ul></div>" +
     "<div id=\"orgdetail\"></div>";
+
+  if (me && me.app_role === "ADMIN") { orgUnplaced(); }
 
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-chair]"), function(a){
     a.onclick = function(e){
@@ -577,6 +580,52 @@ async function vOrg(){
       showChair(a.getAttribute("data-chair"));
     };
   });
+}
+
+/* Who is on a chair with no place recorded, and the one button that places
+   everyone the evidence can place. Nothing is guessed: a person is placed
+   only when their whole coverage falls in one place, or the chair has only
+   one place to be in.                                                      */
+async function orgUnplaced(){
+  var box = el("orgfix");
+  if (!box) return;
+  var rows = await org("/unplaced");
+  if (rows.error || !rows.length) { box.innerHTML = ""; return; }
+
+  var byChair = {};
+  rows.forEach(function(r){ byChair[r.title] = (byChair[r.title] || 0) + 1; });
+  var summary = Object.keys(byChair).sort().map(function(t){
+    return esc(t) + " (" + byChair[t] + ")"; }).join(", ");
+
+  box.innerHTML = "<div class=\"msg warn\"><b>" + rows.length +
+    (rows.length === 1 ? " person is" : " people are") +
+    " on a chair with no place recorded.</b> " + summary +
+    ". Until a place is recorded they show against the chair rather than a " +
+    "location. <button id=\"orgauto\" class=\"btn\" style=\"margin-top:8px\">" +
+    "Place everyone their coverage can place</button>" +
+    "<div id=\"orgautomsg\"></div></div>";
+
+  el("orgauto").onclick = async function(){
+    el("orgauto").disabled = true;
+    el("orgautomsg").innerHTML = msg("", "Working…");
+    var out = await org("/place/auto", { method: "POST", body: {} });
+    if (out.error) {
+      el("orgautomsg").innerHTML = msg("bad", out.reason || out.error);
+      el("orgauto").disabled = false;
+      return;
+    }
+    var left = (out.left || []).map(function(x){
+      return "<li><b>" + esc(x.name || x.person) + "</b> — " + esc(x.why) + "</li>";
+    }).join("");
+    el("orgautomsg").innerHTML =
+      msg("ok", out.placed + (out.placed === 1 ? " person was placed." : " people were placed.")) +
+      (out.unplaced
+        ? "<p class=\"mute\">" + out.unplaced + " could not be decided from what is " +
+          "in the system. Set those by hand, or load their coverage first.</p>" +
+          "<ul>" + left + "</ul>"
+        : "");
+    orgCache = null;
+  };
 }
 
 async function showChair(code){
@@ -599,9 +648,25 @@ async function showChair(code){
       (p.note ? "<div class=\"mute\">" + esc(p.note) + "</div>" : "") + "</li>";
   }).join("");
   var unplaced = (c.unplaced || []).length
-    ? "<h3>On this chair, place not yet recorded</h3><p>" + esc(c.unplaced.join(", ")) +
-      "</p><p class=\"mute\">They were seated from the USERS sheet, which names no " +
-      "location. Where they work comes from their coverage, not from this chart.</p>"
+    ? "<h3>On this chair, place not yet recorded</h3>" +
+      "<p class=\"mute\">They were seated from the USERS sheet, which names no " +
+      "location. Where they work comes from their coverage, not from this chart." +
+      (me && me.app_role === "ADMIN"
+        ? " Choose a place and it is saved at once."
+        : "") + "</p>" +
+      "<ul>" + c.unplaced.map(function(u){
+        return "<li><b>" + esc(u.name) + "</b> " +
+          (me && me.app_role === "ADMIN"
+            ? "<select data-place=\"" + esc(u.holder) + "\">" +
+                "<option value=\"\">— where do they sit? —</option>" +
+                (c.places || []).map(function(p){
+                  return "<option value=\"" + esc(p.id) + "\">" + esc(p.scope) + "</option>";
+                }).join("") +
+              "</select>"
+            : "<span class=\"mute\">place not recorded</span>") +
+          "</li>";
+      }).join("") + "</ul>" +
+      "<div id=\"orgplacemsg\"></div>"
     : "";
   var levels = (c.levels || []).map(function(l){
     return "<tr><td><b>" + esc(l.level) + "</b> " + esc(l.name) + "</td>" +
@@ -646,6 +711,24 @@ async function showChair(code){
        (c.knowledge_test ? "<p class=\"mute\">Knowledge test: " + esc(c.knowledge_test) + "</p>" : "")
      : "") +
     "</div>";
+  Array.prototype.forEach.call(box.querySelectorAll("[data-place]"), function(sel){
+    sel.onchange = async function(){
+      if (!sel.value) return;
+      sel.disabled = true;
+      var out = await org("/place", { method: "POST",
+        body: { holder: sel.getAttribute("data-place"), place: sel.value } });
+      if (out.error) {
+        el("orgplacemsg").innerHTML = msg("bad", out.reason || out.error);
+        sel.disabled = false;
+        return;
+      }
+      el("orgplacemsg").innerHTML = msg("ok", esc(out.person) + " now sits in " +
+        esc(out.place) + ".");
+      orgCache = null;
+      setTimeout(function(){ showChair(code); }, 700);
+    };
+  });
+
   box.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
