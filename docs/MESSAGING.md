@@ -106,27 +106,51 @@ the provider's own text underneath. The ones worth knowing:
 | Meta `131026`, `133010` | Undeliverable | The number is not on WhatsApp, or the sender is not registered |
 | Meta `100` | Bad parameter | Usually the wrong value in From — it is the numeric **Phone Number ID**, not the phone number |
 
-## Why not WhatsApp Web with a QR code?
+## WhatsApp Web, and what it costs
 
-It is a real technique — Puppeteer or `whatsapp-web.js` driving a headless
-browser against web.whatsapp.com — and it is the wrong choice here, for three
-separate reasons.
+The Cloud API is the supported route and it is where this ends up. Until the
+company's number is approved for it, WhatsApp goes out through a linked
+device: a small program (`bridge/`) that holds a WhatsApp Web session on a
+machine the company owns, asks the tool for work, and sends it.
 
-**It cannot run in this architecture.** Supabase Edge Functions are short-lived
-Deno isolates. They can make an HTTPS request and nothing else: no browser, no
-persistent filesystem for a session profile, no process that stays alive
-holding a websocket for days. Running it would mean standing up and paying for
-a separate always-on server whose only job is to keep one browser logged in.
+The owner chose this knowingly, as a stop-gap. These are the costs, stated
+rather than buried:
 
-**It is against WhatsApp's terms.** Unofficial automation is explicitly
-prohibited, and the enforcement is a ban on the number. For a company number
-that staff rely on for escalation alerts, losing it is worse than not having
-the channel.
+**It is against WhatsApp's terms.** Unofficial automation is prohibited and the
+enforcement is a ban on the number. That is the whole risk; nothing below
+removes it, it is only made less likely.
 
-**It breaks quietly.** The session drops, the QR needs rescanning by a human,
-and a WhatsApp update breaks the library. An alerting channel that silently
-stops is worse than one that was never switched on.
+**It needs a machine that stays on.** A laptop or a spare Android through
+Termux. Either is fine, and more than one can run at once — they take work from
+the same queue and never take the same message twice.
 
-The Cloud API is the supported route: no QR, no browser, a permanent token,
-and failures that come back as codes you can read. Twilio is the quicker start
-and costs more per message.
+**It needs a person now and then.** When the session drops, somebody has to
+scan a QR code on the phone that owns the number.
+
+### What the tool does about each of those
+
+*Pace.* Messages leave one at a time, with a gap of about fourteen seconds plus
+a random extra up to nine, a ceiling of four per poll, and a hard limit of 180
+a day per device — well under what a person could plausibly send by hand. The
+numbers are settings (`whatsapp_web_*`), so they can be lowered without
+touching the device.
+
+*Breaks.* When a device drops its link, or simply stops checking in for two and
+a half minutes, the tool raises an **urgent alert for the administrator** that
+says what happened and when it will be reattempted — five minutes by default.
+The device restarts itself; the alert clears on its own when the link comes
+back. Messages are held in the queue meanwhile, never lost.
+
+*Scanning.* A device that needs linking raises an urgent alert too, and the QR
+is shown on the WhatsApp screen under **Show the code**. The device draws that
+picture itself and sends it; the linking string never goes to a third party to
+be rendered.
+
+*Blast radius.* A device holds one secret and can reach four endpoints: ask for
+work, report a result, say it is alive, hand over a QR. It cannot read a
+person, a case, or a setting. Retiring a device kills its token and returns
+anything it was holding to the queue.
+
+When the Cloud API is approved, switch the provider on the WhatsApp screen and
+retire the devices. Nothing else changes — the queue, the templates, the caps
+and the audit trail are the same either way.

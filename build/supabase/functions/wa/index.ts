@@ -21,7 +21,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
 const CORS = {
   "access-control-allow-origin": "*",
-  "access-control-allow-headers": "content-type, x-crux-token, x-crux-cron",
+  "access-control-allow-headers": "content-type, x-crux-token, x-crux-cron, x-wa-bridge",
   "access-control-allow-methods": "GET,POST,OPTIONS",
 };
 
@@ -137,6 +137,10 @@ async function drain(limit: number) {
     account: settings.whatsapp_account || "",
     token: settings.whatsapp_token || "",
   };
+  if (cfg.provider === "whatsapp_web") {
+    // the linked device pulls its own work; pushing from here would race it
+    return { drained: 0, sent: 0, failed: 0, reason: "sent_by_linked_device" };
+  }
   if (!cfg.provider || !cfg.from || !cfg.token) {
     return { drained: 0, sent: 0, failed: 0, reason: "not_configured" };
   }
@@ -172,6 +176,39 @@ Deno.serve(async (req: Request) => {
   const path = url.pathname.replace(/^.*?\/wa/, "") || "/";
 
   try {
+    // ---------------------------------------------------- a linked device
+    // It carries a bridge token, not a session. Everything it may do is
+    // here, and it is only ever about its own queue: it can ask for work
+    // and say what happened. It cannot read a person, a case or a setting.
+    const bridge = req.headers.get("x-wa-bridge");
+    if (bridge && path.startsWith("/bridge/")) {
+      if (path === "/bridge/claim" && req.method === "POST") {
+        return json(await rpc("wa_bridge_claim", { p_token: bridge }));
+      }
+      if (path === "/bridge/result" && req.method === "POST") {
+        const b = await req.json();
+        return json(await rpc("wa_bridge_result", {
+          p_token: bridge, p_id: b.id, p_ok: !!b.ok,
+          p_provider_msg_id: b.messageId ?? null,
+          p_error: b.error ?? null, p_permanent: !!b.permanent,
+        }));
+      }
+      if (path === "/bridge/heartbeat" && req.method === "POST") {
+        const b = await req.json().catch(() => ({}));
+        return json(await rpc("wa_bridge_heartbeat", {
+          p_token: bridge, p_state: b.state ?? "READY",
+          p_phone: b.phone ?? null, p_detail: b.detail ?? null,
+        }));
+      }
+      if (path === "/bridge/qr" && req.method === "POST") {
+        const b = await req.json();
+        return json(await rpc("wa_bridge_qr", {
+          p_token: bridge, p_qr: b.qr, p_qr_image: b.qrImage ?? null,
+        }));
+      }
+      return json({ error: "no_route", path }, 404);
+    }
+
     // The scheduler has no session, so it carries the same shared secret and
     // the same header name the mail drain uses. It may drain and nothing else.
     const cron = req.headers.get("x-crux-cron");
@@ -226,6 +263,38 @@ Deno.serve(async (req: Request) => {
 
     if (path === "/forget" && req.method === "POST") {
       const out = await rpc("wa_forget_secrets", { p_actor: person.id });
+      if (out && out.error) return json(out, 403);
+      return json(out);
+    }
+
+    // ------------------------------------------------------ device admin
+    if (path === "/device/new" && req.method === "POST") {
+      const b = await req.json();
+      const out = await rpc("wa_bridge_create", {
+        p_actor: person.id, p_name: b.name ?? "", p_kind: b.kind ?? "laptop",
+      });
+      if (out && out.error) return json(out, 403);
+      return json(out, 201);
+    }
+
+    if (path === "/device/qr") {
+      const id = url.searchParams.get("id");
+      if (!id) return json({ error: "missing_id" }, 400);
+      return json(await rpc("wa_bridge_peek_qr", { p_actor: person.id, p_id: id }));
+    }
+
+    if (path === "/device/disable" && req.method === "POST") {
+      const b = await req.json();
+      const out = await rpc("wa_bridge_disable", { p_actor: person.id, p_id: b.id });
+      if (out && out.error) return json(out, 403);
+      return json(out);
+    }
+
+    if (path === "/alerts") return json(await rpc("ops_alert_open", { p_role: "ADMIN" }));
+
+    if (path === "/alerts/ack" && req.method === "POST") {
+      const b = await req.json();
+      const out = await rpc("ops_alert_ack", { p_actor: person.id, p_id: b.id });
       if (out && out.error) return json(out, 403);
       return json(out);
     }

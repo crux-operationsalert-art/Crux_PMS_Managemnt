@@ -1,0 +1,19 @@
+{
+  "name": "crux-whatsapp-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sends the Crux WhatsApp queue from a linked device. A stop-gap until the Cloud API is approved.",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode-terminal": "^0.12.0",
+    "qrcode": "^1.5.4"
+  }
+}
