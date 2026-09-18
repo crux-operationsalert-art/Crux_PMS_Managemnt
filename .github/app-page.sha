@@ -1,0 +1,12 @@
+# The app_page row the published index.html should correspond to.
+#
+# The application lives in the database, not in git, so nothing here can
+# notice when a screen changes. Bumping this file is how a change to
+# app_page asks for a republish: it is in the workflow's trigger paths, so
+# committing it rebuilds index.html from whatever app_page now holds.
+#
+# The workflow records what it actually published in its own commit
+# message; this records what was asked for. If the two disagree, the
+# republish did not happen.
+
+a701e6f66b965d484d33645682ec1ade  109225 bytes  Org chart, WhatsApp, and the settings-save fix
