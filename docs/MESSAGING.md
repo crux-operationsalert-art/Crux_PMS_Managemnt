@@ -89,3 +89,44 @@ a template you have had approved. Free text works inside that window.
 that reason, and the Meta transport sends a template message when a row names
 one. Nothing the tool queues today names one — that is a deliberate gap, to be
 filled once the business has templates registered.
+
+## Provider failures, in words
+
+The WhatsApp screen translates the codes that actually come back, and keeps
+the provider's own text underneath. The ones worth knowing:
+
+| Code | What it means | What to do |
+|---|---|---|
+| Twilio `572002`, `21608` | Trial account: it will only message verified numbers, or numbers that have joined your sandbox | Have the recipient send the sandbox join phrase, or upgrade the account |
+| Twilio `63007` | The From number is not a WhatsApp sender | Use the sandbox number `whatsapp:+14155238886` until your own is approved |
+| Twilio `20003` | Credentials refused | Check the Account SID and auth token |
+| Twilio `63016`, Meta `131047` | More than 24 hours since that person messaged you | Free text is refused; an approved template is required |
+| Meta `190` | Access token expired or not permanent | Generate a permanent system-user token |
+| Meta `131030` | App is in development mode | Add the number to the allowed list, or take the app live |
+| Meta `131026`, `133010` | Undeliverable | The number is not on WhatsApp, or the sender is not registered |
+| Meta `100` | Bad parameter | Usually the wrong value in From — it is the numeric **Phone Number ID**, not the phone number |
+
+## Why not WhatsApp Web with a QR code?
+
+It is a real technique — Puppeteer or `whatsapp-web.js` driving a headless
+browser against web.whatsapp.com — and it is the wrong choice here, for three
+separate reasons.
+
+**It cannot run in this architecture.** Supabase Edge Functions are short-lived
+Deno isolates. They can make an HTTPS request and nothing else: no browser, no
+persistent filesystem for a session profile, no process that stays alive
+holding a websocket for days. Running it would mean standing up and paying for
+a separate always-on server whose only job is to keep one browser logged in.
+
+**It is against WhatsApp's terms.** Unofficial automation is explicitly
+prohibited, and the enforcement is a ban on the number. For a company number
+that staff rely on for escalation alerts, losing it is worse than not having
+the channel.
+
+**It breaks quietly.** The session drops, the QR needs rescanning by a human,
+and a WhatsApp update breaks the library. An alerting channel that silently
+stops is worse than one that was never switched on.
+
+The Cloud API is the supported route: no QR, no browser, a permanent token,
+and failures that come back as codes you can read. Twilio is the quicker start
+and costs more per message.

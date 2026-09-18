@@ -1,0 +1,20 @@
+-- =====================================================================
+-- 112 · Connect Gmail now saves first
+--
+-- The guard added in 111 was worse than the problem it fixed. It refused
+-- to connect whenever the client-secret box had anything in it — and a
+-- browser that has remembered that password refills the box on every
+-- render. So after a perfectly good Save, the button said "Save first"
+-- for ever.
+--
+-- There is no ordering to get wrong if the button does both: Connect
+-- saves the form, checks the secret actually landed, then asks Google.
+--
+-- The secret and API-key boxes also carry autocomplete="new-password"
+-- now. On this form an autofilled box is not merely untidy: pressing Save
+-- would send the remembered value as the client secret and overwrite the
+-- real one.
+--
+-- Applied to app_page; see migration history crux_app_page_connect_saves_first
+-- and crux_app_page_secret_fields_no_autofill.
+-- =====================================================================

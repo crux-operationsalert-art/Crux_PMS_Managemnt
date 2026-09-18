@@ -9,4 +9,4 @@
 # message; this records what was asked for. If the two disagree, the
 # republish did not happen.
 
-a701e6f66b965d484d33645682ec1ade  109225 bytes  Org chart, WhatsApp, and the settings-save fix
+c53915709169f6e9c35da4ce84717ab0  111945 bytes  Connect Gmail saves first; provider failures explained
