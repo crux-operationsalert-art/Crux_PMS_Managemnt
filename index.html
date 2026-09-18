@@ -649,6 +649,40 @@ async function showChair(code){
   box.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+/* What a provider failure actually means. The raw body is kept underneath,
+   because a code nobody has written a line for should still be readable.  */
+function waWhy(err){
+  if (!err) return "";
+  var e = String(err), t = null;
+  if (/572002|21608/.test(e))
+    t = "Twilio is still a trial account. A trial can only message numbers you " +
+        "have verified, or numbers that have joined your WhatsApp sandbox by " +
+        "sending the sandbox its join phrase. Either do that for this number, " +
+        "or upgrade the Twilio account.";
+  else if (/63007/.test(e))
+    t = "That From number is not a WhatsApp sender on Twilio. Use the sandbox " +
+        "number, in the form whatsapp:+14155238886, until your own number is approved.";
+  else if (/20003|authenticate/i.test(e))
+    t = "Twilio refused the credentials. Check the Account SID and the auth token.";
+  else if (/63016|131047/.test(e))
+    t = "More than 24 hours have passed since that person last messaged you, so " +
+        "WhatsApp will only accept a template you have had approved. Free text " +
+        "is refused outside that window.";
+  else if (/\b190\b|access token/i.test(e))
+    t = "Meta rejected the access token — expired, or not a permanent one. " +
+        "Generate a permanent token for the system user and paste it again.";
+  else if (/131030/.test(e))
+    t = "Meta is in development mode: only numbers added to the allowed list " +
+        "can be messaged. Add this number, or take the app live.";
+  else if (/131026|133010/.test(e))
+    t = "WhatsApp will not deliver to that number — it is not on WhatsApp, or " +
+        "the sending number is not registered.";
+  else if (/\b100\b/.test(e))
+    t = "Meta rejected a parameter. The usual cause is the wrong Phone Number ID " +
+        "in From — it is the long numeric id, not the phone number itself.";
+  return t;
+}
+
 /* -------------------------------------------------------------- whatsapp
    The same shape as Mail, because it is the same job: say what is set, what
    is waiting, and what failed - then let one button prove it.              */
@@ -677,7 +711,9 @@ async function vWhats(){
       "<div class=\"tile\"><b>" + esc(w.reachable) + "</b><span>have a mobile</span></div>" +
     "</div>" +
 
-    (w.lastError ? msg("bad", "Last failure: " + w.lastError) : "") +
+    (w.lastError ? msg("bad", waWhy(w.lastError) || ("Last failure: " + w.lastError)) +
+      (waWhy(w.lastError)
+        ? "<p class=\"mute\">Provider said: " + esc(w.lastError) + "</p>" : "") : "") +
     (!w.ready ? msg("warn", "No sender is configured, so nothing is going out. " +
       "The queue is intact and waiting — nothing is being lost.") : "") +
 
@@ -688,7 +724,10 @@ async function vWhats(){
         "sending number. Put the <b>Phone Number ID</b> in <i>From</i> and a permanent " +
         "access token in <i>Token</i>. Cheapest per message, and the failures are readable.</td></tr>" +
       "<tr><td><b>Twilio</b></td>" +
-        "<td>A Twilio account. Put the sending number in <i>From</i> as " +
+        "<td>A Twilio account. <b>On a trial account the person you are messaging " +
+        "must first join your sandbox</b> — they send the join phrase from " +
+        "Twilio's console to the sandbox number — or the message is refused. " +
+        "Put the sending number in <i>From</i> as " +
         "<code>whatsapp:+14155238886</code>, the <b>Account SID</b> in <i>Account</i>, and the " +
         "auth token in <i>Token</i>. Quicker to start, more per message.</td></tr>" +
       "</table></div>" +
@@ -734,7 +773,8 @@ async function vWhats(){
         w.recent.map(function(x){
           return "<tr><td>" + esc(when(x.created_at)) + "</td><td>" + esc(x.template_key) +
             "</td><td>" + esc(x.recipient) + "</td><td>" + esc(x.state) +
-            "</td><td>" + esc(x.attempts) + "</td><td>" + esc(x.last_error || "") + "</td></tr>";
+            "</td><td>" + esc(x.attempts) + "</td><td>" +
+            (x.last_error ? esc(waWhy(x.last_error) || x.last_error) : "") + "</td></tr>";
         }).join("") + "</table></div>"
         : "<p class=\"mute\">Nothing has been queued yet.</p>") +
     "</div>";
@@ -1896,35 +1936,43 @@ async function vMail(){
         '<div class="row"><div><label>OAuth client id</label>' +
           '<input id="moid" value="'+esc(m.oauthClientId||"")+'"></div></div>' +
         '<div class="row"><div><label>OAuth client secret</label>' +
-          '<input id="mosec" type="password" placeholder="'+(m.oauthSet?"already set - leave blank to keep it":"paste it once")+'"></div></div>' +
+          '<input id="mosec" type="password" autocomplete="new-password" placeholder="'+(m.oauthSet?"already set - leave blank to keep it":"paste it once")+'"></div></div>' +
         '<p class="mute">Add <code>' + esc("https://oxpwqfbtbxlvuqpztbwg.supabase.co") + '/functions/v1/crux/api/mail/oauth/callback</code> ' +
         'to the authorised redirect URIs on that client first, and add the ' +
         '<code>gmail.send</code> scope. Then save, and connect.</p>' +
         '<button class="ghost" id="mconnect">Connect Gmail</button>';
       el("mconnect").onclick = async function(){
-        if (!el("moid").value.trim()) {
-          el("mmsg").innerHTML = msg("bad", "Put the OAuth client id in above, " +
-            "press Save, then connect.");
+        el("mconnect").disabled = true;
+        el("mmsg").innerHTML = msg("warn", "Saving, then asking Google…");
+
+        // save the form first, so Save-then-Connect cannot be got out of order
+        var body = { provider: el("mp").value, from: el("mfrom").value,
+          fromName: el("mname").value, replyTo: el("mrep").value,
+          cap: el("mcap").value, oauthClientId: el("moid").value };
+        if (el("mosec").value.trim()) body.oauthClientSecret = el("mosec").value;
+        var saved = await crux("/api/mail/configure", { method:"POST", body:body });
+        if (saved.error) {
+          el("mconnect").disabled = false;
+          el("mmsg").innerHTML = msg("bad", saved.reason || saved.error);
           return;
         }
-        if (!m.oauthSet && !el("mosec").value.trim()) {
-          el("mmsg").innerHTML = msg("bad", "The client secret is what is missing. " +
-            "Paste it above and press Save first — consent cannot be exchanged without it.");
+        if (!saved.oauthSet) {
+          el("mconnect").disabled = false;
+          el("mmsg").innerHTML = msg("bad", "Saved, but there is still no client secret. " +
+            "Paste it in the box above and press Connect again — it is the one thing " +
+            "Google will not let us do without.");
           return;
         }
-        if (el("mosec").value.trim() || el("moid").value.trim() !== (m.oauthClientId || "")) {
-          el("mmsg").innerHTML = msg("warn", "Press Save first, so the id and secret are " +
-            "stored before Google is asked for consent.");
-          return;
-        }
+
         var out = await crux("/api/mail/oauth/start", { method:"POST", body:{} });
+        el("mconnect").disabled = false;
         if (out.error) { el("mmsg").innerHTML = msg("bad", out.reason || out.error); return; }
         window.open(out.url, "_blank", "noopener");
         el("mmsg").innerHTML = msg("warn", "A Google tab has opened. Consent there, then come back and send a test.");
       };
     } else if (p) {
       el("keyBox").innerHTML = '<div class="row"><div><label>API key</label>' +
-        '<input id="mkey" type="password" placeholder="'+(m.keySet?"already set - leave blank to keep it":"paste it once")+'"></div></div>' +
+        '<input id="mkey" type="password" autocomplete="new-password" placeholder="'+(m.keySet?"already set - leave blank to keep it":"paste it once")+'"></div></div>' +
         '<p class="mute">The key is stored in the database and read only by the sender. ' +
         'Nothing in this screen can show it to you again.</p>';
     } else {
