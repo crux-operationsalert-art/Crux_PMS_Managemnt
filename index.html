@@ -694,11 +694,20 @@ async function vWhats(){
   }
   var providers = [["", "Not set"],
                    ["meta", "WhatsApp Cloud API (Meta)"],
-                   ["twilio", "Twilio"]];
+                   ["twilio", "Twilio"],
+                   ["whatsapp_web", "Linked device on your own machine"]];
+  var alerts = [];
+  try { alerts = await wa("/alerts"); } catch (e) { alerts = []; }
+  if (!alerts || alerts.error) alerts = [];
 
   el("view").innerHTML = "<h1>WhatsApp</h1>" +
     "<p class=\"mute\">A second way out of the building, for the messages people " +
     "actually read. It has its own queue, its own daily cap and its own key.</p>" +
+
+    alerts.map(function(a){
+      return msg(a.severity === "URGENT" ? "bad" : "warn",
+        a.title + (a.action ? " — " + a.action : "") +
+        (a.retry_at ? " It will try again by itself." : "")); }).join("") +
 
     "<div class=\"tiles\" style=\"margin:16px 0\">" +
       "<div class=\"tile\"><b>" + (w.ready ? "Ready" : "Not sending") + "</b><span>status</span></div>" +
@@ -767,6 +776,35 @@ async function vWhats(){
         "<button class=\"ghost danger\" id=\"wforget\">Forget the token</button></div>" +
       "<div id=\"wmsg\"></div></div>" +
 
+    (w.devices ? "<div class=\"card\"><h2>Sending devices</h2>" +
+      "<p class=\"mute\">Each one holds a linked WhatsApp session and takes work when " +
+      "it is online. Add as many as you like — a laptop and a spare phone — and " +
+      "whichever is running does the sending. A message is only ever taken by one.</p>" +
+      ((w.bridges || []).length ? "<div class=\"scroll\"><table>" +
+        "<tr><th>Device</th><th>Kind</th><th>State</th><th>Number</th>" +
+        "<th>Last seen</th><th>Sent today</th><th></th></tr>" +
+        w.bridges.map(function(b){
+          return "<tr><td><b>" + esc(b.name) + "</b></td><td>" + esc(b.kind) + "</td>" +
+            "<td>" + (b.state === "READY" ? "online"
+                    : b.state === "NEEDS_QR" ? "waiting to be linked"
+                    : b.state === "STALE" ? "not responding" : esc(b.state)) + "</td>" +
+            "<td>" + esc(b.phone || "—") + "</td>" +
+            "<td>" + esc(b.lastSeen ? when(b.lastSeen) : "never") + "</td>" +
+            "<td>" + esc(b.sentToday) + "</td>" +
+            "<td>" + (b.state === "NEEDS_QR"
+                      ? "<button class=\"ghost\" data-qr=\"" + esc(b.id) + "\">Show the code</button> " : "") +
+                 "<button class=\"ghost danger\" data-retire=\"" + esc(b.id) + "\">Retire</button></td></tr>";
+        }).join("") + "</table></div>"
+        : "<p class=\"mute\">No device has been added yet, so nothing can send.</p>") +
+      "<div style=\"margin-top:14px\"><button id=\"wadd\">Add a sending device</button></div>" +
+      "<div id=\"wdev\"></div>" +
+      "<p class=\"mute\">Paced at one message every " + esc((w.pacing||{}).gapSeconds || 14) +
+      " to " + esc(((w.pacing||{}).gapSeconds || 14) + ((w.pacing||{}).jitterSeconds || 9)) +
+      " seconds per device, and at most " + esc((w.pacing||{}).perDevice || 180) +
+      " a day each. A device that stops is reattempted after " +
+      esc((w.pacing||{}).retryMinutes || 5) + " minutes.</p>" +
+      "</div>" : "") +
+
     "<div class=\"card\"><h2>Recent messages</h2>" +
       ((w.recent || []).length ? "<div class=\"scroll\"><table>" +
         "<tr><th>When</th><th>Kind</th><th>To</th><th>State</th><th>Tries</th><th>Last error</th></tr>" +
@@ -780,6 +818,72 @@ async function vWhats(){
     "</div>";
 
   function say(kind, text){ el("wmsg").innerHTML = msg(kind, text); }
+
+  if (el("wadd")) el("wadd").onclick = async function(){
+    var name = prompt("What should this device be called? Something you will " +
+      "recognise later, like \"Ops laptop\" or \"Spare phone\".", "");
+    if (name === null || !name.trim()) return;
+    var kind = (prompt("laptop, phone or server?", "laptop") || "laptop").trim().toLowerCase();
+    var out = await wa("/device/new", { method: "POST", body: { name: name.trim(), kind: kind } });
+    if (out.error) { el("wdev").innerHTML = msg("bad", out.reason || out.error); return; }
+    el("wdev").innerHTML =
+      "<div class=\"msg warn\"><b>Copy this token now — it is not shown again.</b>" +
+      "<div style=\"font-family:ui-monospace,monospace;font-size:12px;word-break:break-all;" +
+      "margin:8px 0;padding:8px;background:var(--white);border:1px solid var(--line);" +
+      "border-radius:4px\">" + esc(out.token) + "</div>" +
+      "Put it in <code>bridge/.env</code> on that machine as " +
+      "<code>CRUX_BRIDGE_TOKEN</code>, then run <code>npm start</code> in the " +
+      "<code>bridge</code> folder. A code will appear here to scan.</div>";
+    setTimeout(vWhats, 30000);
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-qr]"), function(btn){
+    btn.onclick = async function(){
+      var out = await wa("/device/qr?id=" + encodeURIComponent(btn.getAttribute("data-qr")));
+      if (out.error) { el("wdev").innerHTML = msg("bad", out.reason || out.error); return; }
+      if (!out.qr) {
+        el("wdev").innerHTML = msg("warn", "That device is not showing a code just now. " +
+          "Make sure it is running; a code appears within a few seconds.");
+        return;
+      }
+      // rendered as a QR by the same library the sign-in page already loads
+      el("wdev").innerHTML = "<div class=\"card\"><h3>Scan this on the phone that owns " +
+        "the company number</h3><p class=\"mute\">WhatsApp, then Settings, Linked devices, " +
+        "Link a device. The code changes about every minute — press the button again " +
+        "for a fresh one.</p><div id=\"qrbox\" style=\"margin:12px 0\"></div>" +
+        "<p class=\"mute\">Shown " + esc(out.age === null ? "just now" : out.age + " seconds ago") +
+        ".</p></div>";
+      if (out.image) {
+        var img = document.createElement("img");
+        img.alt = "WhatsApp linking code";
+        img.style.cssText = "width:260px;height:260px;image-rendering:pixelated;" +
+          "background:#fff;padding:8px;border:1px solid var(--line);border-radius:4px";
+        img.src = out.image;
+        el("qrbox").appendChild(img);
+      } else {
+        el("qrbox").innerHTML = msg("warn", "That device has not sent a picture of its " +
+          "code — it is running an older bridge. Scan it from the terminal on the " +
+          "device itself, or copy the text below into any QR reader.");
+      }
+      el("qrbox").appendChild(document.createElement("br"));
+      var raw = document.createElement("details");
+      raw.innerHTML = "<summary class=\"mute\">Or copy the code as text</summary>" +
+        "<div style=\"font-family:ui-monospace,monospace;font-size:10px;word-break:break-all;" +
+        "margin-top:6px\">" + esc(out.qr) + "</div>";
+      el("qrbox").appendChild(raw);
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-retire]"), function(btn){
+    btn.onclick = async function(){
+      if (!confirm("Retire this device? Its token stops working and anything it was " +
+        "holding goes back to the queue for another device.")) return;
+      var out = await wa("/device/disable", { method: "POST",
+        body: { id: btn.getAttribute("data-retire") } });
+      if (out.error) { el("wdev").innerHTML = msg("bad", out.reason || out.error); return; }
+      vWhats();
+    };
+  });
 
   el("wsave").onclick = async function(){
     say("", "Saving…");
