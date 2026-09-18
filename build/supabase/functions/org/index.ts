@@ -17,7 +17,7 @@ const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-headers": "content-type, x-crux-token",
-  "access-control-allow-methods": "GET,OPTIONS",
+  "access-control-allow-methods": "GET,POST,OPTIONS",
 };
 
 const json = (body: unknown, status = 200) =>
@@ -59,6 +59,33 @@ Deno.serve(async (req: Request) => {
     if (!person) return json({ error: "not_signed_in", reason: "Sign in first." }, 401);
 
     if (path === "/" || path === "") return json(await rpc("org_chart", {}));
+
+    // Where a chair is held. Reading is for anyone signed in; changing it is
+    // an administrator's, because it decides whose work a person sees.
+    if (path === "/unplaced") return json(await rpc("org_unplaced", {}));
+
+    if (path === "/place" && req.method === "POST") {
+      if (person.app_role !== "ADMIN") {
+        return json({ error: "admin_only",
+          reason: "Recording where a chair is held is an administrator's to do." }, 403);
+      }
+      const b = await req.json();
+      const out = await rpc("org_place_holder", {
+        p_actor: person.id, p_holder: b.holder, p_seating: b.place ?? null,
+      });
+      if (out && out.error) return json(out, 400);
+      return json(out);
+    }
+
+    if (path === "/place/auto" && req.method === "POST") {
+      if (person.app_role !== "ADMIN") {
+        return json({ error: "admin_only",
+          reason: "Placing chair holders is an administrator's to do." }, 403);
+      }
+      const out = await rpc("chair_place_from_coverage", { p_actor: person.id });
+      if (out && out.error) return json(out, 403);
+      return json(out);
+    }
 
     if (path === "/chair") {
       const code = url.searchParams.get("code");
