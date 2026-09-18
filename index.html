@@ -1902,6 +1902,21 @@ async function vMail(){
         '<code>gmail.send</code> scope. Then save, and connect.</p>' +
         '<button class="ghost" id="mconnect">Connect Gmail</button>';
       el("mconnect").onclick = async function(){
+        if (!el("moid").value.trim()) {
+          el("mmsg").innerHTML = msg("bad", "Put the OAuth client id in above, " +
+            "press Save, then connect.");
+          return;
+        }
+        if (!m.oauthSet && !el("mosec").value.trim()) {
+          el("mmsg").innerHTML = msg("bad", "The client secret is what is missing. " +
+            "Paste it above and press Save first — consent cannot be exchanged without it.");
+          return;
+        }
+        if (el("mosec").value.trim() || el("moid").value.trim() !== (m.oauthClientId || "")) {
+          el("mmsg").innerHTML = msg("warn", "Press Save first, so the id and secret are " +
+            "stored before Google is asked for consent.");
+          return;
+        }
         var out = await crux("/api/mail/oauth/start", { method:"POST", body:{} });
         if (out.error) { el("mmsg").innerHTML = msg("bad", out.reason || out.error); return; }
         window.open(out.url, "_blank", "noopener");
