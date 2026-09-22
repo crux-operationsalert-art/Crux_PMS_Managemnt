@@ -6,10 +6,11 @@
 // deployment with the routes that serve day-to-day work. A change to a
 // setting screen must never require redeploying the escalation engine.
 //
-// Everything here is one of three things and nothing else: read the
-// configuration, change one setting, or start and stop a job. Penalty rules
-// come through the same door because the same screen owns them, and because
-// the people who may edit them are not only administrators.
+// Everything here is one of four things and nothing else: read the
+// configuration, change one setting, start and stop a job, or edit the
+// operating grouping. Penalty rules come through the same door because the
+// same screen owns them, and because the people who may edit them are not
+// only administrators.
 //
 // JWT verification is off at the gateway because this function does its
 // own: the browser holds no Supabase key.
@@ -99,6 +100,29 @@ Deno.serve(async (req: Request) => {
         p_plain_language: b.says ?? null,
       });
       if (out && out.error) return json(out, out.error === "not_allowed" ? 403 : 400);
+      return json(out);
+    }
+
+    // The operating grouping: compass group, zone, location. Read with the
+    // rest of the configuration; changed one node at a time, because a bulk
+    // save would hide which name was the one that collided.
+    if (path === "/location" && req.method === "POST") {
+      const b = await req.json();
+      const out = await rpc("op_save", {
+        p_actor: person.id, p_name: b.name, p_id: b.id ?? null,
+        p_parent: b.parent ?? null,
+        p_active: typeof b.active === "boolean" ? b.active : null,
+      });
+      if (out && out.error) return json(out, out.error === "not_admin" ? 403 : 400);
+      return json(out);
+    }
+
+    if (path === "/location/retire" && req.method === "POST") {
+      const b = await req.json();
+      const out = await rpc("op_retire", {
+        p_actor: person.id, p_id: b.id, p_active: b.active === true,
+      });
+      if (out && out.error) return json(out, out.error === "not_admin" ? 403 : 400);
       return json(out);
     }
 
