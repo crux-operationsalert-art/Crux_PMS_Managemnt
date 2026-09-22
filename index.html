@@ -416,6 +416,8 @@ var api  = function(p,o){ return call(API,  p, o); };
 var org  = function(p,o){ return call(ORG,  p, o); };
 var CFG  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/cfg";
 var cfg  = function(p,o){ return call(CFG,  p, o); };
+var KPI  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/kpi";
+var kpiApi = function(p,o){ return call(KPI,  p, o); };
 var WA   = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/wa";
 var wa   = function(p,o){ return call(WA,   p, o); };
 var crux = function(p,o){ return call(CRUX, p, o); };
@@ -2057,6 +2059,132 @@ function pmsSummary(p){
           '<td>'+(l.applied?'':'<span class="pill bad">over cap</span>')+'</td></tr>';
       }).join("") + '</table></div>' : "");
 }
+/* ------------------------------------------------------------------ KPIs
+   A KPI belongs to a person and is set by their manager, never by them.
+   This draws both halves: the ones set for you, read-only, and the ones you
+   set for your team.
+
+   The daily filing box above used to be a JSON textarea, which only worked
+   if you already knew the exact names. Once a person has KPIs it becomes a
+   labelled box each, because asking somebody to type
+   {"Field verifications completed": 42} is asking them to get it wrong.    */
+var kpiCache = null;
+
+function kpiFigures(mine){
+  var live = (mine || []).filter(function(k){ return k.active; });
+  if (!live.length) {
+    return '<p class="mute">No KPI has been set for you yet, so there is nothing ' +
+      'to file. Your manager sets them under Performance.</p>' +
+      '<textarea id="vals" style="display:none">{}</textarea>';
+  }
+  return '<div class="row" style="flex-wrap:wrap">' + live.map(function(k){
+    return '<div><label>' + esc(k.name) +
+      (k.unit ? ' <span class="mute">(' + esc(k.unit) + ')</span>' : "") +
+      '</label><input class="kfig" data-name="' + esc(k.name) + '" inputmode="decimal">' +
+      '<div class="mute" style="font-size:11px">' +
+        esc(k.cadence.toLowerCase()) + ' · ' +
+        (k.accrual === "ADDS" ? "today adds to the period"
+                              : "today replaces the period figure") +
+        (k.mandatory ? "" : " · optional") +
+      '</div></div>';
+  }).join("") + '</div>';
+}
+
+function kpiFiguresValue(){
+  var boxes = document.querySelectorAll(".kfig");
+  if (!boxes.length) {
+    try { return JSON.parse((el("vals") && el("vals").value) || "{}"); }
+    catch (e) { return null; }
+  }
+  var out = {};
+  Array.prototype.forEach.call(boxes, function(b){
+    var v = b.value.trim();
+    if (v !== "") out[b.getAttribute("data-name")] = Number(v);
+  });
+  return out;
+}
+
+async function kpiPanel(){
+  var box = el("kpipanel");
+  if (!box) return;
+  var k = kpiCache || (kpiCache = await kpiApi("/"));
+  if (k.error) { box.innerHTML = msg("bad", k.reason || k.error); return; }
+
+  var team = (k.team || []);
+  if (!team.length) {
+    box.innerHTML = '<div class="card"><h2>KPIs</h2>' +
+      '<p class="mute">Nobody sits on a chair below yours, so there is nobody ' +
+      'whose KPIs are yours to set. Your own are set by your manager.</p></div>';
+    return;
+  }
+
+  box.innerHTML = '<div class="card"><h2>KPIs for your team</h2>' +
+    '<p class="mute">' + esc(k.intended.total) + ' each is the agreed shape - ' +
+    esc(k.intended.mandatory) + ' that count and ' + esc(k.intended.optional) +
+    ' optional. Nobody sets their own, including you. A KPI is retired rather ' +
+    'than deleted, because a score already given against it still refers to it.</p>' +
+    team.map(function(t){
+      var live = (t.kpis || []).filter(function(x){ return x.active; });
+      var gone = (t.kpis || []).filter(function(x){ return !x.active; });
+      return '<div class="cfgrule"><div><b>' + esc(t.name) + '</b>' +
+        (t.chair ? ' <span class="mute">' + esc(t.chair) + '</span>' : "") +
+        (live.length
+          ? '<ul style="margin:6px 0">' + live.map(function(x){
+              return '<li>' + esc(x.name) +
+                (x.unit ? ' <span class="mute">(' + esc(x.unit) + ')</span>' : "") +
+                ' <span class="chip">' + esc(x.cadence.toLowerCase()) + '</span>' +
+                (x.mandatory ? "" : ' <span class="chip">optional</span>') +
+                ' <button class="btn" data-kretire="' + esc(x.id) + '">Retire</button>' +
+                '</li>';
+            }).join("") + '</ul>'
+          : '<div class="mute" style="margin:6px 0">No KPI set yet, so nothing ' +
+            'is asked of them daily and nothing can be scored.</div>') +
+        (gone.length ? '<div class="mute">Retired: ' +
+          gone.map(function(x){ return esc(x.name); }).join(", ") + '</div>' : "") +
+        '</div><div class="cfgset">' +
+          '<button class="btn" data-kadd="' + esc(t.person) + '">Add a KPI</button>' +
+        '</div></div>';
+    }).join("") + '<div id="kpimsg"></div></div>';
+
+  Array.prototype.forEach.call(box.querySelectorAll("[data-kadd]"), function(b){
+    b.onclick = async function(){
+      var name = prompt("What is the KPI called? Name it the way the person " +
+        "would say it, because this is the label they file against.", "");
+      if (name === null || !name.trim()) return;
+      var unit = prompt("What is it counted in? (cases, visits, rupees - " +
+        "leave blank if it has no unit)", "") || "";
+      var cadence = (prompt("How often: DAILY, WEEKLY, MONTHLY or QUARTERLY?",
+        "DAILY") || "DAILY").trim().toUpperCase();
+      var accrual = (prompt("Does today's figure ADD to the period, or REPLACE " +
+        "the period-to-date level?", "ADDS") || "ADDS").trim().toUpperCase();
+      var mandatory = confirm("Does this one count towards the score?\n\n" +
+        "OK = it counts.  Cancel = optional.");
+      b.disabled = true;
+      var out = await kpiApi("/save", { method:"POST", body:{
+        person: b.getAttribute("data-kadd"), name: name.trim(), unit: unit.trim(),
+        cadence: cadence, accrual: accrual, mandatory: mandatory } });
+      b.disabled = false;
+      if (out.error) { el("kpimsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      kpiCache = null;
+      kpiPanel();
+    };
+  });
+
+  Array.prototype.forEach.call(box.querySelectorAll("[data-kretire]"), function(b){
+    b.onclick = async function(){
+      if (!confirm("Retire this KPI? It stops being asked for from tomorrow. " +
+        "Nothing already scored against it changes.")) return;
+      b.disabled = true;
+      var out = await kpiApi("/retire", { method:"POST",
+        body:{ id: b.getAttribute("data-kretire"), active: false } });
+      b.disabled = false;
+      if (out.error) { el("kpimsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      kpiCache = null;
+      kpiPanel();
+    };
+  });
+}
+
 async function vPms(){
   var p = await api("/pms/cycle/current");
   var today = new Date().toISOString().slice(0,10);
@@ -2065,7 +2193,7 @@ async function vPms(){
     '<div class="card"><h2>File today\'s numbers</h2>' +
       '<p class="mute">One filing per day, carrying every figure. The day closes at 23:59.</p>' +
       '<div class="row"><div><label>Date</label><input id="cd" type="date" value="'+today+'"></div></div>' +
-      '<div><label>Figures</label><textarea id="vals" placeholder=\'{"Field verifications completed": 42}\'>{}</textarea></div>' +
+      '<div id="figures"><p class="mute">Loading your KPIs…</p></div>' +
       '<div style="margin-top:12px"><button id="fileIt">File</button></div><div id="dm"></div></div>' +
     '<div class="card"><h2>Raise against someone</h2>' +
       '<p class="mute">This moves their score. Raise it when the outcome is decided, not when it is alleged.</p>' +
@@ -2074,16 +2202,29 @@ async function vPms(){
         ["ESCALATION","WARNING","APPRECIATION","ASSISTANCE"].map(function(k){
           return '<option>'+k+'</option>'; }).join("") + '</select></div></div>' +
       '<div><label>Body</label><textarea id="bd"></textarea></div>' +
-      '<div style="margin-top:12px"><button id="raiseIt">Raise</button></div><div id="rm"></div></div>';
+      '<div style="margin-top:12px"><button id="raiseIt">Raise</button></div><div id="rm"></div></div>' +
+    '<div id="kpipanel"></div>';
 
   var team = await api("/people/team");
   el("ab").innerHTML = (team.team||[]).filter(function(t){ return t.person_id; })
     .map(function(t){ return '<option value="'+esc(t.person_id)+'">'+esc(t.full_name)+' - '+esc(t.title)+'</option>'; }).join("")
     || '<option value="">Nobody reports to you</option>';
 
+  kpiCache = null;
+  var myKpi = await kpiApi("/");
+  kpiCache = myKpi;
+  el("figures").innerHTML = myKpi.error
+    ? msg("bad", myKpi.reason || myKpi.error)
+    : kpiFigures(myKpi.mine);
+  kpiPanel();
+
   el("fileIt").onclick = async function(){
-    var v; try { v = JSON.parse(el("vals").value || "{}"); }
-    catch(e){ el("dm").innerHTML = msg("bad","That is not valid JSON."); return; }
+    var v = kpiFiguresValue();
+    if (v === null){ el("dm").innerHTML = msg("bad","That is not valid JSON."); return; }
+    if (!Object.keys(v).length){
+      el("dm").innerHTML = msg("warn","Nothing to file - every figure is blank.");
+      return;
+    }
     var out = await api("/pms/daily", { method:"POST", body:{ countDate: el("cd").value, values: v } });
     el("dm").innerHTML = out.error ? msg("bad", out.reason || out.error) : msg("ok","Filed for " + day(out.count_date) + ".");
   };
