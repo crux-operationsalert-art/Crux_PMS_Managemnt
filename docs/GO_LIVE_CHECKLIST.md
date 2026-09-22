@@ -71,7 +71,7 @@ rows** — there is no partial load, so a rejected file is safe to fix and retry
 | 1 | **Chairs** | code, title, level, who each chair reports to | **Do this one first — see below** |
 | 2 | **People** | names, employee numbers, chairs, managers, contacts | **Second — see below** |
 | 3 | Geography | groups, regions, zones, locations | 98 rows already loaded from your master |
-| 4 | Clients and branches | client and branch master with codes | 28 clients, 1,413 branches already loaded |
+| 4 | Clients and branches | client and branch master with codes | 28 clients, 1,413 branches already loaded. There is now an optional `opened_on` column — see below |
 | 5 | Assignments | client × location × handler × W.E.F. | |
 | 6 | Rates | agreed rate per client and location, with W.E.F. | |
 | 7 | Collections | collected and billed per client, location, month | |
@@ -85,14 +85,31 @@ rows** — there is no partial load, so a rejected file is safe to fix and retry
 **Why Chairs and People come first, and why it matters more than it looks.**
 Almost every screen beyond the front door asks "which chair do you hold?" before
 it shows anything, because a person's view is resolved from their chair and
-their coverage — not from their job title. Right now **no real person holds a
-chair**: the 17 chairs in the database are the seeded demo org chart with
-`@example.invalid` holders. So today those screens correctly show an empty state
-with a reason. Upload Chairs, then People, and they fill in.
+their coverage — not from their job title.
 
-The demo holders are inert until then — they cannot sign in (wrong domain) and
-cannot be e-mailed (`.invalid` addresses are skipped) — and your Chairs upload
-replaces them.
+That is no longer an empty state. The operating structure document has been
+loaded: **34 chairs, held in 70 places**, and **54 real people are seated**, so
+those screens render. What is still thin is coverage — only 15 people have any —
+and where people sit: **31 of them are on a chair with no place recorded**,
+because the USERS sheet names no location. The org chart shows that count to an
+administrator with a button that places everyone whose coverage says plainly
+where they are, and a picker for the rest. Your Assignments upload is what
+settles most of it.
+
+**`opened_on`, on the Clients and branches file.** Optional, and the only thing
+that uses it is penalty rule P-06: a branch whose escalation matrix is still
+short of five complete levels fourteen days after it opened. A branch with no
+opening date simply never starts that clock — nothing breaks, the rule just
+does not apply to it. Fill it where you know it; leave it blank where you do
+not. A date already recorded is never overwritten by a blank cell on a re-upload.
+
+**The penalty rules are seeded and switched off.** All seven (P-01 to P-07) are
+in the tool, visible and editable by Administrator, HR and Finance. Every one is
+inactive: five have no amount yet, and switching on the daily-count rule before
+KPIs exist would charge people for not filing a count the tool has never asked
+them for. The nightly sweep runs and charges nothing until somebody turns a rule
+on. P-01 (daily count) and P-06 (matrix clock) are the two the sweep can
+actually fire today; the other five are recorded rules awaiting their amounts.
 
 ### 2 · Sender e-mail
 
