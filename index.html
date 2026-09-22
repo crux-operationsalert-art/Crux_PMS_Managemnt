@@ -2245,7 +2245,8 @@ async function resetPanel(){
    the status says whether a key is set, never what it is. */
 async function vMail(){
   var m = await crux("/api/mail");
-  var providers = [["","Not set"],["resend","Resend"],["sendgrid","SendGrid"],
+  var providers = [["","Not set"],["apps_script","Apps Script relay (recommended)"],
+                   ["resend","Resend"],["sendgrid","SendGrid"],
                    ["brevo","Brevo"],["postmark","Postmark"],["gmail_oauth","Gmail (your own mailbox)"]];
 
   el("view").innerHTML = '<h1>Mail</h1>' +
@@ -2266,10 +2267,17 @@ async function vMail(){
     (!m.provider ? msg("warn", "No provider is set, so nothing is being sent. " +
       "The queue is intact and waiting - nothing is being lost.") : "") +
 
-    '<div class="card"><h2>Three ways, and what each one needs</h2>' +
-      '<p class="mute">You do not administer the Google Workspace this sits in, so the ' +
-      'first two need nobody\'s permission but yours.</p>' +
+    '<div class="card"><h2>Four ways, and what each one needs</h2>' +
+      '<p class="mute">The first one is working elsewhere in this company today. ' +
+      'The others are sound and none of them has sent a message here yet.</p>' +
       '<div class="scroll"><table><tr><th>Route</th><th>What it needs</th></tr>' +
+      '<tr><td><b>Apps Script relay</b><br><span class="mute">recommended</span></td>' +
+        '<td>A small script deployed once from the sending account, which sends ' +
+        'with Gmail from inside it. <b>No OAuth client, no client secret, and no ' +
+        'refresh token to expire</b> - Apps Script is already allowed to send as ' +
+        'the account it runs as. One browser consent, about five minutes. The ' +
+        'script and the steps are in <code>mailer/</code> in the repository. ' +
+        'This is the same mechanism the internship programme has used for months.</td></tr>' +
       '<tr><td><b>A transactional provider</b><br><span class="mute">Resend, Brevo, SendGrid, Postmark</span></td>' +
         '<td>An account, and two or three DNS records on a domain you control - SPF, DKIM, ' +
         'and usually DMARC. No Workspace console. This is the route that scales and the one ' +
@@ -2316,7 +2324,55 @@ async function vMail(){
 
   function keyBox(){
     var p = el("mp").value;
-    if (p === "gmail_oauth") {
+    if (p === "apps_script") {
+      el("keyBox").innerHTML =
+        '<div class="row"><div><label>Relay URL</label>' +
+          '<input id="mrurl" value="' + esc(m.relayUrl || "") +
+          '" placeholder="https://script.google.com/macros/s/.../exec"></div></div>' +
+        '<div class="row"><div><label>Relay secret</label>' +
+          '<input id="mrsec" type="password" autocomplete="new-password" placeholder="' +
+          (m.relaySecretSet ? "already set - leave blank to keep it" : "run makeSecret in the script, paste what it prints") +
+          '"></div></div>' +
+        '<p class="mute">Deploy the script from <b>operations.alert@cruxindia.co.in</b>. ' +
+        'Whichever account deploys it is the address every message comes from, ' +
+        'whatever the From address above says. The steps are in ' +
+        '<code>mailer/README.md</code>.</p>' +
+        '<button class="ghost" id="mrsave">Save the relay</button> ' +
+        '<button class="ghost" id="mrcheck">Check the link</button>' +
+        '<div id="mrmsg"></div>';
+
+      el("mrsave").onclick = async function(){
+        el("mrsave").disabled = true;
+        var a = await cfg("/setting", { method:"POST",
+          body:{ key:"mail_relay_url", value: el("mrurl").value.trim() } });
+        var b = { ok:true };
+        if (el("mrsec").value.trim()) {
+          b = await cfg("/setting", { method:"POST",
+            body:{ key:"mail_relay_secret", value: el("mrsec").value.trim() } });
+        }
+        el("mrsave").disabled = false;
+        if (a.error || b.error) {
+          el("mrmsg").innerHTML = msg("bad", (a.error ? (a.reason||a.error) : (b.reason||b.error)));
+          return;
+        }
+        el("mrsec").value = "";
+        el("mrmsg").innerHTML = msg("ok", "Saved. Now check the link.");
+      };
+
+      el("mrcheck").onclick = async function(){
+        el("mrcheck").disabled = true;
+        el("mrmsg").innerHTML = msg("", "Asking the relay…");
+        var out = await cfg("/mail/relay-check");
+        el("mrcheck").disabled = false;
+        if (out.error) { el("mrmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+        var right = out.sendsAs === "operations.alert@cruxindia.co.in";
+        el("mrmsg").innerHTML = msg(right ? "ok" : "warn",
+          "The relay is alive and sends as " + out.sendsAs + ". " +
+          out.remainingToday + " messages left in Google\'s quota today." +
+          (right ? "" : " That is not operations.alert@cruxindia.co.in - the script " +
+            "was deployed from the wrong account. Deploy it again from the right one."));
+      };
+    } else if (p === "gmail_oauth") {
       el("keyBox").innerHTML =
         '<div class="row"><div><label>OAuth client id</label>' +
           '<input id="moid" value="'+esc(m.oauthClientId||"")+'"></div></div>' +
