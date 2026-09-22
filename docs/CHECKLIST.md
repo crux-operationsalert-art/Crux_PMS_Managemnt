@@ -7,20 +7,20 @@ are done. Anything not on this list is not yours to do.
 
 ## 1. Turn on e-mail
 
-- [ ] Sign in to Google as **operations.alert@cruxindia.co.in**
-- [ ] Open <https://script.new>, name it `Crux mail relay`
-- [ ] Paste in all of `mailer/crux-mail.gs`, save
-- [ ] Run `makeSecret` → allow when Google asks → copy the long string it prints
-- [ ] Run `selfTest` → check a mail arrives in operations.alert@
-- [ ] **Deploy → New deployment → Web app**, Execute as **Me**, access **Anyone** → copy the `/exec` URL
-- [ ] In Crux: **Mail → Provider → Apps Script relay**, paste the URL and the secret, **Save the relay**
-- [ ] Press **Check the link** — it must say it sends as operations.alert@cruxindia.co.in
-- [ ] Press **Send me a test**
+- [x] Sign in to Google as **operations.alert@cruxindia.co.in**
+- [x] Open <https://script.new>, name it `Crux mail relay`
+- [x] Paste in all of `mailer/crux-mail.gs`, save
+- [x] Run `makeSecret` → allow when Google asks → copy the long string it prints
+- [x] Run `selfTest` → check a mail arrives in operations.alert@
+- [x] **Deploy → New deployment → Web app**, Execute as **Me**, access **Anyone** → copy the `/exec` URL
+- [x] In Crux: **Mail → Provider → Apps Script relay**, paste the URL and the secret, **Save the relay**
+- [x] Press **Check the link** — it must say it sends as operations.alert@cruxindia.co.in
+- [x] Press **Send me a test**
 
 Full steps with screenshots-worth of detail: `mailer/README.md`.
 
-> Six test messages are already queued. They go to operations.alert@ and
-> nobody else, so they are safe to let through.
+> **Done — mail is live.** Nine messages have gone out through the relay as
+> operations.alert@cruxindia.co.in.
 
 ---
 
@@ -40,7 +40,7 @@ Each one: **Data setup → choose the kind → download the template → fill it
 upload → check the preview → apply.** A file with any error loads **nothing**,
 so a rejected file is safe to fix and send again.
 
-- [ ] 1 Chairs
+- [x] 1 Chairs — loaded, see the note below
 - [ ] 2 People
 - [ ] 3 Geography
 - [ ] 4 Clients and branches
@@ -54,8 +54,16 @@ so a rejected file is safe to fix and send again.
 - [ ] 12 SLA rules
 - [ ] 13 Escalation matrix
 
-Two notes:
+Three notes:
 
+- **Your chairs file needs one fix before you send it again.** Every title with
+  a dash in it arrived with its last two letters missing — `Head – Operations`
+  came in as `Head _ Operatio`. Whatever wrote that file cut the titles short
+  because a dash counts as three bytes and it only allowed for one. The tool
+  read the file exactly as given; the 34 damaged titles have been repaired in
+  place, so there is nothing for you to do unless you upload that same file
+  again. If you do, save it from Excel as **CSV UTF-8**, or replace the dashes
+  with a plain hyphen first.
 - **Assignments decides who sees what.** Only 15 people have coverage today, so
   most screens are empty for most people until this file lands.
 - Clients and branches has a new optional **`opened_on`** column. Blank is fine.
