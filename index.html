@@ -2267,6 +2267,44 @@ async function vMail(){
     (!m.provider ? msg("warn", "No provider is set, so nothing is being sent. " +
       "The queue is intact and waiting - nothing is being lost.") : "") +
 
+    (m.provider === "apps_script" && !m.ready
+      ? '<div class="card"><h2>One thing left, and only you can do it</h2>' +
+        '<p>The relay is chosen but not linked yet, so ' + esc(m.queued) +
+        ' message' + (m.queued === 1 ? " is" : "s are") + ' waiting. ' +
+        'Nothing is lost - they go the moment it is linked.</p>' +
+        '<p class="mute">Google requires a person to approve a script that can ' +
+        'send mail as an account. That consent screen is the boundary that stops ' +
+        'anything else doing it, so it cannot be automated, and it should not be. ' +
+        'It is about five minutes.</p>' +
+        '<ol style="line-height:1.7">' +
+        '<li><b>Sign in to Google as ' +
+          '<code>operations.alert@cruxindia.co.in</code></b>. Whichever account ' +
+          'does this is the address every message will come from.</li>' +
+        '<li>Open <a href="https://script.new" target="_blank" rel="noopener">' +
+          'script.new</a>, name it <b>Crux mail relay</b>.</li>' +
+        '<li>Delete what is in <code>Code.gs</code> and paste in ' +
+          '<a href="https://raw.githubusercontent.com/crux-operationsalert-art/' +
+          'Crux_PMS_Managemnt/main/mailer/crux-mail.gs" target="_blank" ' +
+          'rel="noopener">crux-mail.gs</a>. Save.</li>' +
+        '<li>Function dropdown &rarr; <b>makeSecret</b> &rarr; Run. Google asks ' +
+          'for approval the first time: your account &rarr; <b>Advanced</b> &rarr; ' +
+          '<b>Go to Crux mail relay (unsafe)</b> &rarr; <b>Allow</b>. That wording ' +
+          'is what Google shows for any script it has not reviewed; this one is ' +
+          'ours and every line of it is readable at the link above. Copy the long ' +
+          'string from the execution log.</li>' +
+        '<li>Function dropdown &rarr; <b>selfTest</b> &rarr; Run. A mail should ' +
+          'arrive in that inbox. If it does not, stop - nothing after this will ' +
+          'work and the log says why.</li>' +
+        '<li><b>Deploy &rarr; New deployment &rarr; Web app.</b> Execute as ' +
+          '<b>Me</b>, access <b>Anyone</b>. Copy the URL ending in ' +
+          '<code>/exec</code>.</li>' +
+        '<li>Paste both below, <b>Save the relay</b>, then <b>Check the link</b>.</li>' +
+        '</ol>' +
+        '<p class="mute">"Anyone" is how a web app is reachable without a Google ' +
+        'sign-in. The URL alone does nothing: every request must carry the secret, ' +
+        'and one without it is refused before anything is read.</p></div>'
+      : "") +
+
     '<div class="card"><h2>Four ways, and what each one needs</h2>' +
       '<p class="mute">The first one is working elsewhere in this company today. ' +
       'The others are sound and none of them has sent a message here yet.</p>' +
