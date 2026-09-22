@@ -128,14 +128,23 @@ r.post('/:id/action', requireChair, async (req, res, next) => {
 
       const c = (await t.q(`select ref, status from "case" where id = $1 for update`, [req.params.id])).rows[0];
       const next_status = allowed.sets_status || c.status;
-      // R-05: auto-close is 7 days after resolution, scheduled at resolution time
+      // R-05: auto-close is scheduled at resolution time, so changing the
+      // setting later never moves a window somebody is already inside.
+      // It was written here as a literal 7 days while auto_close_days sat in
+      // app_setting being read by nothing - an administrator could have
+      // changed it and watched nothing happen.
+      const closeDays = Number(
+        (await t.q(`select value from app_setting where key = 'auto_close_days'`)).rows[0]?.value
+      ) || 7;
       await t.q(
         `update "case" set status = $2, last_activity_at = now(),
                 resolution_note = coalesce($3, resolution_note),
                 resolved_at = case when $2 = 'RESOLVED' then now() else resolved_at end,
-                auto_close_at = case when $2 = 'RESOLVED' then now() + interval '7 days' else auto_close_at end
+                auto_close_at = case when $2 = 'RESOLVED'
+                                     then now() + make_interval(days => $4::int)
+                                     else auto_close_at end
           where id = $1`,
-        [req.params.id, next_status, next_status === 'RESOLVED' ? note : null]
+        [req.params.id, next_status, next_status === 'RESOLVED' ? note : null, closeDays]
       );
       await t.q(`insert into case_event (case_id, at, kind, actor_id, note) values ($1, now(), $2, $3, $4)`,
         [req.params.id, code, req.person.id, note || null]);

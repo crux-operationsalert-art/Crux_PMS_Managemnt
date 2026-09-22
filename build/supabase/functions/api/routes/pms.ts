@@ -113,7 +113,10 @@ r.post('/adjustment', requireChair, async (req, res, next) => {
         reason: 'You may only adjust chairs at or below your own.' });
 
     const out = await tx(req.person.id, async (t) => {
-      const cap = Number(await setting('pms_monthly_cap', '2'));
+      // pms_cut_cap, not pms_monthly_cap: they were two keys for one number,
+      // read from two places in this file, so changing one half-changed the
+      // behaviour. The other key is gone.
+      const cap = Number(await setting('pms_cut_cap', '2'));
       // the cap is shared across escalations and warnings together, per cycle
       const used = (await t.q(
         `select coalesce(sum(abs(points)),0) as used from pms_adjustment
