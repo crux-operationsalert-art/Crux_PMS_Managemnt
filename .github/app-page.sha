@@ -9,4 +9,4 @@
 # message; this records what was asked for. If the two disagree, the
 # republish did not happen.
 
-9e12a3d3eacf9c2d8da08dfe433b82d0  134713 bytes  Mail through an Apps Script relay, and the check that says who it sends as
+eb01af54f2033bfa8e144fe6da85fb00  137275 bytes  The Mail screen says what the one remaining step is
