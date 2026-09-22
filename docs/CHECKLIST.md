@@ -1,0 +1,95 @@
+# Your checklist
+
+Tick these off in order. Nothing later works properly until the ones above it
+are done. Anything not on this list is not yours to do.
+
+---
+
+## 1. Turn on e-mail
+
+- [ ] Sign in to Google as **operations.alert@cruxindia.co.in**
+- [ ] Open <https://script.new>, name it `Crux mail relay`
+- [ ] Paste in all of `mailer/crux-mail.gs`, save
+- [ ] Run `makeSecret` → allow when Google asks → copy the long string it prints
+- [ ] Run `selfTest` → check a mail arrives in operations.alert@
+- [ ] **Deploy → New deployment → Web app**, Execute as **Me**, access **Anyone** → copy the `/exec` URL
+- [ ] In Crux: **Mail → Provider → Apps Script relay**, paste the URL and the secret, **Save the relay**
+- [ ] Press **Check the link** — it must say it sends as operations.alert@cruxindia.co.in
+- [ ] Press **Send me a test**
+
+Full steps with screenshots-worth of detail: `mailer/README.md`.
+
+> Six test messages are already queued. They go to operations.alert@ and
+> nobody else, so they are safe to let through.
+
+---
+
+## 2. Turn on WhatsApp — or skip it
+
+Skip this if you would rather wait for the paid route. Nothing breaks.
+
+- [ ] **WhatsApp → Add a sending device**, name it, copy the token (shown once)
+- [ ] On the laptop or spare phone: `cd bridge`, `npm install`, put the token in `.env`, `npm start`
+- [ ] A red alert appears in Crux — press **Show the code** and scan it with the phone that owns the company number
+
+---
+
+## 3. Upload the masters, in this order
+
+Each one: **Data setup → choose the kind → download the template → fill it →
+upload → check the preview → apply.** A file with any error loads **nothing**,
+so a rejected file is safe to fix and send again.
+
+- [ ] 1 Chairs
+- [ ] 2 People
+- [ ] 3 Geography
+- [ ] 4 Clients and branches
+- [ ] 5 Assignments  ← **the important one**
+- [ ] 6 Rates
+- [ ] 7 Collections
+- [ ] 8 KPI targets
+- [ ] 9 Past performance
+- [ ] 10 Opening balances
+- [ ] 11 Holidays
+- [ ] 12 SLA rules
+- [ ] 13 Escalation matrix
+
+Two notes:
+
+- **Assignments decides who sees what.** Only 15 people have coverage today, so
+  most screens are empty for most people until this file lands.
+- Clients and branches has a new optional **`opened_on`** column. Blank is fine.
+
+---
+
+## 4. Decide six things
+
+- [ ] **The five missing penalty amounts** — P-02 to P-05 and P-07 were never
+      published. Set them in **Configuration → Penalty rules**, or leave them.
+      Nothing fires until you do.
+- [ ] **When to switch the penalty rules on.** Not before KPIs exist, or
+      everyone gets charged for not filing a count nobody asked them for.
+- [ ] **Ten people in the org chart do not exist in the tool** — Maruf Shaikh,
+      Faizan Bagwan, Harshita Gupta, Pranish Khankal, Sneha Kadam, Piyush
+      Singh, Sandhya Jaiswar, Jyostna Patil, Shiladitya, Vishal Pandey. Either
+      add them in the People upload, or the chart names people who have left.
+- [ ] **Where 31 chair holders sit.** Most of it is answered by the Assignments
+      upload. For the rest: **Org chart → pick the chair → choose the place.**
+- [ ] **Does `operations.alert@` hold a chair?** Today it is an admin account
+      with no seat. That is fine if deliberate.
+- [ ] **The EMAIL_LOG and AUDIT_LOG staging files.** One cut-over check is
+      waiting on them and cannot pass without them.
+
+---
+
+## 5. Before you tell anyone to use it
+
+- [ ] Open **Configuration** and read down it once. Every number the tool runs
+      on is there, each with a line saying what it does.
+- [ ] Change the ones you disagree with.
+- [ ] Check **Configuration → What runs by itself** — seven jobs, all on.
+
+---
+
+*Longer version, if you ever want it: `docs/WHAT_IS_BUILT.md`. You should not
+need it to get running.*

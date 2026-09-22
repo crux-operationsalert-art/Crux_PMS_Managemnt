@@ -9,4 +9,4 @@
 # message; this records what was asked for. If the two disagree, the
 # republish did not happen.
 
-e98c14e1244bf07a76b4004f6a0aa8ed  131429 bytes  Configuration: every setting, job and penalty rule reachable from a screen
+9e12a3d3eacf9c2d8da08dfe433b82d0  134713 bytes  Mail through an Apps Script relay, and the check that says who it sends as

@@ -102,6 +102,37 @@ Deno.serve(async (req: Request) => {
       return json(out);
     }
 
+    // Ask the mail relay who it is. Reading the answer from Google rather
+    // than from a settings box is the point: a relay deployed from the wrong
+    // account sends from the wrong address and nothing else would say so.
+    if (path === "/mail/relay-check") {
+      if (person.app_role !== "ADMIN") {
+        return json({ error: "not_admin",
+          reason: "Mail settings are an administrator's to check." }, 403);
+      }
+      const cfg = await rpc("mail_settings", {});
+      const relayUrl = cfg?.mail_relay_url, secret = cfg?.mail_relay_secret;
+      if (!url || !secret) {
+        return json({ error: "no_relay",
+          reason: "Set the relay URL and its secret, then check again." }, 400);
+      }
+      const r = await fetch(
+        relayUrl + (relayUrl.includes("?") ? "&" : "?") +
+        "secret=" + encodeURIComponent(secret),
+      );
+      const text = await r.text();
+      try {
+        return json(JSON.parse(text));
+      } catch {
+        // Apps Script answers with its own HTML page for a bad deployment,
+        // and that page in a status line tells nobody anything.
+        return json({ error: "not_json",
+          reason: "The relay answered with a page rather than JSON. Check the " +
+                  "URL ends in /exec, and that the deployment is a Web app " +
+                  "with access set to Anyone." }, 502);
+      }
+    }
+
     return json({ error: "no_route", path }, 404);
   } catch (e) {
     console.error("[cfg]", e);
