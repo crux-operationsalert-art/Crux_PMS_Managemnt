@@ -130,27 +130,24 @@ Stated plainly so you can decide, not buried:
 
 ## 5 · What is still to build
 
-In the order I intend to do it:
+Done since this was written: the Configuration screen, the escalation action
+set, and KPIs. What is left, in the order I intend to do it:
 
-1. **A Configuration screen.** 71 settings and seven config tables that only a
-   developer can currently reach. This is the one that turns the tool over to
-   you.
-2. **KPIs.** `kpi_definition` is empty, so the daily-count card has nothing to
-   ask for and PMS has nothing to score. Five KPIs were settled; the shape
-   exists, the content does not.
-3. **The escalation action set.** `escalation_action` and `escalation_party`
-   are both empty, so the actions a person sees on an escalation are not yet
-   generated from the part they play.
-4. **E-mail templates.** `template` is empty; every send is currently ad hoc.
-5. **Editing penalty rules** from the Penalties screen, for Administrator, HR
-   and Finance, and the sweep logic for P-02, P-03, P-04, P-05 and P-07.
-6. **The client portal** — account-free, mandatory, and not started.
-7. **Print-exact outputs**: MIS register, monthly summary, scorecard, warning
+1. **E-mail templates.** `template` is empty; every send composes its text at
+   the call site. That works and is readable, but it means changing the
+   wording of a chase is a code change rather than an edit.
+2. **The penalty sweep for P-02 to P-05 and P-07.** Two of the seven fire
+   today. The other five are recorded rules with no logic behind them, and
+   the screen says so on each one.
+3. **The client portal** — account-free, mandatory, not started.
+4. **Print-exact outputs**: MIS register, monthly summary, scorecard, warning
    letters.
-8. **The six AI features** behind a monthly cap. `ai_key` and `ai_call` exist
+5. **The six AI features** behind a monthly cap. `ai_key` and `ai_call` exist
    and are empty.
-
----
+6. **Redeploying `api`.** Two fixes sit in the repository waiting for it: the
+   duplicated PMS cap key, and reading `auto_close_days` rather than a literal
+   seven. Both are covered in the database meanwhile, and the migration says
+   how.
 
 ## 6 · What is yours to do
 
