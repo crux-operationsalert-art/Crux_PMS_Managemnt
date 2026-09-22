@@ -278,6 +278,12 @@ button.onink:hover{background:#fff;color:var(--ink);border-color:#fff}
   border:1px solid var(--line);background:var(--paper);color:var(--ink2);white-space:nowrap}
 .chip.ok{border-color:#2f7a45;color:#2f7a45}
 .chip.warn{border-color:#a8701b;color:#a8701b}
+.opgrp{padding:10px 0;border-bottom:1px solid var(--line3)}
+.opgrp:last-child{border-bottom:0}
+.opgrp>h4{margin:0 0 6px;font-size:14px}
+.opzone{margin:8px 0 8px 14px;padding-left:10px;border-left:2px solid var(--line3)}
+.opzone ul{margin:4px 0 0 4px;padding-left:16px}
+.opzone li{padding:2px 0}
 @media(max-width:760px){
   .cfgrow,.cfgrule{grid-template-columns:1fr}
   .cfgset input{width:100%}
@@ -898,12 +904,95 @@ async function vConfig(){
       }).join("") + "<div id=\"cfgpenmsg\"></div></div>"
     : "";
 
+  var locs = (d.locations || []).length
+    ? "<div class=\"card\"><h3>Locations</h3>" +
+      "<p class=\"mute\">How the business groups itself, taken from the Zonal " +
+      "Tracker: a compass group, its zones, their locations. This is the " +
+      "vocabulary the Assignments file has to use - a file naming a location " +
+      "that is not here is refused, and this is where one gets added.</p>" +
+      "<p class=\"mute\">Nothing here is ever deleted. A location that coverage " +
+      "already names is switched off instead, so what points at it keeps " +
+      "pointing somewhere.</p>" +
+      d.locations.map(function(g){
+        return "<div class=\"opgrp\"><h4>" + esc(g.name) +
+          " <button class=\"btn\" data-opadd=\"" + esc(g.id) + "\" " +
+            "data-opwhat=\"zone\">Add a zone</button></h4>" +
+          (g.zones || []).map(function(z){
+            return "<div class=\"opzone\"><b" + (z.active ? ">" : " class=\"mute\">") +
+              esc(z.name) + "</b>" +
+              (z.active ? "" : " <span class=\"chip\">off</span>") +
+              " <button class=\"btn\" data-opedit=\"" + esc(z.id) + "\" " +
+                "data-opname=\"" + esc(z.name) + "\">Rename</button>" +
+              " <button class=\"btn\" data-opadd=\"" + esc(z.id) + "\" " +
+                "data-opwhat=\"location\">Add a location</button>" +
+              " <button class=\"btn\" data-opoff=\"" + esc(z.id) + "\" " +
+                "data-opon=\"" + (z.active ? "1" : "0") + "\">" +
+                (z.active ? "Switch off" : "Switch on") + "</button>" +
+              "<ul>" + (z.locations || []).map(function(l){
+                return "<li" + (l.active ? ">" : " class=\"mute\">") + esc(l.name) +
+                  (l.active ? "" : " <span class=\"chip\">off</span>") +
+                  (l.inUse ? " <span class=\"chip ok\">in use</span>" : "") +
+                  " <button class=\"btn\" data-opedit=\"" + esc(l.id) + "\" " +
+                    "data-opname=\"" + esc(l.name) + "\">Rename</button>" +
+                  " <button class=\"btn\" data-opoff=\"" + esc(l.id) + "\" " +
+                    "data-opon=\"" + (l.active ? "1" : "0") + "\">" +
+                    (l.active ? "Switch off" : "Switch on") + "</button></li>";
+              }).join("") + "</ul></div>";
+          }).join("") + "</div>";
+      }).join("") + "<div id=\"opmsg\"></div></div>"
+    : "";
+
   el("view").innerHTML =
     "<h1>Configuration</h1>" +
     "<p class=\"mute\">Every number the tool runs on. Each one says what it does " +
     "in the line underneath it; that line is the description stored with the " +
     "setting, not a guess made here.</p>" +
-    "<div id=\"cfgmsg\"></div>" + jobs + pens + groups;
+    "<div id=\"cfgmsg\"></div>" + locs + jobs + pens + groups;
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-opadd]"), function(b){
+    b.onclick = async function(){
+      var what = b.getAttribute("data-opwhat");
+      var name = prompt("Name the new " + what + ".", "");
+      if (name === null || !name.trim()) return;
+      b.disabled = true;
+      var out = await cfg("/location", { method:"POST",
+        body:{ name: name.trim(), parent: b.getAttribute("data-opadd") } });
+      b.disabled = false;
+      if (out.error) { el("opmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      cfgCache = null; vConfig();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-opedit]"), function(b){
+    b.onclick = async function(){
+      var was = b.getAttribute("data-opname");
+      var name = prompt("Rename it. Everything already pointing at it follows " +
+        "the new name - it is the same thing, called something else.", was);
+      if (name === null || !name.trim() || name.trim() === was) return;
+      b.disabled = true;
+      var out = await cfg("/location", { method:"POST",
+        body:{ id: b.getAttribute("data-opedit"), name: name.trim() } });
+      b.disabled = false;
+      if (out.error) { el("opmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      cfgCache = null; vConfig();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-opoff]"), function(b){
+    b.onclick = async function(){
+      var on = b.getAttribute("data-opon") === "1";
+      if (on && !confirm("Switch it off? It stops being offered for new " +
+        "assignments. Nothing that already names it changes.")) return;
+      b.disabled = true;
+      var out = await cfg("/location/retire", { method:"POST",
+        body:{ id: b.getAttribute("data-opoff"), active: !on } });
+      b.disabled = false;
+      if (out.error) { el("opmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      if (out.note) { el("opmsg").innerHTML = msg("warn", out.note); }
+      cfgCache = null;
+      setTimeout(vConfig, out.note ? 1600 : 0);
+    };
+  });
 
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-save]"), function(b){
     b.onclick = async function(){
