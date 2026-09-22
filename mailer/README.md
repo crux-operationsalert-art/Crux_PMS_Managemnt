@@ -21,6 +21,14 @@ deploys the script is the address every message comes from.
 Open <https://script.new>. Name it `Crux mail relay`. Delete what is in
 `Code.gs` and paste all of `crux-mail.gs`. Save.
 
+> **Check the paste landed whole.** The file is 107 lines and its last line is
+> `// ===== END OF FILE =====`. If that line is not at the bottom of the
+> editor, the copy was cut short and Apps Script will say
+> *"SyntaxError: Unexpected end of input"* — which means the file ended before
+> it should have, not that anything in it is wrong. Copy it again from
+> [the raw file](https://raw.githubusercontent.com/crux-operationsalert-art/Crux_PMS_Managemnt/main/mailer/crux-mail.gs)
+> — that page is plain text, so Ctrl+A then Ctrl+C takes all of it.
+
 **2. Make the secret.**
 Function dropdown → `makeSecret` → Run. Google asks for authorisation the
 first time: choose the account → **Advanced** → **Go to Crux mail relay
