@@ -261,6 +261,27 @@ button.onink:hover{background:#fff;color:var(--ink);border-color:#fff}
   .orgwhere,.orgwho{grid-column:2}
   .orgtbl th:nth-child(3),.orgtbl td:nth-child(3){display:none}
 }
+
+/* Configuration. A row is a name, the line that says what it does, and the
+   box you change it in - in that order, because the explanation is the part
+   that makes the number safe to touch.                                     */
+.cfgrow{display:grid;grid-template-columns:1fr auto;gap:10px 16px;align-items:start;
+  padding:11px 0;border-bottom:1px solid var(--line3)}
+.cfgrow:last-child{border-bottom:0}
+.cfgrow .mute{margin-top:2px}
+.cfgset{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.cfgset input{width:180px}
+.cfgrule{display:grid;grid-template-columns:1fr auto;gap:10px 16px;align-items:start;
+  padding:13px 0;border-bottom:1px solid var(--line3)}
+.cfgrule:last-child{border-bottom:0}
+.chip{display:inline-block;font-size:11px;line-height:1.5;padding:1px 7px;border-radius:9px;
+  border:1px solid var(--line);background:var(--paper);color:var(--ink2);white-space:nowrap}
+.chip.ok{border-color:#2f7a45;color:#2f7a45}
+.chip.warn{border-color:#a8701b;color:#a8701b}
+@media(max-width:760px){
+  .cfgrow,.cfgrule{grid-template-columns:1fr}
+  .cfgset input{width:100%}
+}
 </style></head><body>
 
 <!-- ============================================================== sign in -->
@@ -393,6 +414,8 @@ async function call(base, path, opts){
 var ORG  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/org";
 var api  = function(p,o){ return call(API,  p, o); };
 var org  = function(p,o){ return call(ORG,  p, o); };
+var CFG  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/cfg";
+var cfg  = function(p,o){ return call(CFG,  p, o); };
 var WA   = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/wa";
 var wa   = function(p,o){ return call(WA,   p, o); };
 var crux = function(p,o){ return call(CRUX, p, o); };
@@ -447,7 +470,8 @@ var NAV = [
   { label:"Work",       items:[ ["ogl","OGL"], ["cases","Escalations"], ["matrix","Matrix"] ] },
   { label:"Standing",   items:[ ["pms","Performance"], ["penalties","Penalties"],
                                 ["people","People"], ["org","Org chart"] ] },
-  { label:"Keep",       items:[ ["data","Data setup"], ["mail","Mail"], ["whatsapp","WhatsApp"] ] }
+  { label:"Keep",       items:[ ["config","Configuration"], ["data","Data setup"],
+                                ["mail","Mail"], ["whatsapp","WhatsApp"] ] }
 ];
 var ADMIN_TABS = { data:1, mail:1, whatsapp:1 };
 var MOB_BAR = ["today","ogl","cases","more"];
@@ -456,7 +480,13 @@ NAV.forEach(function(g){ g.items.forEach(function(t){ TABS.push(t); }); });
 var LABEL = {}; TABS.forEach(function(t){ LABEL[t[0]] = t[1]; });
 var badges = {};
 
-function allowed(key){ return !ADMIN_TABS[key] || (me && me.app_role === "ADMIN"); }
+function allowed(key){
+  if (key === "config") {
+    return !!me && (me.app_role === "ADMIN" ||
+      me.department === "Human Resources" || me.department === "Finance & Accounts");
+  }
+  return !ADMIN_TABS[key] || (me && me.app_role === "ADMIN");
+}
 function badgeHtml(key, cls){
   var n = badges[key];
   return n ? '<span class="'+(cls||"badge")+'">'+esc(n)+'</span>' : "";
@@ -769,6 +799,173 @@ function waWhy(err){
 /* -------------------------------------------------------------- whatsapp
    The same shape as Mail, because it is the same job: say what is set, what
    is waiting, and what failed - then let one button prove it.              */
+/* ---------------------------------------------------------- configuration
+   Sixty-two settings, seven jobs and seven penalty rules that until now
+   could only be reached by somebody with database access.
+
+   Three things this screen refuses to do, because each of them would make
+   it lie: it never shows a secret, it never offers a control for a value
+   the system sets itself, and it never presents a number nothing reads as
+   though changing it would do something.                                  */
+var cfgCache = null;
+
+async function vConfig(){
+  var d = cfgCache || (cfgCache = await cfg("/"));
+  if (d.error) { cfgCache = null;
+    el("view").innerHTML = "<h1>Configuration</h1>" + msg("bad", d.reason || d.error); return; }
+
+  function field(s){
+    var id = "cs_" + s.key;
+    if (!s.editable) {
+      return "<div class=\"cfgrow\"><div><b>" + esc(s.key) + "</b>" +
+        "<div class=\"mute\">" + esc(s.says) + "</div></div>" +
+        "<div class=\"mute\">" + (s.isSet ? "set by the system" : "not set") + "</div></div>";
+    }
+    var box = s.isSecret
+      ? "<input id=\"" + id + "\" type=\"password\" autocomplete=\"new-password\" " +
+        "placeholder=\"" + (s.isSet ? "set - type to replace" : "not set") + "\">"
+      : "<input id=\"" + id + "\" value=\"" + esc(s.value) + "\">";
+    return "<div class=\"cfgrow\"><div><b>" + esc(s.key) + "</b>" +
+      (s.inForce ? "" : " <span class=\"chip\">not yet in force</span>") +
+      "<div class=\"mute\">" + esc(s.says) + "</div></div>" +
+      "<div class=\"cfgset\">" + box +
+      "<button class=\"btn\" data-save=\"" + esc(s.key) + "\">Save</button></div></div>";
+  }
+
+  var groups = (d.groups || []).map(function(g){
+    var live = g.settings.filter(function(s){ return s.inForce; });
+    var dormant = g.settings.filter(function(s){ return !s.inForce; });
+    return "<div class=\"card\"><h3>" + esc(g.name) + "</h3>" +
+      live.map(field).join("") +
+      (dormant.length
+        ? "<p class=\"mute\" style=\"margin-top:14px\"><b>Recorded, not yet in force.</b> " +
+          "These are kept so the decision is not lost, but nothing reads them yet, " +
+          "so changing one has no effect today.</p>" + dormant.map(field).join("")
+        : "") +
+      "</div>";
+  }).join("");
+
+  var jobs = (d.jobs || []).length
+    ? "<div class=\"card\"><h3>What runs by itself</h3>" +
+      "<p class=\"mute\">Every one of these is safe to run twice: running it again " +
+      "does the work once. Stopping one asks you why, because somebody will need " +
+      "to know later.</p>" +
+      "<table class=\"orgtbl\"><thead><tr><th>Job</th><th>When</th><th>Last run</th>" +
+      "<th></th></tr></thead><tbody>" +
+      d.jobs.map(function(j){
+        var last = j.lastRun
+          ? esc(when(j.lastRun.at)) + " · " + esc(j.lastRun.state) +
+            (j.lastRun.error ? "<div class=\"mute\">" + esc(j.lastRun.error) + "</div>" : "")
+          : "<span class=\"mute\">never</span>";
+        return "<tr><td><b>" + esc(j.key) + "</b>" +
+          (j.enabled ? "" : "<div class=\"mute\">Stopped" +
+            (j.disabledBy ? " by " + esc(j.disabledBy) : "") +
+            (j.reason ? ": " + esc(j.reason) : "") + "</div>") +
+          "</td><td class=\"mute\">" + esc(j.cron) + "</td><td>" + last + "</td>" +
+          "<td><button class=\"btn\" data-job=\"" + esc(j.key) + "\" " +
+            "data-on=\"" + (j.enabled ? "1" : "0") + "\">" +
+            (j.enabled ? "Stop" : "Start") + "</button></td></tr>";
+      }).join("") + "</tbody></table><div id=\"cfgjobmsg\"></div></div>"
+    : "";
+
+  var pens = (d.penalties || []).length
+    ? "<div class=\"card\"><h3>Penalty rules</h3>" +
+      "<p class=\"mute\">Yours to change as an administrator, and HR's and " +
+      "Finance's too. What has already been charged is never touched: an " +
+      "instance keeps the amount it fired with, so changing a rule cannot " +
+      "rewrite history.</p>" +
+      d.penalties.map(function(p){
+        return "<div class=\"cfgrule\"><div><b>" + esc(p.code) + " · " + esc(p.what) + "</b>" +
+          (p.active ? " <span class=\"chip ok\">on</span>" : " <span class=\"chip\">off</span>") +
+          (p.fires ? "" : " <span class=\"chip warn\">no sweep yet</span>") +
+          "<div class=\"mute\">" + esc(p.says) + "</div>" +
+          "<div class=\"mute\">Applies to " + esc((p.appliesTo || []).join(", ")) +
+            " · recovered by " + esc(p.recoveredBy) +
+            " · charged " + esc(p.charged) + " times</div>" +
+          (p.fires ? "" : "<div class=\"mute\">The nightly sweep has no logic for " +
+            "this rule yet, so switching it on records the decision but charges " +
+            "nobody. P-01 and P-06 are the two that fire today.</div>") +
+          "</div><div class=\"cfgset\">" +
+          "<input id=\"cp_" + esc(p.id) + "\" value=\"" + esc(p.amount) +
+            "\" style=\"width:90px\" inputmode=\"decimal\">" +
+          "<button class=\"btn\" data-pen=\"" + esc(p.id) + "\">Save amount</button>" +
+          "<button class=\"btn\" data-pentog=\"" + esc(p.id) + "\" " +
+            "data-on=\"" + (p.active ? "1" : "0") + "\">" +
+            (p.active ? "Switch off" : "Switch on") + "</button>" +
+          "</div></div>";
+      }).join("") + "<div id=\"cfgpenmsg\"></div></div>"
+    : "";
+
+  el("view").innerHTML =
+    "<h1>Configuration</h1>" +
+    "<p class=\"mute\">Every number the tool runs on. Each one says what it does " +
+    "in the line underneath it; that line is the description stored with the " +
+    "setting, not a guess made here.</p>" +
+    "<div id=\"cfgmsg\"></div>" + jobs + pens + groups;
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-save]"), function(b){
+    b.onclick = async function(){
+      var k = b.getAttribute("data-save");
+      var box = el("cs_" + k);
+      b.disabled = true;
+      var out = await cfg("/setting", { method:"POST", body:{ key:k, value: box.value } });
+      b.disabled = false;
+      if (out.error) { el("cfgmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      el("cfgmsg").innerHTML = msg("ok", k + " saved." +
+        (out.wasInForce ? "" : " It is recorded, but nothing reads it yet."));
+      if (box.type === "password") { box.value = ""; box.placeholder = "set - type to replace"; }
+      cfgCache = null;
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-job]"), function(b){
+    b.onclick = async function(){
+      var k = b.getAttribute("data-job"), on = b.getAttribute("data-on") === "1";
+      var reason = null;
+      if (on) {
+        reason = prompt("Stopping " + k + ". Why? Somebody will read this later, " +
+          "possibly months from now.", "");
+        if (reason === null || !reason.trim()) return;
+      }
+      b.disabled = true;
+      var out = await cfg("/job", { method:"POST",
+        body:{ key:k, enabled: !on, reason: reason } });
+      b.disabled = false;
+      if (out.error) { el("cfgjobmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      cfgCache = null;
+      vConfig();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pen]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-pen");
+      b.disabled = true;
+      var out = await cfg("/penalty", { method:"POST",
+        body:{ id:id, amount: Number(el("cp_" + id).value) } });
+      b.disabled = false;
+      if (out.error) { el("cfgpenmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      el("cfgpenmsg").innerHTML = msg("ok", out.code + " saved.");
+      cfgCache = null;
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pentog]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-pentog"), on = b.getAttribute("data-on") === "1";
+      if (!on && !confirm("Switch this rule on? From tonight it starts charging " +
+        "people who miss it.")) return;
+      b.disabled = true;
+      var out = await cfg("/penalty", { method:"POST",
+        body:{ id:id, active: !on, amount: Number(el("cp_" + id).value) } });
+      b.disabled = false;
+      if (out.error) { el("cfgpenmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      cfgCache = null;
+      vConfig();
+    };
+  });
+}
+
 async function vWhats(){
   var w = await wa("/");
   if (w.error) {
@@ -1020,7 +1217,8 @@ function route(){
   paintNav();
   el("view").innerHTML = '<p class="mute">Loading…</p>';
   var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms,
-    people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail, whatsapp:vWhats}[t];
+    people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail,
+    whatsapp:vWhats, config:vConfig}[t];
   Promise.resolve().then(run).catch(function(e){
     el("view").innerHTML = '<h1>' + esc(LABEL[t] || t) + '</h1>' +
       msg("bad", "This screen could not be drawn. " + ((e && e.message) || e)) +
