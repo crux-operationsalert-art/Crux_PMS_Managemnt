@@ -98,6 +98,35 @@ Five notes:
 
 ---
 
+## 3b. What is on screen now
+
+Built to the design in `Crux App v2.dc.html`, against your uploaded data — no
+placeholder rows anywhere:
+
+- **Clients** — every client, the locations it has branches at, its default
+  escalation matrix, and under any branch its full record: five levels with
+  what is inherited marked as inherited, the branch manager, the Crux point of
+  contact, the address and who covers it. Add a branch and Edit these details
+  are the design's own forms.
+- **Coverage & handlers** — assigning people, in the tool. 59 client-and-location
+  pairs, 39 still unassigned.
+- **People** — one row per chair even when 63 people share it, and Move to
+  re-parent a chair.
+- **History & audit trail** — 199 entries, 25 kinds. Written inside the same
+  transaction as the change, so it can be used as evidence.
+
+Three panels inside Clients say what they are waiting for rather than showing
+an invented number: **Performance** waits on Rates and Collections, **Visits**
+waits on the first visit, **RAG** waits on a target and a month of filings.
+That is the honest state, not a gap in the screen.
+
+Eleven of the design's screens are still unbuilt: MIS, Rate master, Reports,
+Report access, 10-day management view, Hiring & pending chairs, HR, Joining,
+My profile, Visits & claims, Ideathon. Most of them are waiting on the uploads
+at items 6 to 10 above, not on code.
+
+---
+
 ## 4. Decide six things
 
 - [ ] **The five missing penalty amounts** — P-02 to P-05 and P-07 were never
