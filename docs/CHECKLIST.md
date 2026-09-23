@@ -57,7 +57,7 @@ so a rejected file is safe to fix and send again.
 - [ ] 12 SLA rules
 - [ ] 13 Escalation matrix
 
-Four notes:
+Five notes:
 
 - **Your Geography file stops at Goa.** Sorted by state, it runs Andaman →
   Andhra → Arunachal → Assam → Bihar → Chhattisgarh → Delhi → Goa and ends:
@@ -84,11 +84,6 @@ Four notes:
   North East, Bihar and Jharkhand to North, Chhattisgarh to West, Andaman to
   East. All 139 branches on them stay attached, and each move is listed under
   **Review** so you can see it and undo it.
-- **The Assignments template downloads already filled in.** All 59 client and
-  location pairs that have branches, with a suggested handler on 21 of them
-  carried across from who covers those branches today, and the handler's
-  manager as a starting location head. The notes at the bottom of the file say
-  where every filled-in value came from. Correct it and add the 38 blanks.
 - **One word, two meanings — now separated.** Your *operating* zone (Mumbai,
   Amaravati, Patna) is who runs a place. The *region* (East, West, North,
   South, Central, North East) is where it is on the map. Geography defines
@@ -114,8 +109,8 @@ Four notes:
       Faizan Bagwan, Harshita Gupta, Pranish Khankal, Sneha Kadam, Piyush
       Singh, Sandhya Jaiswar, Jyostna Patil, Shiladitya, Vishal Pandey. Either
       add them in the People upload, or the chart names people who have left.
-- [ ] **Where 31 chair holders sit.** Most of it is answered by the Assignments
-      upload. For the rest: **Org chart → pick the chair → choose the place.**
+- [ ] **Where 31 chair holders sit.** Most of it is answered under **Coverage &
+      handlers**. For the rest: **Org chart → pick the chair → choose the place.**
 - [ ] **Does `operations.alert@` hold a chair?** Today it is an admin account
       with no seat. That is fine if deliberate.
 - [ ] **The EMAIL_LOG and AUDIT_LOG staging files.** One cut-over check is
