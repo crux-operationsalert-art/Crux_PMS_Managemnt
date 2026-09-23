@@ -120,10 +120,24 @@ an invented number: **Performance** waits on Rates and Collections, **Visits**
 waits on the first visit, **RAG** waits on a target and a month of filings.
 That is the honest state, not a gap in the screen.
 
-Eleven of the design's screens are still unbuilt: MIS, Rate master, Reports,
-Report access, 10-day management view, Hiring & pending chairs, HR, Joining,
-My profile, Visits & claims, Ideathon. Most of them are waiting on the uploads
-at items 6 to 10 above, not on code.
+- **My profile** — your details, what is waiting on you, where you sit, what
+  you cover, and your record. An edit is not live: it goes to HR by notice and
+  by e-mail, with your old value beside the new one.
+- **Hiring & pending chairs** — **137 chairs have nobody in them**, and 24 of
+  those have other chairs reporting into them. Raise a hire against any of
+  them; HR approves, the administrator creates the account and the activation
+  code goes out.
+
+Nine of the design's screens are still unbuilt: MIS, Rate master, Reports,
+Report access, 10-day management view, HR, Joining, Visits & claims, Ideathon.
+Every one of them is waiting on the uploads at items 6 to 10 above, not on
+code — their tables exist and are empty.
+
+**Every screen above has been called for real**, not just drawn: a short-lived
+session, the database calling the deployed API through pg_net, and the answer
+read back. That is how two defects were found and fixed — a missing `.btn`
+style that made selected items look identical to unselected ones, and a 500 on
+My profile from a query parameter that was passed but never used.
 
 ---
 
