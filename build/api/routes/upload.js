@@ -21,9 +21,14 @@ function requireAdmin(req, res, next) {
     reason: 'Loading masters is administrator work.' });
 }
 
-// The exact headers each loader reads, with the rule for every column, taken
-// from the template generator in the application so a file is right before it
-// is uploaded rather than rejected after.
+// NOT THE LIVE TEMPLATE SOURCE. The application serves /api/template from the
+// crux edge function, which reads upload_column in the database -- so a new
+// column is a row, not a redeploy. This copy is only what this service would
+// hand out if it were ever put back in front of the page, and it had drifted:
+// Assignments said `zone` long after the loader moved to `location` against
+// the operating grouping, and Chairs, SLA rules and Escalation matrix are
+// missing entirely. Corrected below for Assignments; check upload_column
+// before trusting any of it.
 const SPEC = {
   'People': [
     ['employee_no', 'EMP-0114', 'Required, unique. Your own numbering; it becomes the person key.'],
@@ -53,12 +58,12 @@ const SPEC = {
   ],
   'Assignments': [
     ['client_code', 'SBI', 'Required. Must exist.'],
-    ['zone', 'Pune', 'Required. Must exist.'],
+    ['location', 'Pune', 'Required. Must be an active location in the operating grouping — an administrator adds one under Configuration, Locations.'],
     ['product', 'Home loan', 'Optional. Blank means every product for that client at that location.'],
     ['handler_employee_no', 'EMP-0114', 'Required. Must exist in People.'],
     ['location_head_employee_no', 'EMP-0088', 'Optional.'],
     ['effective_from', '2026-04-01', 'Required, YYYY-MM-DD.'],
-    ['effective_to', '', 'Blank for open-ended. Overlapping dates on the same client, zone and product is an error.'],
+    ['effective_to', '', 'Blank for open-ended. Overlapping dates on the same client, location and product is an error.'],
   ],
   'Rates': [
     ['client_code', 'SBI', 'Required. Must already exist.'],
