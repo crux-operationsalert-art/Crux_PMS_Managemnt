@@ -41,7 +41,7 @@ upload → check the preview → apply.** A file with any error loads **nothing*
 so a rejected file is safe to fix and send again.
 
 - [x] 1 Chairs — loaded, see the note below
-- [ ] 2 People
+- [x] 2 People — loaded
 - [ ] 3 Geography
 - [ ] 4 Clients and branches
 - [ ] 5 Assignments  ← **the important one**
@@ -64,6 +64,14 @@ Three notes:
   place, so there is nothing for you to do unless you upload that same file
   again. If you do, save it from Excel as **CSV UTF-8**, or replace the dashes
   with a plain hyphen first.
+- **Geography: `region` is the tree, `zone` is yours.** `region` (East, West,
+  North, South, Central, North East) is the top of the geography tree — states
+  and cities hang off it. `zone` is the operating zone a place is served from
+  (Kolkata, Amaravati, Pune) and repeats down the file, one row per city.
+  Loading your file moves five states to the region you put them in — Assam to
+  North East, Bihar and Jharkhand to North, Chhattisgarh to West, Andaman to
+  East. All 139 branches on them stay attached, and each move is listed under
+  **Review** so you can see it and undo it.
 - **Assignments decides who sees what.** Only 15 people have coverage today, so
   most screens are empty for most people until this file lands.
 - Clients and branches has a new optional **`opened_on`** column. Blank is fine.
