@@ -166,3 +166,26 @@ begin
                              'branch_contacts_moved', v_bc,
                              'clients_retired', (select count(*) from client where code like 'CLI-%')));
 end $$;
+
+-- ---------------------------------------------------------------------
+-- APPLIED 2026-09-23 in five steps, not one. The whole thing in a single
+-- transaction exceeded the 60s tool limit and rolled back cleanly, twice.
+-- The cause was not volume: coverage_rule carries a BEFORE UPDATE FOR EACH
+-- ROW trigger, coverage_no_overlap, which expands coverage_resolve() over
+-- every other rule the same person holds. One person holds 702 of them, so
+-- moving 1,123 rows is around half a million expansions. It cannot find an
+-- overlap during this move -- the map is one-to-one, so a person's set of
+-- branches is the same set with each member pointing at its own twin -- so
+-- step 2 suspends it and puts it straight back.
+--
+-- Migrations as applied:
+--   fold_1_branch_generation_map          1,412 rows mapped, one-to-one
+--   fold_2_coverage_moves_to_the_real_branches  1,123 rules
+--   fold_3_escalation_matrix_moves        3,492 branch rows + client level
+--   fold_4_branch_contacts_zones_cases    1,902 contacts, 48 zones, 3 cases
+--   fold_5_retire_the_cutover_copies      28 clients, 1,413 branches retired
+--
+-- Verified after: 17 active clients, 28 retired, 1,825 branches on the
+-- master (1,143 ACTIVE), 1,125 coverage rules across 15 people, 3,492
+-- matrix contacts, 1,902 branch contacts, and 692 branches now reporting a
+-- complete five-level escalation matrix where none did before.
