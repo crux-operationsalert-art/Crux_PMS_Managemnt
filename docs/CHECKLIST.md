@@ -42,7 +42,7 @@ so a rejected file is safe to fix and send again.
 
 - [x] 1 Chairs — loaded, see the note below
 - [x] 2 People — loaded
-- [ ] 3 Geography
+- [x] 3 Geography — loaded
 - [ ] 4 Clients and branches
 - [ ] 5 Assignments  ← **the important one**
 - [ ] 6 Rates
@@ -72,6 +72,12 @@ Three notes:
   North East, Bihar and Jharkhand to North, Chhattisgarh to West, Andaman to
   East. All 139 branches on them stay attached, and each move is listed under
   **Review** so you can see it and undo it.
+- **One word, two meanings — now separated.** Your *operating* zone (Mumbai,
+  Amaravati, Patna) is who runs a place. The *region* (East, West, North,
+  South, Central, North East) is where it is on the map. Geography defines
+  both; Clients, Assignments and everything after it use the operating zone.
+  Your seven zones now exist under **Configuration → Locations** and can be
+  renamed or added to there.
 - **Assignments decides who sees what.** Only 15 people have coverage today, so
   most screens are empty for most people until this file lands.
 - Clients and branches has a new optional **`opened_on`** column. Blank is fine.
