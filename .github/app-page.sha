@@ -9,4 +9,4 @@
 # message; this records what was asked for. If the two disagree, the
 # republish did not happen.
 
-0fab7899f9fab8d860c55ce3bbca5321  160479 bytes  Coverage & handlers, and a chair you can move
+94e16b61918e4ce8a982577981f43ee5  178628 bytes  Clients, and History & audit trail
