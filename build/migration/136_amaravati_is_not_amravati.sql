@@ -1,0 +1,27 @@
+-- Amaravati is in Andhra Pradesh. Amravati is in Maharashtra.
+--
+-- Migration 130 matched the Geography file's zone "Amaravati" -- the southern
+-- operating zone carrying Andhra Pradesh, Telangana, Karnataka, Kerala and
+-- Tamil Nadu -- onto the operating location of the same spelling that already
+-- existed in the Zonal Tracker. That one sits under Rest Of Maharashtra Zone
+-- beside Nagpur, Nashik, Kolhapur, Solapur, Latur and Pune. It is the
+-- Maharashtra city.
+--
+-- So 151 branches in Vijayawada, Visakhapatnam, Nellore, Anantapur, Bengaluru,
+-- Hyderabad and Chennai were sitting in the West group under Rest Of
+-- Maharashtra: every one on the wrong side of the operating tree, which is the
+-- one thing an operating tree is for.
+--
+-- The zone this should have used already existed: ZONE "Amaravati" under GROUP
+-- "South", which migration 130 switched off as a supposed duplicate. It is
+-- switched back on, given its own location, and the 151 branches move to it.
+-- The Maharashtra location keeps its rows and takes its own correct spelling,
+-- so a later upload naming "Amaravati" resolves to the southern one and cannot
+-- repeat this.
+--
+-- Found by calling the deployed API from inside the database and reading what
+-- came back: the coverage endpoint answered location "Amaravati", zone "Rest Of
+-- Maharashtra Zone".
+--
+-- Applied 2026-09-23. Verified after: South > Amaravati > Amaravati holds 151
+-- branches; West > Rest Of Maharashtra Zone > Amravati (Maharashtra) holds 0.

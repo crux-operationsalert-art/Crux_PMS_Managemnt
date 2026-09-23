@@ -20,6 +20,7 @@ import penalties from "./routes/penalties.ts";
 import coverage from "./routes/coverage.ts";
 import clients from "./routes/clients.ts";
 import history from "./routes/history.ts";
+import profile from "./routes/profile.ts";
 import sample from "./routes/sample.ts";
 import table from "./routes/table.ts";
 
@@ -32,6 +33,7 @@ const MOUNTS: [string, any][] = [
   ["/api/coverage", coverage],
   ["/api/clients", clients],
   ["/api/history", history],
+  ["/api/profile", profile],
   ["/api/sample", sample],
   // Last. The generic seam endpoint answers /api/<table> for the ten views the
   // application reads, so every screen has a source. Anything the named mounts

@@ -239,4 +239,49 @@ r.post('/chair/:id/move', requireChair, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Hiring & pending chairs. The design's screen is three lists: the hire
+// requests in flight with the stage each is at, a risk register of chairs
+// nobody owns, and the empty chairs that nobody has even asked about.
+//
+// The whole chain behind it already exists -- raise, HR approves, the
+// administrator seats and the activation e-mail goes out. What was missing was
+// anywhere to see the 137 chairs sitting empty, which is the thing the register
+// is for.
+r.get('/hiring', requireChair, async (req, res) => {
+  const [requests, vacant] = await Promise.all([
+    many(
+      `select pr.id, pr.full_name, pr.work_email, pr.state, pr.employee_type,
+              pr.requested_at, pr.due_at, pr.reject_reason, pr.finance_state,
+              ch.code, ch.title as chair,
+              rb.full_name as raised_by, mg.full_name as manager
+         from person_request pr
+         left join chair ch on ch.id = pr.chair_id
+         left join person rb on rb.id = pr.requested_by
+         left join person mg on mg.id = pr.manager_id
+        order by case pr.state when 'AWAITING_HR' then 0 when 'AWAITING_ADMIN' then 1
+                               else 2 end, pr.due_at nulls last`),
+    many(
+      `select ch.id, ch.code, ch.title, par.title as reports_to,
+              st.overdue_days, st.due_at,
+              exists (select 1 from person_request pr
+                       where pr.chair_id = ch.id and pr.state in ('AWAITING_HR','AWAITING_ADMIN'))
+                as has_request,
+              (select count(*)::int from chair kid where kid.parent_id = ch.id) as below
+         from chair ch
+         left join chair par on par.id = ch.parent_id
+         left join lateral (select s.overdue_days, s.due_at from chair_status s
+                             where s.chair_id = ch.id
+                             order by s.overdue_days desc nulls last limit 1) st on true
+        where not exists (select 1 from chair_holder h
+                           where h.chair_id = ch.id and h.to_date is null)
+        order by (select count(*) from chair kid where kid.parent_id = ch.id) desc, ch.title`),
+  ]);
+  res.json({
+    requests, vacant,
+    mayRaise: !!req.scope,
+    mayApprove: req.person.department === 'Human Resources' || req.person.app_role === 'ADMIN',
+    maySeat: req.person.app_role === 'ADMIN',
+  });
+});
+
 export default r;
