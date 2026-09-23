@@ -11,7 +11,7 @@
 do $$
 declare v_body text; v_new text; v_js text;
 begin
-  select body into v_body from app_page where slug = 'app';
+  select html into v_body from app_page where slug = 'app';
   if v_body is null then raise exception 'no app page'; end if;
   if position('{ label:"Keep",       items:[ ["config","Configuration"],' in v_body) = 0 then
     raise exception 'the navigation anchor is not there';
@@ -266,5 +266,5 @@ $js$;
   if position('async function vCoverage(){' in v_new) = 0 then raise exception 'screen not added'; end if;
   if length(v_new) <= length(v_body) then raise exception 'the page did not grow'; end if;
 
-  update app_page set body = v_new, updated_at = now() where slug = 'app';
+  update app_page set html = v_new, updated_at = now() where slug = 'app';
 end $$;
