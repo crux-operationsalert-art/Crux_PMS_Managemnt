@@ -194,4 +194,49 @@ r.post('/:personId/note', requireChair, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Moving a chair. The design's structure screen lets you drag a chair onto a
+// new parent; this is the write behind it. A chair cannot be moved under
+// itself or under anything beneath it, because that would cut the branch off
+// from the tree entirely -- the recursive walk below is what proves it.
+r.post('/chair/:id/move', requireChair, async (req, res, next) => {
+  const { parentId } = req.body || {};
+  try {
+    if (req.person.app_role !== 'ADMIN' && !(await mayWriteChair(req.scope, req.params.id)))
+      return res.status(403).json({ error: 'out_of_subtree',
+        reason: 'You may only move chairs at or below your own.' });
+
+    const out = await tx(req.person.id, async (t) => {
+      const me = (await t.q(
+        `select id, code, title, parent_id from chair where id = $1`, [req.params.id])).rows[0];
+      if (!me) throw Object.assign(new Error('no_such_chair'), { status: 404 });
+
+      if (parentId) {
+        const up = (await t.q(
+          `with recursive t as (
+              select id from chair where id = $1
+              union all
+              select c.id from chair c join t on c.parent_id = t.id)
+            select 1 from t where id = $2`, [req.params.id, parentId])).rows.length;
+        if (up) throw Object.assign(new Error('would_make_a_loop'), { status: 409,
+          reason: 'That chair sits underneath this one. Moving it there would cut the branch off the tree.' });
+        const p = (await t.q(`select id, title from chair where id = $1`, [parentId])).rows[0];
+        if (!p) throw Object.assign(new Error('no_such_parent'), { status: 404 });
+      }
+
+      const was = (await t.q(
+        `select title from chair where id = $1`, [me.parent_id])).rows[0];
+      await t.q(`update chair set parent_id = $2 where id = $1`,
+        [req.params.id, parentId || null]);
+      const now = (await t.q(
+        `select title from chair where id = $1`, [parentId || null])).rows[0];
+
+      await t.audit('CHAIR_MOVED', 'chair', me.code,
+        { parent: was ? was.title : null }, { parent: now ? now.title : null });
+      return { id: me.id, title: me.title,
+               from: was ? was.title : null, to: now ? now.title : null };
+    });
+    res.json(out);
+  } catch (e) { next(e); }
+});
+
 export default r;
