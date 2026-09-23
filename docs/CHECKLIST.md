@@ -43,8 +43,8 @@ so a rejected file is safe to fix and send again.
 - [x] 1 Chairs — loaded, see the note below
 - [x] 2 People — loaded
 - [x] 3 Geography — loaded
-- [ ] 4 Clients and branches
-- [ ] 5 Assignments  ← **the important one**
+- [x] 4 Clients and branches — loaded
+- [ ] 5 Assignments  ← **the important one, and it comes pre-filled**
 - [ ] 6 Rates
 - [ ] 7 Collections
 - [ ] 8 KPI targets
@@ -72,6 +72,11 @@ Three notes:
   North East, Bihar and Jharkhand to North, Chhattisgarh to West, Andaman to
   East. All 139 branches on them stay attached, and each move is listed under
   **Review** so you can see it and undo it.
+- **The Assignments template downloads already filled in.** All 59 client and
+  location pairs that have branches, with a suggested handler on 21 of them
+  carried across from who covers those branches today, and the handler's
+  manager as a starting location head. The notes at the bottom of the file say
+  where every filled-in value came from. Correct it and add the 38 blanks.
 - **One word, two meanings — now separated.** Your *operating* zone (Mumbai,
   Amaravati, Patna) is who runs a place. The *region* (East, West, North,
   South, Central, North East) is where it is on the map. Geography defines
