@@ -54,8 +54,17 @@ so a rejected file is safe to fix and send again.
 - [ ] 12 SLA rules
 - [ ] 13 Escalation matrix
 
-Three notes:
+Four notes:
 
+- **Your Geography file stops at Goa.** Sorted by state, it runs Andaman →
+  Andhra → Arunachal → Assam → Bihar → Chhattisgarh → Delhi → Goa and ends:
+  16 states, 57 cities. Everything after G is absent — Gujarat, Karnataka,
+  Kerala, Maharashtra, Odisha, Punjab, Rajasthan, Tamil Nadu, Telangana, Uttar
+  Pradesh, West Bengal. Those are where **1,205 of your 1,825 branches** sit
+  (the whole Mumbai zone is Maharashtra and Gujarat). The tool carried states
+  and cities over at cut-over, so it is not blank there, but nothing you have
+  uploaded confirms them. The next 60 rows of that file are worth more than any
+  other file on this list.
 - **Your chairs file needs one fix before you send it again.** Every title with
   a dash in it arrived with its last two letters missing — `Head – Operations`
   came in as `Head _ Operatio`. Whatever wrote that file cut the titles short
