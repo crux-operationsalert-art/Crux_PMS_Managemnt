@@ -12,15 +12,37 @@ r.get('/me', (req, res) => {
 // The org chart. chair_status is a view, so the risk badge is never a stored
 // number that drifted.
 r.get('/org', requireChair, async (req, res) => {
+  // ONE ROW PER CHAIR. Both joins below used to multiply: a chair like
+  // Executive has 63 primary holders and chair_status yields a row per holder,
+  // so the org chart came back with Executive 63 times, Team Leader 9 and
+  // Branch Manager 11 -- and the page builds its tree by recursing on every
+  // row it is given, so 11 x 9 x 63 nodes were drawn and the browser stopped
+  // responding. A shared chair is normal here; the query has to say so.
   const rows = await many(
     `select ch.id, ch.code, ch.title, ch.parent_id,
-            p.id as person_id, p.full_name, d.title as designation,
-            s.state, s.overdue_days, s.vacant
+            hold.person_id, hold.full_name, hold.designation,
+            coalesce(st.state, case when hold.headcount > 0 then 'FILLED' else 'DORMANT' end) as state,
+            coalesce(st.overdue_days, 0) as overdue_days,
+            hold.headcount = 0 as vacant,
+            hold.headcount
        from chair ch
-       left join chair_holder chh on chh.chair_id = ch.id and chh.to_date is null and chh.is_primary
-       left join person p on p.id = chh.person_id
-       left join designation d on d.id = p.designation_id
-       left join chair_status s on s.chair_id = ch.id
+       left join lateral (
+         select count(*)::int as headcount,
+                min(p.id::text)::uuid as person_id,
+                case when count(*) = 1 then min(p.full_name)
+                     when count(*) > 1 then min(p.full_name) || ' +' || (count(*) - 1)
+                end as full_name,
+                min(d.title) as designation
+           from chair_holder chh
+           join person p on p.id = chh.person_id
+           left join designation d on d.id = p.designation_id
+          where chh.chair_id = ch.id and chh.to_date is null
+       ) hold on true
+       left join lateral (
+         select s.state, s.overdue_days from chair_status s
+          where s.chair_id = ch.id
+          order by s.overdue_days desc nulls last limit 1
+       ) st on true
       order by ch.title`
   );
   res.json({ chairs: rows });
@@ -28,16 +50,22 @@ r.get('/org', requireChair, async (req, res) => {
 
 r.get('/team', requireChair, async (req, res) => {
   if (!req.scope.subtreeIds.length) return res.json({ team: [] });
+  // One row per person, not per chair: a shared chair has many holders and all
+  // of them are on the team. An administrator holds no seat, so there is no
+  // chair to exclude -- passing null excludes nothing rather than throwing.
   const rows = await many(
     `select ch.id as chair_id, ch.title, p.id as person_id, p.full_name, p.work_email,
             s.state, s.overdue_days
        from chair ch
-       left join chair_holder chh on chh.chair_id = ch.id and chh.to_date is null and chh.is_primary
-       left join person p on p.id = chh.person_id
-       left join chair_status s on s.chair_id = ch.id
-      where ch.id = any($1) and ch.id <> $2
-      order by ch.title`,
-    [req.scope.subtreeIds, req.scope.primaryChair.id]
+       join chair_holder chh on chh.chair_id = ch.id and chh.to_date is null
+       join person p on p.id = chh.person_id
+       left join lateral (
+         select s2.state, s2.overdue_days from chair_status s2
+          where s2.chair_id = ch.id order by s2.overdue_days desc nulls last limit 1
+       ) s on true
+      where ch.id = any($1) and ($2::uuid is null or ch.id <> $2::uuid)
+      order by ch.title, p.full_name`,
+    [req.scope.subtreeIds, req.scope.primaryChair ? req.scope.primaryChair.id : null]
   );
   res.json({ team: rows });
 });

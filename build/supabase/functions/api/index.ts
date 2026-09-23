@@ -91,7 +91,7 @@ Deno.serve(async (request: Request) => {
       body = await request.json().catch(() => ({}));
     }
 
-    const scope = await buildScope(person.id as string);
+    const scope = await buildScope(person.id as string, person.app_role as string);
 
     for (const [mount, router] of MOUNTS) {
       if (path !== mount && !path.startsWith(mount + "/")) continue;

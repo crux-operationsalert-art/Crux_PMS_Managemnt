@@ -55,19 +55,36 @@ export async function clientViewKind(personId: string) {
   return r ? (r.view_kind as string) : "none";
 }
 
-export async function buildScope(personId: string): Promise<any> {
+// The owner's instruction, in their words: operations.alert is the admin, the
+// creator, the controller -- nothing is hidden from it and it can change
+// everything. So an ADMIN's scope is not derived from a seat; it is every
+// chair and every branch. D8 still governs everyone else: a scope is built
+// from the person's own chairs and coverage, and that is what every query
+// below filters on.
+export async function buildScope(personId: string, appRole?: string): Promise<any> {
+  const isAdmin = appRole === "ADMIN";
   const [chairs, clientView] = await Promise.all([chairsFor(personId), clientViewKind(personId)]);
   const primary = chairs.find((c: any) => c.is_primary) ?? chairs[0] ?? null;
+  const everyChair = isAdmin
+    ? (await many(`select id from chair`)).map((r: any) => r.id)
+    : null;
   return {
     personId,
     chairs,
     primaryChair: primary,
-    clientView,
-    chairIds: chairs.map((c: any) => c.id),
-    subtreeIds: primary ? (await subtree(primary.id)).map((r: any) => r.id) : [],
+    isAdmin,
+    clientView: isAdmin ? "full" : clientView,
+    chairIds: isAdmin ? everyChair : chairs.map((c: any) => c.id),
+    subtreeIds: isAdmin
+      ? everyChair
+      : (primary ? (await subtree(primary.id)).map((r: any) => r.id) : []),
     branchIds: null,
     async branches() {
-      if (!this.branchIds) this.branchIds = await branchScope(personId);
+      if (!this.branchIds) {
+        this.branchIds = isAdmin
+          ? await many(`select b.id, b.code, b.name, b.client_id, b.status from branch b`)
+          : await branchScope(personId);
+      }
       return this.branchIds;
     },
   };
@@ -84,18 +101,16 @@ export function emptyReason(scope: any) {
   return "This chair has no coverage assigned. Operations assigns coverage; nothing is shown until it does.";
 }
 
-// An administrator administers the structure, so a seat is not what entitles
-// them to look at it. Without this an admin who has just loaded 636 people and
-// 152 chairs opens People and Org chart and sees nothing, with no way to tell a
-// permission problem from an empty database -- which is exactly what happened.
+// A seat is not what entitles an administrator to look at the tool. Without
+// this, an admin who had just loaded 636 people and 152 chairs opened People
+// and Org chart and saw nothing, with no way to tell a permission problem from
+// an empty database -- which is exactly what happened.
 //
-// D8 is not weakened. Every scoped query below filters by THIS request's own
-// chairs, coverage or subtree, and an administrator holding no chair has none
-// of those, so the scoped pages stay empty for them. What they gain is the
-// unscoped structure: the org chart, the penalty rules, the matrix gaps. That
-// is the thing they are the administrator of.
+// D8 still holds for everyone who is not an administrator: their scope is
+// built from their own chairs and coverage, and every query filters on it. An
+// administrator's scope is deliberately the whole company, set in buildScope.
 export function requireChair(req: any, res: any, next: (e?: unknown) => void) {
-  if (req.person && req.person.app_role === "ADMIN") { next(); return; }
+  if (req.scope && req.scope.isAdmin) { next(); return; }
   if (!req.scope || !req.scope.chairs.length) {
     res.status(403).json({ error: "no_chair", reason: emptyReason(req.scope) });
     return;
@@ -106,6 +121,7 @@ export function requireChair(req: any, res: any, next: (e?: unknown) => void) {
 // Write guard: may this request touch this chair?
 export async function mayWriteChair(scope: any, chairId: string) {
   if (!scope) return false;
+  if (scope.isAdmin) return true;
   if (scope.chairIds.includes(chairId)) return true;
   return scope.subtreeIds.includes(chairId);
 }
