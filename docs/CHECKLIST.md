@@ -44,7 +44,10 @@ so a rejected file is safe to fix and send again.
 - [x] 2 People — loaded
 - [x] 3 Geography — loaded
 - [x] 4 Clients and branches — loaded
-- [ ] 5 Assignments  ← **the important one, and it comes pre-filled**
+- [x] 5 Assignments — **no longer a file.** Assigning people now happens in
+      the tool, under **Coverage & handlers**: pick a location, pick the client,
+      pick the person by name. 59 client-and-location pairs, 39 of them with
+      nobody on them yet.
 - [ ] 6 Rates
 - [ ] 7 Collections
 - [ ] 8 KPI targets
@@ -92,8 +95,10 @@ Four notes:
   both; Clients, Assignments and everything after it use the operating zone.
   Your seven zones now exist under **Configuration → Locations** and can be
   renamed or added to there.
-- **Assignments decides who sees what.** Only 15 people have coverage today, so
-  most screens are empty for most people until this file lands.
+- **Coverage decides who sees what.** 15 people have coverage today, now on
+  the real branch master rather than the cut-over copies of it. The other 39
+  client-and-location pairs have nobody, and those branches show up for
+  nobody until they do.
 - Clients and branches has a new optional **`opened_on`** column. Blank is fine.
 
 ---
