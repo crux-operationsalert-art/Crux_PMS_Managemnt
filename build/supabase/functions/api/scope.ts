@@ -84,7 +84,18 @@ export function emptyReason(scope: any) {
   return "This chair has no coverage assigned. Operations assigns coverage; nothing is shown until it does.";
 }
 
+// An administrator administers the structure, so a seat is not what entitles
+// them to look at it. Without this an admin who has just loaded 636 people and
+// 152 chairs opens People and Org chart and sees nothing, with no way to tell a
+// permission problem from an empty database -- which is exactly what happened.
+//
+// D8 is not weakened. Every scoped query below filters by THIS request's own
+// chairs, coverage or subtree, and an administrator holding no chair has none
+// of those, so the scoped pages stay empty for them. What they gain is the
+// unscoped structure: the org chart, the penalty rules, the matrix gaps. That
+// is the thing they are the administrator of.
 export function requireChair(req: any, res: any, next: (e?: unknown) => void) {
+  if (req.person && req.person.app_role === "ADMIN") { next(); return; }
   if (!req.scope || !req.scope.chairs.length) {
     res.status(403).json({ error: "no_chair", reason: emptyReason(req.scope) });
     return;

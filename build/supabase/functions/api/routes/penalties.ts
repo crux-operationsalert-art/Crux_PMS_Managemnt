@@ -118,7 +118,10 @@ r.get('/ledger', requireChair, async (req, res) => {
          join chair_holder chh on chh.person_id = p.id and chh.to_date is null
         where chh.chair_id = any($1)
         order by pi.period desc, p.full_name`,
-      [scopeIds.length ? scopeIds : [req.scope.primaryChair.id]]
+      // an administrator with no seat has no subtree and no primary chair;
+      // an empty list returns an empty ledger rather than throwing
+      [scopeIds.length ? scopeIds
+        : (req.scope.primaryChair ? [req.scope.primaryChair.id] : [])]
     ),
   });
 });
