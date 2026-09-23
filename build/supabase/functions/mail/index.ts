@@ -224,18 +224,30 @@ async function sendAppsScript(c: Cfg, m: Msg) {
     }),
   });
   const text = await r.text();
-  if (!r.ok) throw new Error(r.status + " " + trim(text));
+
+  // Google answers a wrong, withdrawn or superseded deployment with its own
+  // HTML error page. Putting that in the delivery row tells an administrator
+  // nothing -- two hundred characters of minified script and no cause. The
+  // status says what happened; this says what to do about it.
+  if (!r.ok || /^\s*</.test(text)) {
+    const hint = r.status === 404
+      ? "the relay URL is not answering. Editing an Apps Script and deploying " +
+        "again creates a NEW /exec URL and the old one stops working. Open " +
+        "Deploy, Manage deployments, copy the current web app URL, and paste " +
+        "it under Configuration, Mail."
+      : (r.status === 401 || r.status === 403)
+      ? "the relay refused the call. In Manage deployments, set Who has access " +
+        "to Anyone."
+      : "the relay answered with a page rather than JSON. Check the URL ends " +
+        "in /exec and the deployment is a Web app shared with Anyone.";
+    throw new Error(r.status + " - " + hint);
+  }
 
   let out: Record<string, unknown>;
   try {
     out = JSON.parse(text);
   } catch {
-    // An HTML page here means the deployment is wrong: not a web app, or not
-    // shared with "Anyone", or the URL is the /dev one rather than /exec.
-    throw new Error(
-      "The relay answered with a page rather than JSON. Check the URL ends " +
-      "in /exec and the deployment is a Web app shared with Anyone.",
-    );
+    throw new Error("The relay answered with something that is not JSON.");
   }
   if (out.error) {
     throw new Error(
@@ -442,10 +454,14 @@ Deno.serve(async (req) => {
       try {
         return json(JSON.parse(text));
       } catch {
-        return json({ error: "not_json",
-          reason: "The relay answered with a page rather than JSON. Check the " +
-                  "URL ends in /exec and the deployment is a Web app shared " +
-                  "with Anyone." }, 502);
+        return json({ error: "not_json", status: r.status,
+          reason: r.status === 404
+            ? "The relay URL is not answering. Deploying an Apps Script again " +
+              "creates a new /exec URL and the old one stops working. Copy the " +
+              "current one from Deploy, Manage deployments."
+            : "The relay answered with a page rather than JSON. Check the " +
+              "URL ends in /exec and the deployment is a Web app shared " +
+              "with Anyone." }, 502);
       }
     }
 
