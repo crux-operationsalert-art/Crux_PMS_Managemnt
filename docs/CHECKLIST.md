@@ -100,44 +100,35 @@ Five notes:
 
 ## 3b. What is on screen now
 
-Built to the design in `Crux App v2.dc.html`, against your uploaded data — no
-placeholder rows anywhere:
+Every screen in the design now has a built counterpart, against your data.
+Twenty-six entries in the sidebar.
 
-- **Clients** — every client, the locations it has branches at, its default
-  escalation matrix, and under any branch its full record: five levels with
-  what is inherited marked as inherited, the branch manager, the Crux point of
-  contact, the address and who covers it. Add a branch and Edit these details
-  are the design's own forms.
-- **Coverage & handlers** — assigning people, in the tool. 59 client-and-location
-  pairs, 39 still unassigned.
-- **People** — one row per chair even when 63 people share it, and Move to
-  re-parent a chair.
-- **History & audit trail** — 199 entries, 25 kinds. Written inside the same
-  transaction as the change, so it can be used as evidence.
+**Reads and writes today:** Clients, Coverage & handlers, People (with Move),
+History & audit trail, My profile, Hiring & pending chairs, Visits & claims,
+Ideathon, Report access, Rate master.
 
-Three panels inside Clients say what they are waiting for rather than showing
-an invented number: **Performance** waits on Rates and Collections, **Visits**
-waits on the first visit, **RAG** waits on a target and a month of filings.
-That is the honest state, not a gap in the screen.
+**Waiting on the uploads at items 6 to 10, and saying so:** MIS, the 10-day
+view, Reports, and the HR satisfaction block. Each names the table that
+answered and how many rows it had, so a zero is never mistaken for a result.
 
-- **My profile** — your details, what is waiting on you, where you sit, what
-  you cover, and your record. An edit is not live: it goes to HR by notice and
-  by e-mail, with your old value beside the new one.
-- **Hiring & pending chairs** — **137 chairs have nobody in them**, and 24 of
-  those have other chairs reporting into them. Raise a hire against any of
-  them; HR approves, the administrator creates the account and the activation
-  code goes out.
+**Two things the design has that this does not yet.** Moving a chair is a
+picker, not drag-and-drop. The MIS has no saved views, period comparison or
+export customisation — it groups by client, zone or owner and stops there.
 
-Nine of the design's screens are still unbuilt: MIS, Rate master, Reports,
-Report access, 10-day management view, HR, Joining, Visits & claims, Ideathon.
-Every one of them is waiting on the uploads at items 6 to 10 above, not on
-code — their tables exist and are empty.
+**Everything above was called for real before it shipped** — a short-lived
+session, the database calling the deployed functions through pg_net, every
+read checked for a 200 and every write sent empty so its own guard refuses it
+with a reason. Nothing was created by the testing.
 
-**Every screen above has been called for real**, not just drawn: a short-lived
-session, the database calling the deployed API through pg_net, and the answer
-read back. That is how two defects were found and fixed — a missing `.btn`
-style that made selected items look identical to unselected ones, and a 500 on
-My profile from a query parameter that was passed but never used.
+**Two things worth your attention, found by that testing:**
+
+- **581 of your 636 people have no department recorded.** Department is what
+  decides whether somebody sees client data at all, so most of the company
+  currently sees none of it.
+- **533 have no manager recorded.** The reporting line resolves through the
+  manager, so those people's managers see nothing of theirs.
+
+Both come from the People upload and are a column each.
 
 ---
 
