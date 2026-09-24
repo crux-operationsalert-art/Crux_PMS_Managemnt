@@ -99,10 +99,11 @@ insert into upload_column (kind, ord, name, example, rule) values
    'Ignored on upload. Here so you can read the reporting line.');
 
 update upload_column
-   set rule = 'Required for anybody new, except on the top chair. Leave it '
-              'blank for somebody already on the people master and their '
-              'current manager is kept. May name someone created by this same '
-              'file. A line that loops back on itself is refused.'
+   set rule = 'Required for anybody new, except for the one person at the top '
+              'of the company - the test is whether anybody above them holds a '
+              'chair. Leave it blank for somebody already on the people master '
+              'and their current manager is kept. May name someone created by '
+              'this same file. A line that loops back on itself is refused.'
  where kind='People' and name='reports_to_employee_no';
 
 -- -------------------------------------------------------------- 2. the names
@@ -187,6 +188,27 @@ returns boolean language sql stable set search_path = public as $$
                         where h.person_id = p.id and h.to_date is null)));
 $$;
 
+-- The top of the REPORTING line is not the root of the CHAIR tree. The two
+-- roots -- Board of Directors and Chairperson - Board of Directors -- are held
+-- by nobody, and the top of the company sits on Managing Director, one level
+-- below, so parent_id is null refuses the one person who correctly has no
+-- manager. The question that matters is whether anybody above them holds a
+-- chair at all.
+create or replace function chair_reports_to_someone(p_chair uuid)
+returns boolean language sql stable set search_path = public as $$
+  with recursive up as (
+    select c.parent_id, 1 as d from chair c where c.id = p_chair
+    union all
+    select c.parent_id, up.d + 1
+      from up join chair c on c.id = up.parent_id
+     where up.parent_id is not null and up.d < 30
+  )
+  select exists (
+    select 1 from up
+      join chair_holder h on h.chair_id = up.parent_id and h.to_date is null
+     where up.parent_id is not null);
+$$;
+
 -- ----------------------------------------------------------- 3. the validator
 create or replace function uv_people(p_batch uuid)
 returns void language plpgsql security definer set search_path = public, extensions as $$
@@ -237,17 +259,23 @@ begin
                 ' is neither in this file nor already on the people master' end,
       case when ul_txt(r2.raw,'reports_to_employee_no') = ul_txt(r2.raw,'employee_no')
            then 'a person cannot report to themselves' end,
+      -- "except for the top chair" is NOT chair.parent_id is null. The chair
+      -- tree's own roots -- Board of Directors, Chairperson - Board of
+      -- Directors -- are held by nobody; the top of the company sits on
+      -- Managing Director, one level below. The question that matters is
+      -- whether anybody above this person holds a chair at all, and it
+      -- tightens itself as chairs get filled.
       case when ul_txt(r2.raw,'reports_to_employee_no') is null
-            and not exists (select 1 from chair c
-                             where (c.title = ul_txt(r2.raw,'chair') or c.code = ul_txt(r2.raw,'chair'))
-                               and c.parent_id is null)
+            and exists (select 1 from chair c
+                         where (c.title = ul_txt(r2.raw,'chair') or c.code = ul_txt(r2.raw,'chair'))
+                           and chair_reports_to_someone(c.id))
             and not exists (select 1 from person p
                              where p.employee_no = ul_txt(r2.raw,'employee_no')
                                and p.superseded_by is null
                                and p.manager_id is not null)
            then 'reports_to_employee_no is required - a manager sees their team''s '
                 'work through it, and nobody sees this person''s work without it. '
-                'Only the top chair may leave it blank' end,
+                'Only the person at the top of the company may leave it blank' end,
 
       case when ul_txt(r2.raw,'date_of_joining') is not null
             and not is_ymd(ul_txt(r2.raw,'date_of_joining'))
@@ -829,6 +857,8 @@ end $$;
 --   139d_people_template_comes_down_filled_in     seed, key, provenance,
 --                                                 template
 --   139e_the_reporting_line_had_no_top            the EMP-0001/EMP-0002 loop
+--   139f_the_top_chair_is_not_the_root_chair      chair_reports_to_someone,
+--                                                 found by the second dry run
 --
 -- VERIFIED, in this order:
 --
@@ -849,8 +879,24 @@ end $$;
 --   * the Assignments seed fills 21 of 59 handlers again, the same 21 it
 --     filled before migration 132 broke it -- now read from the real branches.
 --   * the whole seeded file was staged through upload_stage and validated for
---     real: 103 rows, 95 ok, 8 refused. Zero department errors, zero
---     "manager is required" errors -- and the 8 are exactly the 6 people with
---     no employee number and the 2 ends of the reporting loop, which is the
---     new check finding a fault nobody knew was there. The dry-run batch was
---     cancelled; nothing was applied.
+--     real, twice. The first run: 103 rows, 95 ok, 8 refused -- zero
+--     department errors, and the 8 were the 6 people with no employee number
+--     plus the two ends of the reporting loop, the new check finding a fault
+--     nobody knew was there. The second run, after 139e and 139f: 97 ok,
+--     6 refused, and the 6 are only the missing employee numbers.
+--   * a negative file was staged to prove the guards refuse rather than just
+--     that good data passes. Six rows in, five refused, each on its own rule:
+--       "Marketing"                 -> not one of <the seven, named>
+--       a blank department          -> required, <the seven, named>
+--       a blank manager on Executive-> required, only the top may leave it blank
+--       TEST-04 <-> TEST-05         -> both ends refused as a loop
+--       "finance and accounts"      -> accepted, the one row that passed
+--     and "ops" and "HR" were accepted as departments in the two loop rows,
+--     so the aliases work too.
+--   * nothing was created by any of it: 0 people whose number starts TEST-,
+--     person still 636 rows and 103 staff, no department outside the policy,
+--     no self-manager, all three dry-run batches CANCELLED.
+--   * upload_template('People') renders: 291 lines, the ten columns in order,
+--     Virendra Pal with EMP-0002 and "Arun Bodupali" beside it, Arun Bodupali
+--     with a blank manager, then the notes, the provenance and a key giving
+--     each department and what it is allowed to see.
