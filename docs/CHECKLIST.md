@@ -41,7 +41,7 @@ upload → check the preview → apply.** A file with any error loads **nothing*
 so a rejected file is safe to fix and send again.
 
 - [x] 1 Chairs — loaded, see the note below
-- [x] 2 People — loaded
+- [x] 2 People — loaded, and worth one more pass: see below
 - [x] 3 Geography — loaded
 - [x] 4 Clients and branches — loaded
 - [x] 5 Assignments — **no longer a file.** Assigning people now happens in
@@ -120,15 +120,37 @@ session, the database calling the deployed functions through pg_net, every
 read checked for a 200 and every write sent empty so its own guard refuses it
 with a reason. Nothing was created by the testing.
 
-**Two things worth your attention, found by that testing:**
+**Three things worth your attention, found by that testing.** The first
+corrects something this page said last week.
 
-- **581 of your 636 people have no department recorded.** Department is what
-  decides whether somebody sees client data at all, so most of the company
-  currently sees none of it.
-- **533 have no manager recorded.** The reporting line resolves through the
-  manager, so those people's managers see nothing of theirs.
+- **You do not have 636 people. You have 103.** The other 533 are your
+  *clients'* staff — branch managers at Bank of Maharashtra, IDBI, SBI, SVC,
+  Axis, LIC Housing and the rest, 533 of them, every single one at a client's
+  own e-mail domain. They arrived with the branch master because that is where
+  a branch contact's name had to go. They hold no chair, have no employee
+  number and see nothing. Nothing is broken by it, but every headcount you
+  read in this tool is counting them, and last week's note here counted them
+  too.
+- **48 of your 103 staff have no department.** That is the whole of the group
+  the People file loaded, and it could not have gone any other way: the People
+  template had no department column at all. It has one now.
+- **Two people at the top of the company reported to each other.** Virendra
+  Pal reported to Arun Bodupali and Arun Bodupali reported to Virendra Pal, so
+  the reporting line had no top and the org chart never resolved. Arun
+  Bodupali is now the top. **If that is the wrong way round, say so** — it is
+  waiting for you under Review, and the file will refuse the loop if it
+  happens again.
 
-Both come from the People upload and are a column each.
+Your manager column, for what it is worth, was fine: all 103 staff have one.
+
+**Download the People template again.** It now comes down with all 103 of them
+already in it — number, name, chair, department, manager number *and manager
+name*, so the reporting line reads without looking anything up. Where a
+department was blank the chair suggests one, and it manages a suggestion for
+all 48. Check them, then upload it back; that one file sets every department.
+Six people have no employee number and their cell is blank on purpose — the
+file will not load until you give them one, which is the only way they can be
+told apart.
 
 ---
 
