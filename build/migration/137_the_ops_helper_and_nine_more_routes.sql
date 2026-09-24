@@ -14,7 +14,7 @@ begin
 
   v_new := replace(v_body,
     'var crux = function(p,o){ return call(CRUX, p, o); };',
-    'var OPS  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/ops"' || E'\n' ||
+    'var OPS  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/ops";' || E'\n' ||
     'var ops  = function(p,o){ return call(OPS,  p, o); };' || E'\n' ||
     'var crux = function(p,o){ return call(CRUX, p, o); };');
 
