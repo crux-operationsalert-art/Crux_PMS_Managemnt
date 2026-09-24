@@ -14,7 +14,8 @@
   --terra:#b4562f;   --terra-ink:#a03f18; --terra-bg:#fdf6f3; --terra-line:#e6cfc4;
   --terra-press:#94441f;
   --gold:#8a6d1f;    --gold-ink:#7a5f18;
-  --green:#2f6b46;
+  --green:#2f7355;  --green-press:#255c44; --green-bg:#f4faf6;
+  --gold-bg:#fdfaf2;
   --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
   --serif:Georgia,serif;
 }
@@ -100,17 +101,17 @@ textarea{min-height:66px;resize:vertical}
 .row>div{flex:1 1 210px;margin-bottom:14px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
 
-button{appearance:none;border:1px solid var(--terra);background:var(--terra);color:#fff;
+button{appearance:none;border:1px solid var(--blue);background:var(--blue);color:#fff;
   font-size:13.5px;padding:12px 20px;cursor:pointer;min-height:46px;border-radius:0}
-button:hover{background:var(--terra-press);border-color:var(--terra-press)}
+button:hover{background:var(--blue-press);border-color:var(--blue-press)}
 button:disabled{opacity:.45;cursor:not-allowed}
-button:disabled:hover{background:var(--terra);border-color:var(--terra)}
+button:disabled:hover{background:var(--blue);border-color:var(--blue)}
 button.ghost{border:1px solid var(--line);background:var(--white);color:var(--ink);font-weight:400}
 button.ghost:hover{border-color:var(--blue);color:var(--blue);background:var(--white)}
 button.go{border-color:var(--blue);background:var(--blue);color:#fff}
 button.go:hover{background:var(--blue-press);border-color:var(--blue-press)}
-button.danger{border-color:var(--terra-ink);background:var(--terra-ink)}
-button.danger:hover{background:#83320f;border-color:#83320f}
+button.danger{border-color:var(--terra);background:var(--white);color:var(--terra-ink)}
+button.danger:hover{background:var(--terra-bg);border-color:var(--terra-ink);color:var(--terra-ink)}
 button.sm{padding:9px 14px;font-size:12.5px;min-height:44px}
 button.btn{border:1px solid var(--line);background:var(--white);color:var(--ink);font-weight:400;padding:9px 14px;font-size:12.5px;min-height:44px}
 button.btn:hover{border-color:var(--blue);color:var(--blue);background:var(--white)}
@@ -122,15 +123,15 @@ td button,.rowline button{border:1px solid var(--blue);background:var(--white);
 td button:hover,.rowline button:hover{background:var(--blue);color:#fff}
 td button.ghost,.rowline button.ghost{border-color:var(--line);color:var(--ink)}
 td button.ghost:hover,.rowline button.ghost:hover{background:var(--white);border-color:var(--blue);color:var(--blue)}
-td button.danger,.rowline button.danger{border-color:var(--terra-ink);background:var(--terra-ink);color:#fff}
+td button.danger,.rowline button.danger{border-color:var(--terra);background:var(--white);color:var(--terra-ink)}
 button.link{border:none;background:none;color:var(--blue);text-decoration:underline;
   padding:8px 0;min-height:44px;font-size:12.5px}
 button.link:hover{background:none;color:var(--blue-dark)}
 
 .msg{padding:11px 14px;font-size:12.5px;line-height:1.55;margin:12px 0;border:1px solid}
-.msg.ok{background:#f1f6f2;color:var(--green);border-color:#c8ded1}
+.msg.ok{background:var(--green-bg);color:var(--green);border-color:var(--green)}
 .msg.bad{background:var(--terra-bg);color:var(--terra-ink);border-color:var(--terra-line)}
-.msg.warn{background:#fdfaf0;color:var(--gold-ink);border-color:#e3d9b8}
+.msg.warn{background:var(--gold-bg);color:var(--gold-ink);border-color:var(--gold)}
 .empty{padding:26px 15px;color:var(--mute);font-size:13px;line-height:1.6;max-width:70ch}
 
 .scroll{overflow-x:auto}
@@ -144,7 +145,7 @@ td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
 
 .pill{display:inline-block;font-size:11px;border:1px solid var(--line);padding:4px 8px;
   color:var(--body);background:none;white-space:nowrap}
-.pill.ok{border-color:#9dc4ae;color:var(--green)}
+.pill.ok{border-color:var(--green);color:var(--green)}
 .pill.bad{border-color:var(--terra);color:var(--terra-ink)}
 .pill.warn{border-color:var(--gold);color:var(--gold-ink)}
 .pills{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
@@ -281,8 +282,8 @@ button.onink:hover{background:#fff;color:var(--ink);border-color:#fff}
 .cfgrule:last-child{border-bottom:0}
 .chip{display:inline-block;font-size:11px;line-height:1.5;padding:1px 7px;border-radius:9px;
   border:1px solid var(--line);background:var(--paper);color:var(--ink2);white-space:nowrap}
-.chip.ok{border-color:#2f7a45;color:#2f7a45}
-.chip.warn{border-color:#a8701b;color:#a8701b}
+.chip.ok{border-color:var(--green);color:var(--green)}
+.chip.warn{border-color:var(--gold);color:var(--gold-ink)}
 .opgrp{padding:10px 0;border-bottom:1px solid var(--line3)}
 .opgrp:last-child{border-bottom:0}
 .opgrp>h4{margin:0 0 6px;font-size:14px}
@@ -293,6 +294,29 @@ button.onink:hover{background:#fff;color:var(--ink);border-color:#fff}
   .cfgrow,.cfgrule{grid-template-columns:1fr}
   .cfgset input{width:100%}
 }
+
+/* The strip under the header, for the screens the design reaches from inside
+   their parent. Same treatment as the top row, one step quieter. */
+#subnav{max-width:1280px;margin:0 auto;padding:0 clamp(12px,3vw,24px);
+  display:flex;flex-wrap:wrap;align-items:center;gap:0 2px;
+  border-top:1px solid var(--line3)}
+#subnav a{display:block;padding:9px 12px 7px;font-size:12.5px;color:var(--mute);
+  text-decoration:none;min-height:40px}
+#subnav a:hover{background:var(--panel);color:var(--ink);text-decoration:none}
+#subnav a.on{color:var(--ink)}
+#subnav a .rule{height:2px;background:transparent;margin-top:6px}
+#subnav a.on .rule{background:var(--blue)}
+@media (max-width:720px){#subnav{display:none}}
+
+/* Ideathon sits first and apart because it is an invitation, not a duty. */
+@keyframes shine{0%{background-position:0% 0}100%{background-position:220% 0}}
+nav a .shine{display:inline-block;padding:4px 13px;border-radius:14px;
+  background:linear-gradient(100deg,var(--terra),#e0a15e,var(--terra));
+  background-size:220% 100%;color:#fff;font-weight:600;
+  animation:shine 3.4s linear infinite;
+  box-shadow:0 0 0 1px rgba(180,86,47,.35),0 2px 12px rgba(180,86,47,.3)}
+nav a:hover .shine{color:#fff}
+@media (prefers-reduced-motion:reduce){nav a .shine{animation:none}}
 </style></head><body>
 
 <!-- ============================================================== sign in -->
@@ -356,6 +380,7 @@ button.onink:hover{background:#fff;color:var(--ink);border-color:#fff}
     </div>
   </div>
   <nav id="nav"></nav>
+  <div id="subnav"></div>
 </header>
 <main id="view"></main>
 </div>
@@ -481,21 +506,38 @@ el("mobout").onclick = doSignOut;
    Nav is grouped the way the v2 design groups it: what you work on, what
    you are measured by, and what an administrator keeps.                 */
 var NAV = [
-  { label:"",           items:[ ["today","Today"], ["profile","My profile"] ] },
-  { label:"Work",       items:[ ["ogl","OGL"], ["cases","Escalations"], ["matrix","Matrix"],
-                                ["clients","Clients"], ["visits","Visits & claims"] ] },
-  { label:"Standing",   items:[ ["pms","Performance"], ["penalties","Penalties"],
-                                ["people","People"], ["org","Org chart"], ["hiring","Hiring"],
-                                ["history","History"], ["hr","HR"], ["joining","Joining"], ["access","Report access"], ["ideas","Ideathon"] ] },
-  { label:"Numbers",    items:[ ["mis","MIS"], ["tenday","10-day view"], ["reports","Reports"], ["rates","Rate master"] ] },
-  { label:"Keep",       items:[ ["coverage","Coverage"], ["config","Configuration"], ["data","Data setup"],
-                                ["mail","Mail"], ["whatsapp","WhatsApp"] ] }
+  { label:"",        items:[ ["ideas","Ideathon"] ] },
+  { label:"Mine",    items:[ ["today","Dashboard"], ["profile","My profile"],
+                             ["pms","Performance & appraisal"], ["visits","Visits & claims"] ] },
+  { label:"Work",    items:[ ["ogl","OGL Assignment"], ["cases","Escalations"],
+                             ["clients","Clients"], ["people","My team & structure"] ] },
+  { label:"Company", items:[ ["hr","HR"], ["hiring","Hiring & pending chairs"],
+                             ["joining","Joining"], ["penalties","Penalty ledger"],
+                             ["coverage","Coverage & handlers"], ["reports","Reports"],
+                             ["history","History & audit trail"], ["mail","Messaging"],
+                             ["data","Data setup"], ["config","Settings"] ] }
 ];
+
+/* The screens the design reaches from inside a parent rather than from the top
+   row. They keep their own routes, so nothing that already links to them
+   breaks; this is only how you get to them without knowing the URL. */
+var FAMILY = [
+  ["clients", [["clients","Clients"], ["matrix","Escalation matrix"]]],
+  ["people",  [["people","My team"], ["org","Structure"]]],
+  ["reports", [["reports","Reports"], ["mis","MIS dashboard"], ["tenday","10-day view"],
+               ["rates","Rate master"], ["access","Report access"]]],
+  ["mail",    [["mail","E-mail"], ["whatsapp","WhatsApp"]]]
+];
+
 var ADMIN_TABS = { data:1, mail:1, whatsapp:1 };
 var MOB_BAR = ["today","ogl","cases","more"];
 var TABS = [];
 NAV.forEach(function(g){ g.items.forEach(function(t){ TABS.push(t); }); });
+/* A family screen is a route too, or currentTab() bounces it to Today. */
+FAMILY.forEach(function(f){ f[1].forEach(function(t){
+  if (!TABS.some(function(x){ return x[0] === t[0]; })) TABS.push(t); }); });
 var LABEL = {}; TABS.forEach(function(t){ LABEL[t[0]] = t[1]; });
+FAMILY.forEach(function(f){ f[1].forEach(function(t){ if (!LABEL[t[0]]) LABEL[t[0]] = t[1]; }); });
 var badges = {};
 
 function allowed(key){
@@ -510,6 +552,20 @@ function badgeHtml(key, cls){
   return n ? '<span class="'+(cls||"badge")+'">'+esc(n)+'</span>' : "";
 }
 
+function paintSub(){
+  var cur = currentTab(), fam = null, box = el("subnav");
+  if (!box) return;
+  FAMILY.forEach(function(f){
+    f[1].forEach(function(t){ if (t[0] === cur) fam = f; });
+  });
+  if (!fam) { box.innerHTML = ""; box.style.display = "none"; return; }
+  box.style.display = "";
+  box.innerHTML = fam[1].filter(function(t){ return allowed(t[0]); }).map(function(t){
+    return '<a href="#'+t[0]+'"'+(t[0] === cur ? ' class="on"' : '')+'>' +
+      '<span>'+esc(t[1])+'</span><div class="rule"></div></a>';
+  }).join("");
+}
+
 function paintNav(){
   var cur = currentTab();
 
@@ -520,7 +576,8 @@ function paintNav(){
       (g.label ? '<span class="navlabel">'+esc(g.label)+'</span>' : "") +
       items.map(function(t){
         return '<a href="#'+t[0]+'" data-t="'+t[0]+'"'+(t[0]===cur?' class="on"':'')+'>' +
-          '<span>'+esc(t[1])+'</span>'+badgeHtml(t[0]) +
+          (t[0] === "ideas" ? '<span class="shine">✦ '+esc(t[1])+'</span>'
+                              : '<span>'+esc(t[1])+'</span>')+badgeHtml(t[0]) +
           '<div class="rule"></div></a>';
       }).join("") + '</div>';
   }).join("");
@@ -1316,6 +1373,7 @@ function route(){
   document.body.classList.remove("sheet-open");
   var t = currentTab();
   paintNav();
+  paintSub();
   el("view").innerHTML = '<p class="mute">Loading…</p>';
   var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms,
     people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail,
