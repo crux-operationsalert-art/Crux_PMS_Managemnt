@@ -1,0 +1,29 @@
+-- The advisor caught this, and it is worth writing down why it happened.
+--
+-- 152 revoked EXECUTE from PUBLIC on every SECURITY DEFINER function, because
+-- EXECUTE is granted to PUBLIC by default and revoking from anon and
+-- authenticated alone leaves the function open -- a mistake 152 itself made on
+-- its first pass. The eleven functions 155 and 156 added were created after
+-- that sweep, so they arrived with the default grant and nothing re-ran the
+-- sweep. A lockdown that runs once is a lockdown that lasts until the next
+-- migration.
+--
+-- It mattered: every one of op_role_set, op_role_end, op_bulk_assign,
+-- op_client_place, op_branch_save, op_chair_seat, op_chair_unseat and
+-- op_rate_set takes p_actor and trusts it, so anon being able to reach them
+-- over /rest/v1/rpc meant anyone could act as anyone. op_places, op_place,
+-- op_branches and op_options only read, but they read past every scope.
+--
+-- The edge functions connect as service_role, which keeps its grant, so the
+-- screen is unaffected -- the arrangement 152b already proved for the upload
+-- functions. Four functions stay callable because RLS policies call them:
+-- app_person_id, app_is_admin, app_subtree, app_scope_clients.
+--
+-- The migration closes what it finds rather than a hard-coded list, and then
+-- asserts both halves: nothing else open, and all four helpers still callable.
+-- It would have closed these eleven on its own if it had existed in 155.
+--
+-- Verified after applying: the four reads the screen makes answered 200 with
+-- byte-identical payloads, and a write through HTTP (set a Zonal Manager on
+-- Mumbai) answered 200 and wrote the rule. The probe rule was deleted and the
+-- probe sessions revoked.
