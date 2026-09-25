@@ -1,0 +1,68 @@
+-- The clients and branches file, 749 rows, refused on Kolkata, Patna and
+-- Guwahati: "zone X is not one of your locations."
+--
+-- All three ARE locations, and all three already carry branches. They are
+-- filed under longer names, because that is how they arrived at cut-over:
+--
+--     the file says      the branch master calls it      branches on it
+--     Mumbai             Mumbai                                   1,205
+--     Delhi              Delhi                                      180
+--     Amaravati          Amaravati                                  151
+--     Patna              BIHAR/PATNA                                151
+--     Bhopal             Bhopal                                      82
+--     Guwahati           Guwahati Assam Zone                         40
+--     Kolkata            Kolkata Zone                                16
+--
+-- All 1,825 branches already in the tool sit on one of those seven, so the
+-- owner is not naming anything new. They are naming the same seven places in
+-- the shorter form a person uses.
+--
+-- op_location_for() only ever did an exact match on an active LOCATION, so
+-- four of the seven worked. It now also accepts the name as a WHOLE WORD when
+-- exactly one active location carries it. Never a partial word, and never when
+-- two locations could be meant.
+--
+-- uv_clients and ua_clients BOTH call this one function, so the preview and
+-- the apply cannot disagree about where a branch is. That is why the fix is
+-- here and not in either of them.
+--
+-- This was the same fault as 143c, in a fifth place. In 143 I found four
+-- validators by searching for one error message; this one words its message
+-- differently, so the search missed it. Searching by message was the mistake --
+-- the audit at the foot searches for every reference to either tree instead.
+--
+-- VERIFIED: all seven of the file's zones resolve to a location that already
+-- carries branches; every name the branch master itself uses still resolves to
+-- itself, so no existing branch can move; "Atlantis", "" and the partial word
+-- "Pun" all resolve to nothing. Eight sample rows covering all seven zones and
+-- eight client codes were staged and validated -- all eight pass. All 13
+-- upload kinds still accept their own example row. Nothing was applied:
+-- branch 3,238 and client 45, unchanged.
+--
+-- ---------------------------------------------------------------------
+-- STILL BROKEN, FOUND WHILE DOING THIS, AND WORSE:
+--
+-- The validators now accept an operating zone. Six APPLIERS still look one up
+-- in the region tree, and do not complain when they fail:
+--
+--   ua_rates        insert into rate_location select g.id from geo_node g
+--                   where g.level='ZONE' and lower(g.name)=lower(zone)
+--
+-- geo_node.level='ZONE' holds Central, East, North, North East, South, West.
+-- "Mumbai" matches none, so no rate_location row is written -- and a rate with
+-- no location rows applies EVERYWHERE. 850 zone-specific rates would silently
+-- price every branch in the company.
+--
+-- ua_collections joins the same way with an INNER JOIN, so an unmatched row is
+-- dropped without a word: the preview says 850 ready, the apply writes fewer.
+--
+-- Also ua_opening, ua_past_perf, ua_sla_rules and ua_escalation.
+--
+-- The right answer is a decision about what rate_location.geo_node_id and
+-- perf_revenue.geo_node_id should mean, since the zone names the business uses
+-- live in op_node and those columns point at geo_node, whose op_zone link is
+-- filled for only 79 of 185 rows. That is a modelling question, not something
+-- to settle mid-upload, and guessing it is how the branch master ended up
+-- doubled in the first place.
+--
+-- DO NOT UPLOAD RATES OR COLLECTIONS UNTIL THIS IS FIXED.
