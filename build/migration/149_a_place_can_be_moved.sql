@@ -1,0 +1,32 @@
+-- "I am not able to change the zones if any location or city is incorrectly
+-- aligned in the tool itself."
+--
+-- 149a. op_save took a parent and used it only when CREATING a node. On an
+-- edit it updated the name and the active flag and dropped the parent on the
+-- floor, silently -- so the screen offered a move, the save returned ok, and
+-- nothing moved. That is worse than not offering it. A move is now applied,
+-- and checked: a location belongs under a zone, a zone under a group, and a
+-- group is a root. Any other move is refused by name rather than making a
+-- fourth shape.
+--
+-- 149b proves it by MOVING something and reading back where it sits, because
+-- a move that returns ok and changes nothing is the whole fault. A spare
+-- location is created, moved between two real zones, checked, offered two
+-- moves that must be refused, checked again, and removed.
+--
+-- 149c/d. op_places() -- everything the screen shows in one read: the
+-- grouping, what each place carries, who handles which client there, the
+-- cities the geography tree knows and which operating zone they answer to,
+-- and the spellings. The first cut matched a city's op_zone against the
+-- location NAME, so the 157 branches of BIHAR/PATNA showed no cities: their
+-- op_zone says "Patna Zone", which is the zone above it. A city now hangs
+-- wherever op_zone_id resolves it -- the same resolver a rate and a branch
+-- use -- so the screen cannot disagree with the loaders about where a place
+-- is.
+--
+-- 149e. op_city_align takes the operating node's ID, not typed text, so
+-- geo_node.op_zone can only ever name something that exists. op_alias_save
+-- refuses a spelling that shadows a real name, and one that means nothing.
+--
+-- 149f proves the city and alias writes, including both refusals, and puts
+-- everything it touched back.

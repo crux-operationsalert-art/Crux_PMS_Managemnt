@@ -1,0 +1,41 @@
+-- One screen for places, coverage and owners.
+--
+-- "Remove the duplicates, keep the active ones and I am not able to change the
+--  zones if any locations or city or others is incorrectly aligned in the tool
+--  itself. Also if you can add cities too in it and then the handlers too
+--  along with the clients, products etc they are handling, so one page will
+--  resolve multiple problems of alignment and resolve. Once you upgrade this
+--  page, you can remove the pages doing the same and simplify."
+--
+-- Before this the same question was asked in three places and none of them
+-- showed the answer:
+--
+--   Settings          add a zone, add a location, rename, switch off. No move.
+--   Coverage          who handles which client where. Nothing about the tree.
+--   nowhere at all    which city answers to which operating zone.
+--
+-- Three screens, and no way to see that they disagreed -- which is how a rate
+-- for "Kolkata" came to price a different place from the branch for "Kolkata".
+--
+-- 150a  room for a location nested in a zone, and a row that is asking a
+--       question. Existing tokens only: --line3, --gold-bg, --serif.
+--       The nav label: the design calls this screen "Coverage, owners &
+--       rates"; the tool had drifted to "Coverage & handlers" and showed only
+--       the handlers. It now carries the grouping and the cities as well, on
+--       the owner's instruction, so the label names what is on it.
+-- 150b  Settings stops being the second place to edit a location. Spliced by
+--       position, and every boundary checked before a byte is written: a
+--       replace that quietly matches nothing is the mistake this series has
+--       already made twice.
+-- 150c  the screen. Source kept at build/app/screen-places.js.
+-- 150d  rendered in Chromium before it went out, which is how this was caught:
+--       the move picker was wrapped in a <label>, and label is display:block
+--       in this stylesheet, so "under <zone>" dropped onto a line of its own.
+--       It labels nothing, so it is a span. build/app/screen-places.png is the
+--       render that passed.
+--
+-- Verified, not assumed: every ops route probed over pg_net after the deploy
+-- (8 of 8 answered 200 with real rows, including the five routes that were
+-- only re-sent, not changed); a write probed through HTTP in both directions,
+-- the refusal mapping to 400 and the acceptance to 200; the screen rendered
+-- with real data shapes, zero console errors, and every control present.

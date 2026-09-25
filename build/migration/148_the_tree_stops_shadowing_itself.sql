@@ -1,0 +1,37 @@
+-- The city is called Chhatrapati Sambhajinagar, and six zones stop shadowing
+-- the live ones.
+--
+-- 148a. Aurangabad was renamed Chhatrapati Sambhajinagar. The tree carried the
+-- new name with a typo -- a capital J where the file has a g -- so the
+-- whole-word match could not see it and "Pune / Chhatrapati Sambhajinagar"
+-- fell back to Pune, which is the wrong location in the right zone. It already
+-- sits under Rest Of Maharashtra Zone, which is where the owner says it
+-- belongs, so only the name changes. Both spellings it has been known by are
+-- kept as aliases.
+--
+-- 148b. Six zones shadowed a live one, and an empty group one of them left
+-- behind. Every one carried nothing -- no branches, no coverage, no children,
+-- and nothing anywhere in the schema pointed at them:
+--
+--   removed (0 branches)          kept, and what it carries
+--   Kolkata     East  retired     Kolkata Zone               22 branches
+--   New Delhi   North retired     Delhi                     208 branches
+--   Patna       North retired     Patna Zone / BIHAR/PATNA  157
+--   Bhopal      West  retired     Bhopal MP Zone / Bhopal    97
+--   Guwahati    North East        Guwahati Assam Zone        44
+--   Mumbai      West              Mumbai + Goa Zone / Mumbai 1868
+--   North East  (group, retired, and its only child was Guwahati)
+--
+-- They are what made a rate saying "Kolkata" price a different place from the
+-- branch saying "Kolkata". geo_node.op_zone is free text naming one of these;
+-- where the name will no longer exist at all it is repointed at the zone that
+-- kept the work, and where a location still carries the name -- Mumbai,
+-- Bhopal -- it is left alone.
+--
+-- 148c re-runs every assertion from 146b and 147d against the tidied tree,
+-- plus the 13-kind upload harness. Removing the shadows moved nothing: the
+-- point of tidying up is that nothing else changes.
+--
+-- Applied as 148a_the_city_is_called_chhatrapati_sambhajinagar,
+-- 148b_remove_the_shadow_zones and 148c_the_mapping_is_unchanged_by_the_tidy_up.
+-- The SQL each one ran is in the migration history; the decisions are here.
