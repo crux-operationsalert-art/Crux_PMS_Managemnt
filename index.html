@@ -142,6 +142,7 @@ th{color:var(--mute);font-size:11px;text-transform:uppercase;letter-spacing:.06e
 tr.click{cursor:pointer}
 tr.click:hover td{background:var(--panel)}
 td.num{text-align:right;font-family:var(--mono);white-space:nowrap}
+th.num{text-align:right}
 
 .pill{display:inline-block;font-size:11px;border:1px solid var(--line);padding:4px 8px;
   color:var(--body);background:none;white-space:nowrap}
@@ -551,6 +552,57 @@ function badgeHtml(key, cls){
   var n = badges[key];
   return n ? '<span class="'+(cls||"badge")+'">'+esc(n)+'</span>' : "";
 }
+
+/* The blueprint sets a quantity right-aligned, in the monospace face -- its
+   headcount, span, target, achieved, amount, mtd, gap, share and pace columns
+   all do it. The tool defines td.num for exactly that and then used it zero
+   times in 271 cells, so every number in every table read as prose.
+   Which column holds quantities is a property of the data, not of the screen,
+   so it is decided here once instead of being marked up 271 times: a column
+   counts when every filled cell in it reads as a number and nothing in it is
+   a control. Re-run on every render, because most tables are redrawn in
+   place without the route changing. */
+var NUM_RE = /^[₹$]?\s*-?[\d,]+(\.\d+)?\s*%?$/;
+var NUM_SKIP = /year|date|ref\b|^no\.?$/i;
+var numBusy = false;
+function numberColumns(){
+  var host = el("view"); if (!host) return;
+  var tables = host.querySelectorAll("table"), t, i, j;
+  for (t = 0; t < tables.length; t++) {
+    var tb = tables[t];
+    if (tb.getAttribute("data-num")) continue;
+    tb.setAttribute("data-num", "1");
+    var rows = tb.rows, width = 0;
+    for (i = 0; i < rows.length; i++) width = Math.max(width, rows[i].cells.length);
+    for (j = 0; j < width; j++) {
+      var head = "", filled = 0, numeric = 0, ok = true;
+      for (i = 0; i < rows.length && ok; i++) {
+        var c = rows[i].cells[j]; if (!c) continue;
+        var v = (c.textContent || "").trim();
+        if (c.tagName === "TH") { head = v; continue; }
+        if (c.querySelector("button,a,input,select,textarea")) { ok = false; break; }
+        if (!v || v === "—" || v === "-") continue;
+        filled++; if (NUM_RE.test(v)) numeric++;
+      }
+      if (!ok || !filled || numeric !== filled || NUM_SKIP.test(head)) continue;
+      for (i = 0; i < rows.length; i++) {
+        var cc = rows[i].cells[j]; if (cc) cc.className += (cc.className ? " " : "") + "num";
+      }
+    }
+  }
+}
+function watchNumbers(){
+  var host = el("view"); if (!host || !window.MutationObserver) return;
+  new MutationObserver(function(){
+    if (numBusy) return;
+    numBusy = true;
+    try { numberColumns(); } finally { numBusy = false; }
+  }).observe(host, { childList: true, subtree: true });
+  numberColumns();
+}
+
+if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchNumbers);
+else watchNumbers();
 
 function paintSub(){
   var cur = currentTab(), fam = null, box = el("subnav");
