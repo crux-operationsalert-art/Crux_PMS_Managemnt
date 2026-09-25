@@ -118,7 +118,7 @@ comment on table perf_month is
 create table if not exists perf_revenue (
   id                uuid primary key default gen_random_uuid(),
   client_id         uuid not null references client(id),
-  geo_node_id       uuid references geo_node(id),
+  op_node_id        uuid references op_node(id),
   branch_id         uuid references branch(id),
   period            date not null,
   invoiced_inr      bigint not null,
@@ -128,7 +128,7 @@ create table if not exists perf_revenue (
   source_ref        text,
   loaded_by         uuid references person(id),
   loaded_at         timestamptz not null default now(),
-  constraint perf_revenue_uniq unique (client_id, geo_node_id, branch_id, period)
+  constraint perf_revenue_uniq unique (client_id, op_node_id, branch_id, period)
 );
 comment on column perf_revenue.owner_person_id is
   'Who owned the figure at the time. Recorded for attribution; moving the owner '
@@ -137,7 +137,7 @@ comment on column perf_revenue.owner_person_id is
 create table if not exists perf_collection (
   id                        uuid primary key default gen_random_uuid(),
   client_id                 uuid not null references client(id),
-  geo_node_id               uuid references geo_node(id),
+  op_node_id                uuid references op_node(id),
   branch_id                 uuid references branch(id),
   period                    date not null,
   opening_outstanding_inr   bigint not null,
@@ -147,7 +147,7 @@ create table if not exists perf_collection (
   source_ref                text,
   loaded_by                 uuid references person(id),
   loaded_at                 timestamptz not null default now(),
-  constraint perf_collection_uniq unique (client_id, geo_node_id, branch_id, period),
+  constraint perf_collection_uniq unique (client_id, op_node_id, branch_id, period),
   -- a collections file that does not balance is the one import you never
   -- want half-applied; refused at the row, named in the preview
   constraint perf_collection_balances

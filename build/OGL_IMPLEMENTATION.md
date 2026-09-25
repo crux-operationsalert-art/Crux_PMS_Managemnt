@@ -208,8 +208,8 @@ create table assignment (
   case_id             uuid not null references verification_case(id),
   assignor_id         uuid not null references person(id),
   assignor_chair_id   uuid not null references chair(id),
-  from_location_id    uuid not null references geo_node(id),
-  to_location_id      uuid not null references geo_node(id),
+  from_location_id    uuid not null references op_node(id),   -- operating location (145)
+  to_location_id      uuid not null references op_node(id),   -- operating location (145)
   allocated_to_id     uuid references person(id),
   current_state       text not null default 'DRAFT',
   next_action_owner_id uuid references person(id),    -- drives the Action Required tab
@@ -266,7 +266,7 @@ create table sla_rule (
   version              int  not null,
   client_id            uuid references client(id),
   verification_type_id uuid references verification_type(id),
-  geo_node_id          uuid references geo_node(id),
+  op_node_id           uuid references op_node(id),           -- operating zone (145)
   qty_band_min         int,
   qty_band_max         int,
   priority             text,
@@ -278,7 +278,7 @@ create table sla_rule (
   effective_to         date,
   unique (code, version)
 );
-create index on sla_rule (client_id, verification_type_id, geo_node_id, specificity desc);
+create index on sla_rule (client_id, verification_type_id, op_node_id, specificity desc);
 
 create table sla_instance (
   id                uuid primary key default gen_random_uuid(),
@@ -393,7 +393,7 @@ revoke update, delete on assignment_event from app_write, app_read;
 create table ogl_escalation_matrix (
   id               uuid primary key default gen_random_uuid(),
   client_id        uuid references client(id),
-  location_id      uuid references geo_node(id),
+  location_id      uuid references op_node(id),               -- operating zone (145)
   branch_id        uuid references branch(id),
   escalation_level int  not null check (escalation_level between 1 and 4),
   chair_id         uuid references chair(id),
@@ -431,7 +431,7 @@ create index on escalation_instance (assignment_id, escalation_level);
 create table strike_event (
   id               uuid primary key default gen_random_uuid(),
   person_id        uuid not null references person(id),
-  location_id      uuid references geo_node(id),      -- as at breach time, not as at now
+  location_id      uuid references op_node(id),        -- as at breach time, not as at now (145)
   assignment_id    uuid references assignment(id),
   breach_cycle_no  int,
   trigger_code     text not null,     -- SLA_BREACH | SUB_TAT_BREACH | DISPUTE_UPHELD | MIGRATED

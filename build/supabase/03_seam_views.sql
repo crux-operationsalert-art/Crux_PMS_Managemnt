@@ -68,8 +68,8 @@ select b.id::text as id, b.period as period, b.geo_node_id::text as zone_id,
 from public.business_record b;
 
 create or replace view seam.rate as
-select r.id::text || coalesce('#' || rl.geo_node_id::text, '') as id,
-       r.client_id::text as client_id, rl.geo_node_id::text as zone_id,
+select r.id::text || coalesce('#' || rl.op_node_id::text, '') as id,
+       r.client_id::text as client_id, rl.op_node_id::text as zone_id,
        r.scope::text as scope, r.value as value,
        r.effective_from as effective_from, r.effective_to as effective_to,
        r.status as origin, null::int as months_observed,

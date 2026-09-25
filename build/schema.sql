@@ -1428,9 +1428,9 @@ comment on table rate is
   'Scoped rate. Never duplicated per location: scope=group carries its locations in rate_location.';
 
 create table rate_location (
-  rate_id     uuid not null references rate(id) on delete cascade,
-  geo_node_id uuid not null references geo_node(id),
-  primary key (rate_id, geo_node_id)
+  rate_id    uuid not null references rate(id) on delete cascade,
+  op_node_id uuid not null references op_node(id),
+  primary key (rate_id, op_node_id)
 );
 comment on table rate_location is
   'Only for scope in (exact, group). scope=client has no rows here and applies to every location.';
