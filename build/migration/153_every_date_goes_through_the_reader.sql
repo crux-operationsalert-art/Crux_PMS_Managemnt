@@ -1,0 +1,47 @@
+-- "date/time field value out of range: 31-07-17", thrown by upload_stage.
+--
+-- upload_stage runs upload_validate inside itself, so the throw was really
+-- uv_rates, and uv_rates cast the raw text straight to a date in two places --
+-- the effective_to/effective_from order check and the overlap check --
+-- instead of reading it with ul_date(). Migration 143 taught ul_date to read
+-- DD-MM-YY and fixed the four validators that used it in BOOLEAN position. It
+-- did not find these, because they are not boolean, they are casts. Same
+-- fault, third shape.
+--
+-- The crash is the kind half. This server runs DateStyle = ISO, MDY:
+--
+--     '31-07-17'::date   -> throws. There is no month 31.
+--     '01-09-26'::date   -> 2026-01-09. No error. Wrong by eight months.
+--
+-- Every row of the owner's 850-row rates file is written DD-MM-YY. 83 of its
+-- 177 distinct dates would have thrown; the other 94 would have been read
+-- silently with the day and month swapped -- and ua_rates would have WRITTEN
+-- them that way, filing a rate dated 1 September as 9 January with nothing on
+-- any screen to say so. The throw is the only reason this was visible at all.
+--
+-- 28 casts across 8 functions, four validators and four appliers, in four
+-- written shapes:
+--
+--     ul_txt(r.raw,'x')::date
+--     btrim(r2.raw->>'x')::date
+--     (btrim(r.raw->>'x'))::date
+--     nullif(btrim(r.raw->>'x'), '')::date
+--
+-- Two of them are in ua_rates and ua_sla_rules, which I wrote in 145b.
+--
+-- (ul_txt(...) || '-01')::date is left alone on purpose: a period is YYYY-MM,
+-- so YYYY-MM-01 is ISO and cannot be read two ways.
+--
+-- Nothing already loaded was bitten. Only Chairs, Clients and branches,
+-- Geography and People have ever been applied; person.joined_on is null on all
+-- 636 rows, so the people file carried no joining date; and the 73 holidays
+-- came from the RBI seed migration, not from an upload. Assignments, Rates,
+-- Holidays and the rest have never been applied at all.
+--
+-- 153b proves it on the two dates that matter rather than on the text of a
+-- function: 31-07-17 (which threw) and 01-09-26 (which did not, and was
+-- wrong) are staged, validated, applied, and the date on the rate is read
+-- back. 2017-07-31 and 2026-09-01. Then the 13-kind harness again.
+--
+-- Checked against the owner's actual file afterwards: all 177 distinct dates
+-- in it now read, spanning 2017-07-01 to 2026-09-01.
