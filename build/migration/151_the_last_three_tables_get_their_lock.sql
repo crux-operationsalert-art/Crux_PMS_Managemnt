@@ -1,0 +1,21 @@
+-- Three tables were left with row-level security off, which means anyone
+-- holding the publishable key could read or write them directly, going round
+-- every scope rule the tool applies. The owner's instruction: lock them, as
+-- long as the tool can still read, write and edit. It can -- every screen
+-- reaches the database through an Edge Function on the service connection,
+-- and the holiday and cut-over helpers are SECURITY DEFINER. RLS binds the
+-- anon and authenticated roles, not those.
+--
+--   mis_view               a saved MIS view belongs to the person who saved
+--                          it. Nobody else's is their business, and an
+--                          administrator sees everything as everywhere else.
+--   holiday_centre_alias   which RBI banking centre a branch city follows.
+--                          Reference data: anyone signed in may read it, the
+--                          administrator changes it.
+--   branch_generation_map  the cut-over branch master mapped onto the master
+--                          the owner uploaded, kept so migration 132 can be
+--                          read back or reversed. An administrator's business.
+--
+-- Proved by exercising each one through the deployed function afterwards
+-- rather than asserting it: mis_view read 200 and written 201, the Places
+-- read 200, and the holiday clock still answers.

@@ -1,0 +1,32 @@
+-- Locking the last three tables surfaced a bigger hole behind them.
+--
+-- Eighteen SECURITY DEFINER functions were callable straight off
+-- /rest/v1/rpc by anyone holding the publishable key. A SECURITY DEFINER
+-- function runs as its owner, so row-level security does not apply to it --
+-- which means op_alias_save(p_actor, ...) would have let a stranger pass an
+-- administrator's id and change what every upload thinks a place is called.
+-- Four of the eighteen were added today, so this is mine to close.
+--
+-- The grant to revoke is PUBLIC, not anon and authenticated: EXECUTE is
+-- granted to PUBLIC by default, so taking it from the two named roles leaves
+-- them holding it by inheritance. The first attempt did exactly that and its
+-- own check caught it -- 14 functions still open. That check is the reason
+-- this migration is worth anything.
+--
+-- The four app_* helpers keep their grant on purpose: a row-level policy is
+-- evaluated as the querying role, so revoking app_person_id() would make the
+-- policies written in 151 error rather than deny. They answer only "who am I"
+-- and "am I an administrator" from the caller's own token.
+--
+-- The same pass pins search_path on every function that had none -- six,
+-- three of them written this week. A function with no search_path resolves
+-- its names against whatever the caller's path happens to be, so a table
+-- shadowed in another schema changes what it reads.
+--
+-- 152b then runs the whole upload harness again (13 of 13) and re-checks ten
+-- of the resolver's recorded answers, because pinning a search path and
+-- revoking a grant across every function in the schema is exactly the kind of
+-- sweep that breaks something quietly. Nothing moved.
+--
+-- Verified after: all 12 ops endpoints probed over pg_net answered 200,
+-- including a write.
