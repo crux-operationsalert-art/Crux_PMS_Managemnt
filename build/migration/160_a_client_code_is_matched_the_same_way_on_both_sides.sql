@@ -1,0 +1,35 @@
+-- The rates file passed validation and then the applier refused row 5:
+--
+--     Row 5: client code "IDBI BANK" is not on file. Nothing has been loaded.
+--
+-- It is on file, as "IDBI Bank". Every validator matched a client code folded
+-- and trimmed:
+--
+--     lower(btrim(c.code)) = lower(btrim(ul_txt(r2.raw,'client_code')))
+--
+-- and every applier matched it exactly:
+--
+--     c.code = ul_txt(r.raw,'client_code')
+--
+-- which is the fault of 142, 143, 145 and 154 in a fourth place: the preview
+-- and the apply disagreeing about what a name is. Eleven occurrences across
+-- eight appliers -- ua_assignments, ua_clients, ua_collections, ua_escalation,
+-- ua_opening, ua_past_perf, ua_rates, ua_sla_rules -- so seven of the uploads
+-- still to come carried the same landmine, not just Rates. Worth noting that
+-- the loader behaved well when it found it: it raised and rolled back, so
+-- nothing was half-written.
+--
+-- Two codes in the owner's file hit it: IDBI BANK and TEZZRACT. No two clients
+-- have codes differing only by case, so folding cannot make a match ambiguous
+-- -- checked, not assumed.
+--
+-- The substitution is mechanical, so the migration asserts rather than trusts:
+-- exactly 8 functions and 11 lookups rewritten, no loader left matching
+-- strictly afterwards, and -- because CREATE OR REPLACE is where grants get
+-- lost quietly -- the EXECUTE lockdown from 158 still in place on every
+-- applier after the replace.
+--
+-- After this: the file staged 427 of 427 with no errors and applied 427. The
+-- result is 427 rates and 427 rate_locations, every one scoped to a place and
+-- none client-wide, across 38 clients and 29 places, from 2017-07-01 to
+-- 2026-09-01, with zero overlapping pairs for any client and place.

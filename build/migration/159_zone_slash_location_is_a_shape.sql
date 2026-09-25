@@ -1,0 +1,64 @@
+-- "Zone / Location" is a shape, and the tool was reading it as one name.
+--
+-- The rates file writes a place two ways, and the two mean different things:
+--
+--     Pune                     the zone the business calls Pune
+--     Pune / Pune              the Pune location inside it
+--     Pune / Nashik            the Nashik location inside it
+--     Pune / Kolhapur, Pune / Solapur, Pune / Latur, Pune / Nagpur (Sudhir),
+--     Pune / Nagpur (Yash), Pune / Chhatrapati Sambhajinagar   ... and so on
+--
+-- op_place collapsed the two:
+--
+--     halves := case when tail is null or lower(tail) = lower(head)
+--                    then array[head] else array[tail, head] end;
+--
+-- so "Pune / Pune" resolved exactly as "Pune" did, and both landed on the Pune
+-- LOCATION. That produced the last twenty-nine errors on the rates file: a
+-- zone-wide rate and a location-specific rate for the same client arrived as
+-- two rates for the same place over the same period, and the overlap check --
+-- correctly, on what it was given -- refused them.
+--
+-- How the reading was settled, rather than guessed:
+--
+--   * four clients show the pattern independently. BOB and SBI each carry a
+--     full eight-period history under "Pune" and a different four-period one
+--     under "Pune / Pune"; SBI has "Bhopal" and "Bhopal / Bhopal"; BOI has
+--     "Mumbai" and "Mumbai / Mumbai"; CAN FIN HOMES and SBI have "Patna" and
+--     "Patna / Bihar". Read as one place the file contradicts itself in four
+--     separate places across dozens of periods. Read as zone plus location
+--     override it is an ordinary rate sheet.
+--   * all twenty-nine conflicts clear under that reading and none clear under
+--     the other. A wrong theory does not clear every case.
+--   * and the proof after loading: BOB's zone-wide chain runs Jul 2017 to
+--     open-ended in eleven versions with no gap and no overlap. A mis-split
+--     would have left gaps.
+--
+-- So the shape now carries the meaning:
+--   * the right half of a slash names a LOCATION, including when it is spelt
+--     the same as the left half;
+--   * a name written alone, or the left half, names a ZONE;
+--   * anything that is neither still falls back to whatever matches, so the
+--     other twelve upload kinds keep the behaviour they were verified with --
+--     op_location_for returns the same node for every name it did before.
+--
+-- The second change is to aliases. They were consulted BEFORE the tree, which
+-- meant a taught spelling could shadow a real name -- and would have here, the
+-- moment "pune" was taught to mean the zone: the "Pune" in "Pune / Pune" would
+-- have stopped finding the Pune location. An alias is now what to try when the
+-- tree does not have the name, never a way to override one it does have. That
+-- is also what the screen has always promised in words.
+--
+-- Two names taught rather than renamed, because the owner has already said
+-- Rest Of Maharashtra is a name the business uses and means:
+--
+--     pune       -> Rest Of Maharashtra Zone
+--     ahmedabad  -> Gujarat Zone
+--
+-- What this widens, stated plainly: 171 rows now price a zone rather than one
+-- location -- Pune (64), Mumbai (73), Bhopal (14), Patna (12), Ahmedabad (8).
+-- The other eight bare names sit in zones with a single location, so zone and
+-- location are the same place there. The widening touches nothing live today:
+-- every Rest-of-Maharashtra location has 0 active branches, GOA has 0,
+-- JHARKHAND has 0, and Indore/Gwalior/Bilaspur/Raipur have 0. Checked before
+-- deciding, not after.
