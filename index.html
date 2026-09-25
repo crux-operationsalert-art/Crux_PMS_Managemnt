@@ -318,6 +318,39 @@ nav a .shine{display:inline-block;padding:4px 13px;border-radius:14px;
   box-shadow:0 0 0 1px rgba(180,86,47,.35),0 2px 12px rgba(180,86,47,.3)}
 nav a:hover .shine{color:#fff}
 @media (prefers-reduced-motion:reduce){nav a .shine{animation:none}}
+
+/* Automations: the four-stage chain the blueprint draws. */
+.autorow{border-top:1px solid var(--line3);padding:14px 15px}
+.card>.autorow:first-of-type{border-top:none}
+.autohead{display:flex;flex-wrap:wrap;gap:6px 9px;align-items:baseline;margin-bottom:9px}
+.chain{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.stage{border:1px solid var(--line);background:var(--panel2);padding:9px 11px}
+.stage .slabel{display:block;font-size:11px;letter-spacing:.09em;text-transform:uppercase;
+  color:var(--mute);margin-bottom:5px}
+.stage ul{margin:0;padding-left:16px}
+.stage li{font-size:12px;margin:3px 0}
+.stage p{margin:0}
+.guard{margin-top:9px;border-left:2px solid var(--terra);padding:6px 0 6px 10px;font-size:12px;
+  color:var(--body)}
+.guard b{font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--terra-ink);
+  margin-right:6px}
+@media (max-width:860px){.chain{grid-template-columns:1fr}}
+
+/* The export control lives in the card's own header strip, at its right. */
+.card>h2,.card>.cardhead{display:flex;align-items:center;justify-content:space-between;gap:10px}
+button.exp{border:1px solid var(--line);background:var(--white);color:var(--mute);
+  font-size:11px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+  padding:4px 10px;min-height:28px}
+button.exp:hover{border-color:var(--blue);color:var(--blue);background:var(--white)}
+
+/* Dragging a chair onto its new manager. */
+.node[draggable="true"]{cursor:grab}
+.node.dragging{opacity:.45;cursor:grabbing}
+.node.drop{outline:2px solid var(--blue);outline-offset:2px;background:var(--panel)}
+.droproot{border:1px dashed var(--field);color:var(--mute);font-size:12px;
+  padding:9px 12px;margin:0 0 12px}
+.droproot.drop{border-style:solid;border-color:var(--blue);color:var(--blue);
+  background:var(--panel)}
 </style></head><body>
 
 <!-- ============================================================== sign in -->
@@ -516,6 +549,7 @@ var NAV = [
                              ["joining","Joining"], ["penalties","Penalty ledger"],
                              ["coverage","Coverage & handlers"], ["reports","Reports"],
                              ["history","History & audit trail"], ["mail","Messaging"],
+                             ["auto","Automations"],
                              ["data","Data setup"], ["config","Settings"] ] }
 ];
 
@@ -532,6 +566,10 @@ var FAMILY = [
 
 var ADMIN_TABS = { data:1, mail:1, whatsapp:1 };
 var MOB_BAR = ["today","ogl","cases","more"];
+/* The bar is four cells wide, and the blueprint has no mobile bar to take
+   labels from -- it has no media queries at all. So these are its own, kept
+   short enough to read at a quarter of a phone screen. */
+var MOB_LABEL = { today:"Today", ogl:"OGL", cases:"Escalations", more:"More" };
 var TABS = [];
 NAV.forEach(function(g){ g.items.forEach(function(t){ TABS.push(t); }); });
 /* A family screen is a route too, or currentTab() bounces it to Today. */
@@ -551,6 +589,72 @@ function allowed(key){
 function badgeHtml(key, cls){
   var n = badges[key];
   return n ? '<span class="'+(cls||"badge")+'">'+esc(n)+'</span>' : "";
+}
+
+/* "Export this" -- the blueprint puts it on the tables people actually take
+   away, and the tool had it nowhere. Which columns and rows to write is
+   whatever is on screen, so this reads the rendered table rather than going
+   back to the server: what you export is what you were looking at, filters and
+   all. Cells that hold only a control export as empty, because a button is not
+   a value. */
+function csvCell(v){
+  v = String(v == null ? "" : v).replace(/\s+/g, " ").trim();
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+function tableCsv(tb){
+  var out = [], rows = tb.rows, i, j;
+  for (i = 0; i < rows.length; i++) {
+    var line = [];
+    for (j = 0; j < rows[i].cells.length; j++) {
+      var c = rows[i].cells[j];
+      // A cell whose whole text comes from its controls is an action, not a
+      // value, so it exports empty. A cell that holds a figure AND a button
+      // keeps the figure.
+      var ctrls = c.querySelectorAll("button,input,select,textarea"), k, ct = "";
+      for (k = 0; k < ctrls.length; k++) ct += ctrls[k].textContent || "";
+      var onlyControl = ctrls.length &&
+        c.textContent.replace(/\s+/g, "") === ct.replace(/\s+/g, "");
+      line.push(csvCell(onlyControl ? "" : c.textContent));
+    }
+    out.push(line.join(","));
+  }
+  return out.join("\r\n");
+}
+function downloadCsv(name, body){
+  // U+FEFF, or Excel opens it as ANSI and every rupee sign and dash breaks.
+  var blob = new Blob(["﻿" + body], { type: "text/csv;charset=utf-8" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 0);
+}
+function slug(s){
+  return String(s || "table").toLowerCase().replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "").slice(0, 60) || "table";
+}
+function exportButtons(){
+  var host = el("view"); if (!host) return;
+  var cards = host.querySelectorAll(".card");
+  for (var i = 0; i < cards.length; i++) {
+    var card = cards[i];
+    if (card.getAttribute("data-exp")) continue;
+    var tb = card.querySelector("table");
+    var head = card.querySelector("h2, .cardhead");
+    if (!tb || !head || tb.rows.length < 2) continue;
+    card.setAttribute("data-exp", "1");
+    var b = document.createElement("button");
+    b.className = "exp"; b.type = "button"; b.textContent = "Export";
+    b.title = "Download this table as it is on screen, as a CSV";
+    (function(tb, head){
+      b.onclick = function(){
+        var page = (host.querySelector("h1") || {}).textContent || "crux";
+        downloadCsv(slug(page) + "-" + slug(head.textContent) + "-" +
+                    new Date().toISOString().slice(0, 10) + ".csv", tableCsv(tb));
+      };
+    })(tb, head);
+    head.appendChild(b);
+  }
 }
 
 /* The blueprint sets a quantity right-aligned, in the monospace face -- its
@@ -596,9 +700,9 @@ function watchNumbers(){
   new MutationObserver(function(){
     if (numBusy) return;
     numBusy = true;
-    try { numberColumns(); } finally { numBusy = false; }
+    try { numberColumns(); exportButtons(); } finally { numBusy = false; }
   }).observe(host, { childList: true, subtree: true });
-  numberColumns();
+  numberColumns(); exportButtons();
 }
 
 if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", watchNumbers);
@@ -639,7 +743,7 @@ function paintNav(){
       return '<a href="#" data-more="1"><span>More</span></a>';
     if (!allowed(k)) return "";
     return '<a href="#'+k+'"'+(k===cur?' class="on"':'')+'>' +
-      '<span>'+esc(LABEL[k]||k)+'</span>'+badgeHtml(k)+'</a>';
+      '<span>'+esc(MOB_LABEL[k]||LABEL[k]||k)+'</span>'+badgeHtml(k)+'</a>';
   }).join("");
   var more = el("mobbar").querySelector('[data-more]');
   if (more) more.onclick = function(e){
@@ -1431,7 +1535,7 @@ function route(){
     people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail,
     whatsapp:vWhats, config:vConfig, coverage:vCoverage,
     clients:vClients, history:vHistory, visits:vVisits, ideas:vIdeas, hr:vHR, joining:vJoining, access:vAccess, mis:vMis, tenday:vTenday, reports:vReports, rates:vRates,
-    profile:vProfile, hiring:vHiring}[t];
+    profile:vProfile, hiring:vHiring, auto:vAuto}[t];
   Promise.resolve().then(run).catch(function(e){
     el("view").innerHTML = '<h1>' + esc(LABEL[t] || t) + '</h1>' +
       msg("bad", "This screen could not be drawn. " + ((e && e.message) || e)) +
@@ -3024,7 +3128,9 @@ async function vPeople(){
       var mv = mayMove
         ? ' <button class="btn" data-move="'+esc(c.id)+'" data-movetitle="'+esc(c.title)+'">Move</button>'
         : '';
-      return '<li><div class="node"><span class="t">'+esc(c.title)+'</span>' +
+      return '<li><div class="node"' +
+        (mayMove ? ' draggable="true" data-dragchair="'+esc(c.id)+'"' : '') + '>' +
+        '<span class="t">'+esc(c.title)+'</span>' +
         '<span class="mute">'+esc(c.full_name || "-")+'</span>'+st+many+mv+'</div>' +
         branch(c.id) + '</li>';
     }).join("") + '</ul>';
@@ -3035,7 +3141,8 @@ async function vPeople(){
     '<p class="mute">' + esc(chairs.length) + ' chairs. A chair shared by several ' +
     'people is one chair here, not one per holder - 63 people hold Executive, and ' +
     'drawing it 63 times is what used to stop this page opening.' +
-    (mayMove ? ' Move re-parents a chair; everything under it comes with it.' : '') +
+    (mayMove ? ' Drag a chair onto its new manager, or use Move. Either way ' +
+    'everything under it comes with it.' : '') +
     '</p></div></div>' +
     '<div id="pplmsg"></div>' +
     '<div class="card"><h2>Your team</h2>' +
@@ -3045,6 +3152,8 @@ async function vPeople(){
             '<td>'+esc(t.state||"")+'</td></tr>'; }).join("") + '</table></div>'
         : '<div class="empty">Nobody reports to your chair.</div>') + '</div>' +
     '<div class="card"><h2>The structure</h2>' +
+      (mayMove ? '<div id="pplroot" class="droproot">Drag a chair here to put it at ' +
+                 'the top of the tree</div>' : '') +
       (chairs.length ? branch("root") : '<div class="empty">No chairs loaded yet.</div>') +
       '<div id="pplmove"></div></div>';
 
@@ -3082,6 +3191,63 @@ async function vPeople(){
       };
     };
   });
+
+  /* Drag and drop, which the blueprint has alongside the picker -- its org
+     nodes carry onDragStart, onDragOver and onDrop, all gated on canEdit. Both
+     ways exist because dragging is quicker and a picker is the one that works
+     with a keyboard, on a phone, and when the tree is taller than the screen.
+     A chair cannot be dropped inside its own subtree: that would cut the
+     branch off the tree entirely, and it is the one move that has no meaning. */
+  if (mayMove) {
+    var dragId = null, blocked = {};
+    function subtreeOf(id){
+      var m = {}; (function walk(k){
+        (byParent[k] || []).forEach(function(c){ m[c.id] = 1; walk(c.id); });
+      })(id); m[id] = 1; return m;
+    }
+    function clearMarks(){
+      Array.prototype.forEach.call(el("view").querySelectorAll(".drop"),
+        function(n){ n.classList.remove("drop"); });
+    }
+    async function moveTo(parentId){
+      var out = await api("/people/chair/" + encodeURIComponent(dragId) + "/move",
+        { method:"POST", body:{ parentId: parentId } });
+      if (out.error) { el("pplmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      el("pplmsg").innerHTML = msg("ok", out.title + " now reports to " +
+        (out.to || "nobody - it is the top of the tree") + ".");
+      vPeople();
+    }
+    Array.prototype.forEach.call(el("view").querySelectorAll("[data-dragchair]"), function(n){
+      var id = n.getAttribute("data-dragchair");
+      n.ondragstart = function(e){
+        dragId = id; blocked = subtreeOf(id);
+        n.classList.add("dragging");
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", id);
+        }
+      };
+      n.ondragend = function(){ n.classList.remove("dragging"); clearMarks(); dragId = null; };
+      n.ondragover = function(e){
+        if (!dragId || blocked[id]) return;   // no preventDefault = no drop here
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+        n.classList.add("drop");
+      };
+      n.ondragleave = function(){ n.classList.remove("drop"); };
+      n.ondrop = function(e){
+        e.preventDefault(); clearMarks();
+        if (!dragId || blocked[id]) return;
+        moveTo(id);
+      };
+    });
+    var root = el("pplroot");
+    if (root) {
+      root.ondragover = function(e){ if (dragId) { e.preventDefault(); root.classList.add("drop"); } };
+      root.ondragleave = function(){ root.classList.remove("drop"); };
+      root.ondrop = function(e){ e.preventDefault(); clearMarks(); if (dragId) moveTo(null); };
+    }
+  }
 }
 
 /* ------------------------------------------------------------- clients
@@ -4180,11 +4346,13 @@ async function accOpen(id){
    numbers from nowhere." Every figure is read from business_record, and the
    provenance strip at the foot says which table answered and how many rows it
    had, so a zero can never be mistaken for a result.                      */
-var misGroup = "client", misPeriod = null;
+var misGroup = "client", misPeriod = null, misCompare = false, misViews = null;
 async function vMis(){
   var q = "/mis?group=" + encodeURIComponent(misGroup) +
-          (misPeriod ? "&period=" + encodeURIComponent(misPeriod) : "");
-  var d = await ops(q);
+          (misPeriod ? "&period=" + encodeURIComponent(misPeriod) : "") +
+          (misCompare ? "&compare=prev" : "");
+  var r = await Promise.all([ops(q), ops("/mis/views")]);
+  var d = r[0]; misViews = r[1].views || [];
   if (d.error) { el("view").innerHTML = "<h1>MIS</h1>" + msg("bad", d.reason||d.error); return; }
   misPeriod = d.period;
   var rows = d.rows||[], t = d.tiles||{};
@@ -4203,7 +4371,12 @@ async function vMis(){
     '<div>' + Object.keys(d.dims||{}).map(function(k){
         return '<button class="btn' + (k===d.group?' primary':'') + '" data-misg="'+esc(k)+'">' +
           esc(d.dims[k].label) + '</button> ';
-      }).join("") + '</div></div>' +
+      }).join("") +
+      '<button class="btn' + (misCompare?' primary':'') + '" id="miscmp">' +
+      (misCompare ? 'Comparing with ' + esc(d.prevPeriod || 'the month before')
+                  : 'Compare with the month before') + '</button>' +
+      '</div></div>' +
+    (d.compareWhy ? msg("warn", d.compareWhy) : "") +
 
     ((d.periods||[]).length
       ? '<div class="card"><h2>Month</h2>' +
@@ -4226,12 +4399,52 @@ async function vMis(){
         (d.noTarget ? msg("warn", d.noTarget) : "") +
         '<div class="card"><h2>' + esc(d.dims[d.group].label) + '</h2>' +
         '<div class="scroll"><table><tr><th>' + esc(d.dims[d.group].label) + '</th>' +
-        '<th>10th</th><th>MTD</th><th>Target</th><th>Achievement</th><th>Revenue</th></tr>' +
+        '<th>10th</th><th>MTD</th><th>Target</th><th>Achievement</th><th>Revenue</th>' +
+        (d.prevPeriod ? '<th>' + esc(d.prevPeriod) + '</th><th>Change</th><th>Growth</th>' : '') +
+        '</tr>' +
         rows.map(function(r){
           return '<tr><td>'+esc(r.label)+'</td><td>'+esc(money(r.day10))+'</td>' +
             '<td>'+esc(money(r.mtd))+'</td><td>'+esc(money(r.target))+'</td>' +
-            '<td>'+esc(pct(r.mtd, r.target))+'</td><td>'+esc(money(r.revenue))+'</td></tr>';
+            '<td>'+esc(pct(r.mtd, r.target))+'</td><td>'+esc(money(r.revenue))+'</td>' +
+            (d.prevPeriod
+              ? '<td>' + (r.prev_mtd === null ? '<span class="pill">new</span>'
+                                              : esc(money(r.prev_mtd))) + '</td>' +
+                // the sign goes in front of the rupee symbol, not after it
+                '<td>' + (r.change === null ? '—'
+                          : (Number(r.change) < 0 ? '−' : '+') +
+                            esc(money(Math.abs(Number(r.change))))) + '</td>' +
+                '<td>' + (r.growth === null
+                          ? (r.prev_mtd === null ? '<span class="pill">new</span>'
+                             : '<span class="mute">from nothing</span>')
+                          : '<span class="chip ' + (Number(r.growth) >= 0 ? 'ok' : 'warn') + '">' +
+                            (Number(r.growth) > 0 ? '+' : '') +
+                            esc(Number(r.growth).toFixed(1)) + '%</span>') + '</td>'
+              : '') + '</tr>';
         }).join("") + '</table></div></div>') +
+
+    /* Saved views. The blueprint is explicit that only the configuration is
+       stored, never a copy of the data, so a saved view always reflects
+       current records -- which is why this saves three fields and no rows. */
+    '<div class="card"><h2>Saved views</h2>' +
+    (misViews.length
+      ? misViews.map(function(v){
+          return '<div class="cfgrow"><div><b>' + esc(v.name) + '</b>' +
+            '<div class="mute">' +
+            esc((d.dims[v.config.group] ? d.dims[v.config.group].label : v.config.group || 'client')) +
+            (v.config.period ? ' &middot; ' + esc(v.config.period) : '') +
+            (v.config.compare === 'prev' ? ' &middot; compared with the month before' : '') +
+            '</div></div><div class="cfgset">' +
+            '<button class="btn" data-misload="' + esc(v.id) + '">Open</button> ' +
+            '<button class="btn danger" data-misdel="' + esc(v.id) + '">Delete</button>' +
+            '</div></div>';
+        }).join("")
+      : '<div class="empty">No saved views. Save the one you are looking at and it ' +
+        'comes back exactly as it is now &mdash; the selection, never the figures.</div>') +
+    '<div class="cfgrow"><div><b>Save this view</b>' +
+    '<div class="mute">Grouping, month and comparison. Nothing that could go stale.</div></div>' +
+    '<div class="cfgset"><input id="misvname" placeholder="What to call it" ' +
+    'style="min-width:200px"> <button class="btn primary" id="misvsave">Save</button></div></div>' +
+    '<div id="misvmsg"></div></div>' +
 
     '<div class="card"><h2>Where these figures came from</h2>' +
     '<p class="mute">Nothing on this screen is hard-coded. It waits for the data ' +
@@ -4248,10 +4461,41 @@ async function vMis(){
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-misp]"), function(b){
     b.onclick = function(){ misPeriod = b.getAttribute("data-misp"); vMis(); };
   });
+  el("miscmp").onclick = function(){ misCompare = !misCompare; vMis(); };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-misload]"), function(b){
+    b.onclick = function(){
+      var v = misViews.filter(function(x){ return x.id === b.getAttribute("data-misload"); })[0];
+      if (!v) return;
+      misGroup = v.config.group || "client";
+      misPeriod = v.config.period || null;
+      misCompare = v.config.compare === "prev";
+      vMis();
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-misdel]"), function(b){
+    b.onclick = async function(){
+      b.disabled = true;
+      var out = await ops("/mis/views/" + encodeURIComponent(b.getAttribute("data-misdel")),
+        { method: "DELETE" });
+      if (out.error) { b.disabled = false;
+        el("misvmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      vMis();
+    };
+  });
+  el("misvsave").onclick = async function(){
+    var name = (el("misvname").value || "").trim();
+    if (!name) { el("misvmsg").innerHTML = msg("warn",
+      "Give the view a name you will recognise it by."); return; }
+    el("misvsave").disabled = true;
+    var out = await ops("/mis/views", { method: "POST", body: { name: name,
+      config: { group: misGroup, period: misPeriod, compare: misCompare ? "prev" : null } } });
+    el("misvsave").disabled = false;
+    if (out.error) { el("misvmsg").innerHTML = msg("bad", out.reason || out.error); return; }
+    vMis();
+  };
 }
 
-/* ------------------------------------------------- 10-day management view */
-var tenPeriod = null;
 async function vTenday(){
   var d = await ops("/mis/tenday" + (tenPeriod ? "?period=" + encodeURIComponent(tenPeriod) : ""));
   if (d.error) { el("view").innerHTML = "<h1>10-day view</h1>" + msg("bad", d.reason||d.error); return; }
@@ -4302,6 +4546,122 @@ async function vTenday(){
 }
 
 /* --------------------------------------------------------------- reports */
+// Automations. The design calls this "the wireframe": every automation drawn as
+// a chain of four stages -- trigger, conditions, actions, notifies -- with the
+// guard stated beside it, "generated from the same data the engine reads, so it
+// cannot drift from the behaviour."
+//
+// So the chain comes from the automation table, and what actually runs comes
+// from job_config and job_run. Those two do not agree, and the top of this
+// screen says so in a sentence rather than letting the reader assume that 49
+// documented automations are 49 running ones.
+async function vAuto(){
+  var d = await ops("/auto");
+  if (d.error) {
+    el("view").innerHTML = "<h1>Automations</h1>" + msg("bad", d.reason || d.error); return;
+  }
+  var t = d.tally || {}, jobs = d.jobs || [], orphans = d.orphans || [],
+      recent = d.recent || [], designed = d.designed || [];
+
+  // The one sentence that reconciles the two halves.
+  var ran = Number(t.configured_with_history || 0), cfg = Number(t.configured || 0);
+  var line = cfg + " job" + (cfg === 1 ? " is" : "s are") + " configured and " +
+    (ran ? ran + " of them " + (ran === 1 ? "has" : "have") : "none of them has") +
+    " ever run under its own name.";
+  if (orphans.length) {
+    line += " " + orphans.map(function(o){
+      return o.job_key + " is in no configuration at all and has run " +
+             Number(o.runs).toLocaleString("en-IN") + " times";
+    }).join("; ") + " — that is the job actually carrying the work.";
+  }
+
+  function stage(label, items){
+    var xs = items || [];
+    return '<div class="stage"><span class="slabel">' + esc(label) + '</span>' +
+      (xs.length ? '<ul>' + xs.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join("") + '</ul>'
+                 : '<p class="mute">—</p>') + '</div>';
+  }
+
+  // group the designed set, keeping the order the endpoint sent
+  var groups = [], byName = {};
+  designed.forEach(function(a){
+    if (!byName[a.grp]) { byName[a.grp] = { name: a.grp, items: [] }; groups.push(byName[a.grp]); }
+    byName[a.grp].items.push(a);
+  });
+
+  el("view").innerHTML =
+    '<div class="page-head"><div><h1>Automations</h1>' +
+    '<p class="mute">' + esc(line) + '</p></div></div>' +
+
+    '<div class="card"><h2>What actually runs</h2><table>' +
+    '<tr><th>Job</th><th>Schedule</th><th>On</th><th>Runs</th><th>Last run</th><th>Then</th></tr>' +
+    jobs.map(function(j){
+      return '<tr><td><b>' + esc(j.job_key) + '</b>' +
+        (j.reason ? '<div class="mute">' + esc(j.reason) + '</div>' : "") + '</td>' +
+        '<td class="mono">' + esc(j.cron || "") + '</td>' +
+        '<td>' + (j.enabled ? '<span class="chip ok">on</span>'
+                            : '<span class="chip warn">off</span>') + '</td>' +
+        '<td>' + esc(Number(j.runs).toLocaleString("en-IN")) + '</td>' +
+        '<td>' + (j.last_run ? esc(when(j.last_run))
+                             : '<span class="mute">never</span>') + '</td>' +
+        '<td>' + (j.last_error ? '<span class="pill bad">' + esc(j.last_error) + '</span>'
+                  : j.last_state ? esc(j.last_state)
+                  : '<span class="mute">nothing recorded</span>') + '</td></tr>';
+    }).join("") +
+    orphans.map(function(o){
+      return '<tr><td><b>' + esc(o.job_key) + '</b>' +
+        '<div class="mute">Not in job_config. It runs anyway, and it is what the ' +
+        'other sweeps are folded into.</div></td>' +
+        '<td class="mute">not configured here</td><td>—</td>' +
+        '<td>' + esc(Number(o.runs).toLocaleString("en-IN")) + '</td>' +
+        '<td>' + esc(when(o.last_run)) + '</td>' +
+        '<td>' + esc(o.last_state || "") + '</td></tr>';
+    }).join("") + '</table></div>' +
+
+    (recent.length
+      ? '<div class="card"><h2>The last 24 hours &middot; ' + recent.length +
+          (recent.length === 1 ? ' run' : ' runs') + '</h2>' +
+        '<table><tr><th>Started</th><th>Job</th><th>State</th><th>What it found</th></tr>' +
+        recent.map(function(r){
+          var c = r.counts || {}, ks = Object.keys(c);
+          var hit = ks.filter(function(k){ return Number(c[k]) > 0; });
+          return '<tr><td>' + esc(when(r.started_at)) + '</td>' +
+            '<td>' + esc(r.job_key) + '</td>' +
+            '<td>' + (r.error ? '<span class="pill bad">error</span>' : esc(r.state || "")) + '</td>' +
+            '<td>' + (r.error ? esc(r.error)
+              : hit.length ? esc(hit.map(function(k){ return k.replace(/_/g," ") + " " + c[k]; }).join(", "))
+              : ks.length ? '<span class="mute">nothing to do &mdash; ' + ks.length +
+                            ' counters, all zero</span>'
+              : '<span class="mute">no counters recorded</span>') + '</td></tr>';
+        }).join("") + '</table></div>'
+      : msg("warn", "No job has run in the last 24 hours.")) +
+
+    '<div class="page-head" style="margin-top:22px"><div><h2 style="font-size:20px">What is designed to run</h2>' +
+    '<p class="mute">' + esc(t.designed + " automations, " + t.designed_live +
+      " of them live. Each is a chain: what starts it, every condition that must " +
+      "hold, what it does, and who hears about it. The guard is what stops it " +
+      "doing the wrong thing twice.") + '</p></div></div>' +
+
+    groups.map(function(g){
+      return '<div class="card"><h2>' + esc(g.name) + ' &middot; ' + g.items.length + '</h2>' +
+        g.items.map(function(a){
+          return '<div class="autorow">' +
+            '<div class="autohead"><b>' + esc(a.title) + '</b> ' +
+            '<span class="pill">' + esc(a.key) + '</span> ' +
+            (a.enabled ? '<span class="chip ok">live</span>'
+                       : '<span class="chip warn">blocked</span>') +
+            (a.owner ? ' <span class="mute">' + esc(a.owner) + '</span>' : "") + '</div>' +
+            (a.disabled_reason ? msg("warn", a.disabled_reason) : "") +
+            '<div class="chain">' +
+              stage("When", a.trigger_on) + stage("Only if", a.conditions) +
+              stage("It does", a.actions) + stage("Tells", a.notifies) +
+            '</div>' +
+            (a.guard ? '<div class="guard"><b>Guard</b> ' + esc(a.guard) + '</div>' : "") +
+          '</div>';
+        }).join("") + '</div>';
+    }).join("");
+}
+
 async function vReports(){
   var d = await ops("/mis/reports");
   if (d.error) { el("view").innerHTML = "<h1>Reports</h1>" + msg("bad", d.reason||d.error); return; }
