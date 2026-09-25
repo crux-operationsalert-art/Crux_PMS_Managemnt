@@ -9,4 +9,4 @@
 # message; this records what was asked for. If the two disagree, the
 # republish did not happen.
 
-064774be399087c453a68273afa66d4c  266233 bytes  Places, coverage and owners: one screen for the grouping, the cities and the handlers
+19850675e5efd07e54b1ef2bbc072561  284561 bytes  Places, coverage & owners rebuilt: add or remove a client at a place, edit branches, seat Branch and Zonal Managers, assign a whole place or a ticked few, and set rates with dates -- all on one screen

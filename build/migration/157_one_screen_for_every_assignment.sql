@@ -1,4 +1,25 @@
-/* ==================================================================== places
+-- 157_one_screen_for_every_assignment.sql
+--
+-- The Places screen rebuilt. The old one could show coverage and rename a
+-- place; it could not add or remove a client at a place, could not edit a
+-- branch, could not seat a Branch or Zonal Manager, could not assign a whole
+-- place in one go, and could not price anything. All of that lives here now,
+-- in four tabs on one detail card, against a tree that is the master.
+--
+-- Three things this migration is careful about:
+--   * it replaces exactly one block, between two markers it asserts are
+--     present once each and in order, rather than trusting a byte offset;
+--   * it adds CSS and removes none, because .opzone and .oploc turned out to
+--     belong to the org tree on another screen, not to this one;
+--   * it checks afterwards that the entry point the router calls still
+--     exists and that the five functions the old block defined are gone.
+
+do $mig$
+declare
+  v_html text;
+  v_a    int;
+  v_b    int;
+  v_js   text := $PLACES2$/* ==================================================================== places
    Places, coverage & owners.
 
    One screen for the whole question of where the work is: the operating
@@ -735,3 +756,175 @@ function plMoveForm(){
       setTimeout(function(){ plReload(true); }, 1100);
   };
 }
+
+$PLACES2$;
+  v_css  text := $NEWCSS$.plwrap{display:grid;grid-template-columns:300px 1fr;gap:16px;align-items:start}
+.plside .card{margin-bottom:0}
+.pltree{max-height:620px;overflow:auto;border-top:1px solid var(--line3)}
+.plgrp{padding:8px 0;border-bottom:1px solid var(--line3)}
+.plgrp>h3{padding:0 15px 4px}
+.plzone{margin:2px 0}
+.plz,.pll{display:flex;align-items:baseline;gap:6px;cursor:pointer;padding:5px 15px;font-size:12.5px}
+.plz{font-size:13px}
+.pll{padding-left:30px;color:var(--body)}
+.plz:hover,.pll:hover{background:var(--panel)}
+.plz.on,.pll.on{background:var(--blue);color:#fff}
+.plz.on .chip,.pll.on .chip,.plz.on .pill,.pll.on .pill{border-color:rgba(255,255,255,.6);color:#fff}
+.plnums{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--mute)}
+.plz.on .plnums,.pll.on .plnums{color:#fff}
+.pltabs{display:flex;flex-wrap:wrap;gap:0;border-bottom:1px solid var(--line3);padding:0 15px}
+.pltab{appearance:none;border:none;background:none;color:var(--body);font-size:13px;padding:11px 14px;cursor:pointer;min-height:auto;border-bottom:2px solid transparent}
+.pltab:hover{background:var(--panel);color:var(--ink)}
+.pltab.on{color:var(--ink);font-weight:600;border-bottom-color:var(--blue);background:none}
+.plbar{padding:14px 15px 4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.plbar input,.plbar select{min-height:38px}
+.pltk{width:26px;padding-right:0}
+.plcl{min-width:150px}
+.plact{white-space:nowrap;text-align:right}
+.plact .btn{margin-left:4px}
+.plrt{white-space:nowrap}
+.plsub{margin:-4px 15px 0;color:var(--mute);font-size:13px}
+.plh{margin:16px 15px 4px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.plform{margin:12px 15px;padding:14px;border:1px solid var(--blue);background:var(--panel)}
+.plform h4{margin:0 0 8px;font-family:var(--serif);font-weight:400;font-size:16px;text-transform:none;letter-spacing:0;color:var(--ink);padding:0}
+@media(max-width:900px){.plwrap{grid-template-columns:1fr}.pltree{max-height:300px}}
+$NEWCSS$;
+  v_anchor constant text := 'tr.warnrow td{background:var(--gold-bg)}' || chr(10);
+  v_mark   text;
+  v_before int;
+  v_after  int;
+begin
+  select html into v_html from app_page where slug = 'app' for update;
+  if v_html is null then raise exception 'no app_page row'; end if;
+  v_before := length(v_html);
+
+  -- the block to replace, found by its two ends, each of which must be unique
+  if (select count(*) from regexp_matches(v_html, 'async function vCoverage\(\)', 'g')) <> 1 then
+    raise exception 'vCoverage marker is not unique';
+  end if;
+  if (select count(*) from regexp_matches(v_html, '/\* People, again', 'g')) <> 1 then
+    raise exception 'People marker is not unique';
+  end if;
+  v_a := position('async function vCoverage()' in v_html);
+  v_b := position('/* People, again' in v_html);
+  if v_a = 0 or v_b = 0 or v_b <= v_a then
+    raise exception 'markers missing or out of order: a=% b=%', v_a, v_b;
+  end if;
+  if position('.plwrap{' in v_html) > 0 then
+    raise exception 'the new screen is already spliced in';
+  end if;
+  if position(v_anchor in v_html) = 0 then
+    raise exception 'the CSS anchor is gone';
+  end if;
+
+  v_html := substr(v_html, 1, v_a - 1) || v_js || substr(v_html, v_b);
+  v_html := replace(v_html, v_anchor, v_anchor || v_css);
+
+  -- what must be true afterwards
+  if position('async function vCoverage()' in v_html) = 0 then
+    raise exception 'the router entry point did not survive';
+  end if;
+  foreach v_mark in array array['function covPanel(', 'function clientTable(',
+                                  'function handlerCell(', 'function parentPicker(',
+                                  'function placePicker('] loop
+    if position(v_mark in v_html) > 0 then
+      raise exception 'the old screen left % behind', v_mark;
+    end if;
+  end loop;
+  foreach v_mark in array array['function plDetail(', 'function plPeopleTab(',
+                                  'function plBranchTab(', 'function plRatesTab(',
+                                  'function plClientsTab(', '.plwrap{', '.plsub{',
+                                  '.plact{', 'ops("/places'] loop
+    if position(v_mark in v_html) = 0 then
+      raise exception 'the new screen is missing %', v_mark;
+    end if;
+  end loop;
+
+  update app_page set html = v_html, updated_at = now() where slug = 'app';
+  v_after := length(v_html);
+  raise notice 'app_page: % -> % bytes (% js, % css)',
+    v_before, v_after, length(v_js), length(v_css);
+end
+$mig$;
+
+-- ---------------------------------------------------------------------------
+-- 157b. The splice above was bounded by 'async function vCoverage()', which is
+-- the first function of the old screen but not its first byte: its banner
+-- comment and its one module-level variable sat above the cut and survived.
+-- covOpts is referenced exactly once in the whole page -- its own declaration.
+
+do $mig$
+declare
+  v_html text;
+  v_dead text := '/* --------------------------------------------------- coverage & handlers
+   Who covers which client, where -- and the place you change it. Assigning
+   somebody writes one coverage rule per branch of that client at that
+   location; the screen never says so, because the work is talked about as
+   "Aniket covers BOM in Mumbai", not as 381 rules.                        */
+var covOpts = null;
+';
+  v_before int;
+begin
+  select html into v_html from app_page where slug = 'app' for update;
+  v_before := length(v_html);
+  if position(v_dead in v_html) = 0 then
+    raise exception 'the dead header is not there as written';
+  end if;
+  if (select count(*) from regexp_matches(v_html, '\mcovOpts\M', 'g')) <> 1 then
+    raise exception 'covOpts is used somewhere, so it is not dead';
+  end if;
+  v_html := replace(v_html, v_dead, '');
+  if (select count(*) from regexp_matches(v_html, '\mcovOpts\M', 'g')) <> 0 then
+    raise exception 'covOpts survived';
+  end if;
+  if position('/* ==================================================================== places' in v_html) = 0 then
+    raise exception 'the new banner went with it';
+  end if;
+  update app_page set html = v_html, updated_at = now() where slug = 'app';
+  raise notice 'app_page: % -> % bytes', v_before, length(v_html);
+end
+$mig$;
+
+-- ---------------------------------------------------------------------------
+-- 157c. Same cause, second casualty: the 150-era banner for this screen, which
+-- described a scope two migrations out of date and was sitting directly on top
+-- of the banner that replaced it.
+
+do $mig$
+declare
+  v_html text;
+  v_dead text := $D$/* ==================================================================== places
+   Places, coverage & owners.
+
+   The design's screen is "Coverage, owners & rates"; the tool had drifted to a
+   screen that showed only the second half of the question. The owner's
+   instruction closes the rest: the operating grouping was editable on Settings
+   but a location could not be MOVED to the right zone, the cities the
+   geography tree knows were shown nowhere at all, and the handlers lived on a
+   third screen. Three places to look and no way to see that they disagreed --
+   which is how a rate for "Kolkata" came to price a different place from the
+   branch for "Kolkata".
+
+   So this is one screen: where the work is, who handles it, which cities
+   answer to it, and what a file may call it. The Settings copy is gone.   */
+$D$;
+  v_before int;
+  v_n int;
+begin
+  select html into v_html from app_page where slug = 'app' for update;
+  v_before := length(v_html);
+  v_n := (length(v_html) - length(replace(v_html, v_dead, ''))) / length(v_dead);
+  if v_n <> 1 then
+    raise exception 'the stale banner appears % times, expected once', v_n;
+  end if;
+  v_html := replace(v_html, v_dead, '');
+  if position('One screen for the whole question of where the work is' in v_html) = 0 then
+    raise exception 'the live banner went with it';
+  end if;
+  if position('async function vCoverage()' in v_html) = 0 then
+    raise exception 'the entry point went with it';
+  end if;
+  update app_page set html = v_html, updated_at = now() where slug = 'app';
+  raise notice 'app_page: % -> % bytes, removed %', v_before, length(v_html), length(v_dead);
+end
+$mig$;
