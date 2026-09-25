@@ -1,0 +1,25 @@
+-- The screen asks four questions of a place and one of the tree, and asking
+-- them from the browser one row at a time is what makes a page feel slow.
+-- These are the four reads behind it.
+--
+-- 156a  op_places() -- the whole operating grouping in one object: groups,
+--       zones, locations, a branch count and an unassigned-client count on
+--       each, the cities the geography tree knows with what they answer to,
+--       the taught spellings, and whether the caller may edit any of it.
+-- 156b  op_place(node) -- one place opened in full: its clients with their
+--       handlers, products, start dates and the rate in force; the clients
+--       that are NOT there with how many branches each has waiting; who runs
+--       it; who is seated in a chair at it. This is the payload behind all
+--       four tabs, so opening a place is one call, not four.
+--       (op_place(text, boolean) is the name resolver from 146 and is
+--       unrelated; they overload on argument type.)
+-- 156c  op_branches(node, client, q, limit) -- branches are a search, not a
+--       list, because Mumbai has 1,665 of them. It answers total and shown
+--       separately so the screen can say what it is not showing.
+--       op_options() -- people, chairs, clients and products, fetched once
+--       per session and cached, because it is 90KB and never changes while
+--       the screen is open.
+--
+-- The overview payload was 135KB on the first cut and is 45KB now: it was
+-- carrying the whole people master so the assignment pickers could be built
+-- from it. They are built from op_options() instead, which is fetched once.

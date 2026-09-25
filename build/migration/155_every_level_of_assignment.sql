@@ -1,0 +1,65 @@
+-- "I am not able to add or remove the clients in the locations and also the
+--  branches if I have to, Plus there is no option for bulk assignment like if
+--  assigning complete location to someone, also the assignmnet of Branch
+--  Managers + Zonal Managers in needed in that page 'Places, coverage &
+--  owners'. This one page should enable all kinds and levels of assignments
+--  and related edits, even the rates with dates and all"
+--
+-- Three questions were put to the owner before any of this was built, because
+-- each had two defensible answers:
+--
+--   a Branch Manager and a Zonal Manager -- a chair, or who runs a place?
+--       "Both, they're different things." The chair is the job and shows on
+--       the org chart; the place-role is who runs that place now. Two tables
+--       on the screen, two functions here, and neither implies the other.
+--   adding a client to a location -- what does it mean?
+--       "Move the branches there." A client is at a place because its
+--       branches are, so adding moves that client's unplaced branches onto
+--       the place and removing puts them back to waiting. Nothing is created
+--       and nothing is deleted either way.
+--   bulk assignment -- everything, or a chosen few?
+--       "Both." One button for the whole place, tickboxes for a subset.
+--
+-- 155a  scope_kind gains LOCATION. coverage_rule already had op_node_id and a
+--       role, but its scope could only be CLIENT, CLIENT_ZONE, STATE or
+--       BRANCH, so running a location meant one row per branch -- 1,868 rows
+--       to add and 1,868 to end for Mumbai. A new enum value cannot be USED
+--       in the transaction that adds it, so 155a only adds it.
+-- 155b  coverage_resolve learns what LOCATION means: every active branch in
+--       the subtree of that node, optionally narrowed to one client.
+--       op_role_set(actor, node, person, role, client, from) and
+--       op_role_end(actor, id, to). Roles: ZONAL_MANAGER, BRANCH_MANAGER,
+--       LOCATION_HEAD, HANDLER. Setting a role that is already held replaces
+--       the holder by end-dating the old rule, never by deleting it.
+-- 155c  op_bulk_assign(actor, node, person, clients[], product, from) -- a
+--       null client list means every client with a branch there, and anything
+--       the person already covers is skipped, so pressing it twice is
+--       harmless. op_client_place(actor, client, node, attach) is the answer
+--       to the second question above.
+-- 155d  op_branch_save(actor, client, code, name, node, id, address, active),
+--       op_chair_seat(actor, person, chair, place, primary) and
+--       op_chair_unseat(actor, id). A branch is never deleted: a code that
+--       has gone is switched off, so coverage, escalations and history that
+--       name it keep pointing somewhere. A duplicate code answers code_taken
+--       rather than raising.
+-- 155d2 branch.status is the entity_status enum and the CASE in 155d produced
+--       text, so every save raised. Caught by running it, not by reading it.
+--       Both the INSERT and the UPDATE now cast.
+-- 155e  op_rate_set(actor, client, value, from, node, to, reason). A rate is
+--       never overwritten: the version in force is end-dated to the day
+--       before the new one starts, so a report for a closed month still reads
+--       the rate that was valid then. A start date on or before the one in
+--       force answers clashes rather than silently reordering the history.
+--       Dates go through ul_date, for the reason migration 153 exists.
+-- 155g  every one of the above was refused at the last moment by the
+--       coverage_scope_shape check constraint, which had no LOCATION case, so
+--       a rule naming a place could not be written at all. The constraint now
+--       allows scope_type = 'LOCATION' with an op_node_id and nothing else
+--       set, and the test asserts it still refuses a LOCATION rule with no
+--       place.
+-- 155h  six paths proved end to end: seat a role and replace it, assign a
+--       whole place, move a client onto a place and off it, save a branch and
+--       switch it off, set a rate and set a later version, refuse an earlier
+--       one. Its first draft asserted that a LATER rate start date should
+--       clash -- but a later start date is exactly what a new version is.
+--       The assertion was wrong, not the code.
