@@ -7,7 +7,7 @@
 // and when those are empty the screen says which table is empty and what fills
 // it. No demo month, no illustrative totals.
 
-import { Router, many, one } from "../shim.ts";
+import { Router, many, one, tx } from "../shim.ts";
 import { requireChair } from "../scope.ts";
 const r = Router();
 
@@ -26,6 +26,14 @@ r.get("/", requireChair, async (req: any, res: any) => {
   const periods = await many(
     `select distinct period from business_record order by period desc limit 24`);
   const period = req.query.get("period") || (periods[0] ? periods[0].period : null);
+
+  // Period comparison. The design's MIS carries cmpPrev, cmpChange and
+  // cmpGrowth columns; the month to compare against is the one immediately
+  // before the one being shown, which is whatever the period list says it is
+  // rather than a date calculation that would invent a month with no records.
+  const compare = req.query.get("compare") === "prev";
+  const at = periods.findIndex((p: any) => p.period === period);
+  const prevPeriod = compare && at >= 0 && periods[at + 1] ? periods[at + 1].period : null;
 
   const rows = period ? await many(
     `select coalesce(${d.sql}, '(not named)') as label,
@@ -54,8 +62,36 @@ r.get("/", requireChair, async (req: any, res: any) => {
      union all select 'perf_revenue', count(*)::int from perf_revenue
      union all select 'perf_collection', count(*)::int from perf_collection`);
 
+  // the same shape for the month before, merged on the label
+  const prevRows = prevPeriod ? await many(
+    `select coalesce(${d.sql}, '(not named)') as label,
+            sum(b.mtd)::bigint    as mtd,
+            sum(b.target)::bigint as target,
+            sum(b.revenue)::numeric as revenue
+       from business_record b
+       ${d.join}
+      where b.period = $1
+      group by 1`,
+    [prevPeriod]) : [];
+  const was: Record<string, any> = {};
+  for (const p of prevRows) was[p.label] = p;
+  for (const row of rows as any[]) {
+    const p = was[row.label];
+    row.prev_mtd = p ? p.mtd : null;
+    row.prev_revenue = p ? p.revenue : null;
+    // A change from nothing is not a percentage. Saying "new" is the honest
+    // answer; "+100%" and "+Infinity%" are both wrong.
+    const a = Number(row.mtd || 0), b0 = p ? Number(p.mtd || 0) : null;
+    row.change = b0 === null ? null : a - b0;
+    row.growth = b0 === null ? null : (b0 === 0 ? (a === 0 ? 0 : null) : ((a - b0) / b0) * 100);
+  }
+
   res.json({
     period, periods, group: dim, dims: DIMS, rows, tiles, provenance,
+    compare, prevPeriod,
+    compareWhy: compare && !prevPeriod
+      ? "There is no earlier month loaded to compare " + period + " against."
+      : null,
     emptyWhy: period ? null :
       "business_record has no rows, so there is no month to report on. It is " +
       "filled by the Collections and Past performance uploads under Data setup. " +
@@ -130,6 +166,67 @@ r.get("/reports", requireChair, async (_req: any, res: any) => {
     note: "A report with no rows behind it is listed with a zero rather than hidden, " +
       "so it is clear the report exists and the data has not arrived yet.",
   });
+});
+
+// ------------------------------------------------------------ saved views
+// "Only the configuration is stored -- grouping, filters, sort, comparison,
+// month and expanded rows -- never a copy of the data, so a saved view always
+// reflects current records." So this writes what was selected and nothing that
+// could go stale. A view belongs to the person who saved it.
+r.get("/views", requireChair, async (req: any, res: any) => {
+  const views = await many(
+    `select id, name, config, created_at, used_at
+       from mis_view where person_id = $1 order by lower(name)`,
+    [req.person.id]);
+  res.json({ views,
+    note: "A saved view stores what you selected, never the figures, so it " +
+      "always reads current records." });
+});
+
+r.post("/views", requireChair, async (req: any, res: any, next: any) => {
+  const { name, config } = req.body || {};
+  try {
+    if (!name || !String(name).trim()) {
+      return res.status(400).json({ error: "name_required",
+        reason: "A saved view needs a name you will recognise it by." });
+    }
+    if (!config || typeof config !== "object" || Array.isArray(config)) {
+      return res.status(400).json({ error: "config_required",
+        reason: "A view is the selection it was saved with." });
+    }
+    const v = await tx(req.person.id, async (t: any) => {
+      const row = (await t.q(
+        `insert into mis_view (person_id, name, config)
+         values ($1, $2, $3::jsonb)
+         on conflict (person_id, lower(btrim(name))) do update
+           set config = excluded.config, created_at = now()
+         returning id, name, config, created_at`,
+        // The object, NOT JSON.stringify(object): postgres.js serialises a
+        // value bound to a jsonb parameter itself, so a string that is already
+        // JSON gets encoded a second time and lands as a jsonb STRING. That is
+        // exactly what mis_view_config_is_object caught on the first call.
+        [req.person.id, String(name).trim(), config])).rows[0];
+      await t.audit("MIS_VIEW_SAVED", "mis_view", row.id, null, { name: row.name });
+      return row;
+    });
+    res.status(201).json(v);
+  } catch (e) { next(e); }
+});
+
+r.delete("/views/:id", requireChair, async (req: any, res: any, next: any) => {
+  try {
+    const gone = await tx(req.person.id, async (t: any) => {
+      const row = (await t.q(
+        `delete from mis_view where id = $1 and person_id = $2 returning name`,
+        [req.params.id, req.person.id])).rows[0];
+      if (!row) return null;
+      await t.audit("MIS_VIEW_DELETED", "mis_view", req.params.id, { name: row.name }, null);
+      return row;
+    });
+    if (!gone) return res.status(404).json({ error: "not_found",
+      reason: "That view is not yours, or it is already gone." });
+    res.json({ ok: true, name: gone.name });
+  } catch (e) { next(e); }
 });
 
 export default r;

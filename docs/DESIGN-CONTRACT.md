@@ -104,16 +104,51 @@ chart, MIS dashboard, 10-day view, Rate master, Report access, WhatsApp. They
 are reached from inside a parent, which is how Company stays at eleven. In the
 tool they keep their routes and appear in a strip under the header.
 
+## Automations
+
+The blueprint calls its Automations screen "the wireframe": every automation
+drawn as a chain of four stages — **trigger → conditions → actions → notifies**
+— with the guard beside it, "generated from the same data the engine reads, so
+it cannot drift from the behaviour."
+
+That data is `automations.js` at the repo root: **49 automations across eight
+groups, 46 live and 3 blocked**. `build/data/automations.json` is the same
+thing as JSON, which migration 141 has the database fetch over pg_net into the
+`automation` table.
+
+The tool's screen shows that chain **and what actually runs beside it**,
+because they are not the same: seven jobs are configured, one has ever run
+under its own name, and `CRUX_TICK` — in no configuration at all — has run
+over 1,300 times and is what the other sweeps are folded into.
+
+## Export
+
+The blueprint offers one in 35 places. In the tool it is one control on every
+card that has a table, reading the rendered table rather than the server, so
+what you export is what you were looking at.
+
 ## Still not matching
 
 Stated plainly rather than quietly left:
 
-- **Automations has no tab.** The blueprint gives it one in Company; in the
-  tool the seven jobs live inside Settings.
-- **Moving a chair is a picker, not drag-and-drop.**
-- **MIS has no saved views, period comparison or export customisation.**
-- **The mobile bar** carries four short labels of its own and has not been
-  measured against the blueprint.
+- **`api/routes/pms.ts` line 306 has a latent jsonb bug.** `JSON.stringify()`
+  on a value bound to a jsonb parameter is encoded a second time by
+  postgres.js and lands as a jsonb *string*, not an object. The same defect in
+  `ops` was caught by a check constraint and fixed in both places there. `api`
+  cannot be redeployed through this tool — it outgrew what one call carries —
+  so the daily-count `values` column will be wrong the first time somebody
+  files a count. Moving that route into `ops` would fix it.
+- **MIS saved views and comparison are built but unexercised.**
+  `business_record` is empty until the Collections and Past performance
+  uploads land, so both were proven against a fixture and the live endpoints,
+  not against real months.
+
+## Corrected in this document
+
+- The blueprint has **no media queries at all** and no mobile bar. The tool's
+  mobile bar is an addition, not drift; there is nothing to measure it
+  against. It carries its own four short labels, because the nav labels are
+  now the blueprint's full ones and four of those do not fit across a phone.
 
 ## Re-measuring
 

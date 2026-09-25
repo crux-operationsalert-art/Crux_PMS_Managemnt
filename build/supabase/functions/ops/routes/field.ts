@@ -87,8 +87,12 @@ r.post("/visit", requireChair, async (req: any, res: any, next: any) => {
         `insert into visit (person_id, visited_on, branch_id, client_id, purpose, answers)
          values ($1, coalesce($2::date, current_date), $3, $4, $5, $6::jsonb)
          returning id, visited_on`,
+        // The object, not a stringified one -- see the note in mis.ts. This
+        // line had the same defect and had never been run: visit is empty, so
+        // answers would have landed as a jsonb string the first time somebody
+        // logged a visit.
         [req.person.id, visitedOn || null, b.id, b.client_id, purpose,
-         JSON.stringify({ met: met || null, note: note || null })])).rows[0];
+         { met: met || null, note: note || null }])).rows[0];
 
       // met somebody new -> the branch's point of contact is updated, which is
       // what the design means by "a visit writes back into this record"

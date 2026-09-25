@@ -13,12 +13,14 @@ import field from "./routes/field.ts";
 import rates from "./routes/rates.ts";
 import mis from "./routes/mis.ts";
 import access from "./routes/access.ts";
+import auto from "./routes/auto.ts";
 
 const MOUNTS: [string, any][] = [
   ["/api/field", field],
   ["/api/rates", rates],
   ["/api/mis", mis],
   ["/api/access", access],
+  ["/api/auto", auto],
 ];
 
 const sha = async (s: string) => {
