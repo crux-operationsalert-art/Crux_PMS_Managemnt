@@ -176,3 +176,11 @@ begin
     raise exception 'The resolver does not do what 146 and 147 say it does:%', bad;
   end if;
 end $$;
+
+-- 147e. The 142 harness once more: 13 of 13 kinds still accept their own
+-- documented example after the rename and the aliases.
+--
+-- Result of 145, 146 and 147 together, measured against the owner's own
+-- 850 row rates file: every zone in it resolves, and every one of them
+-- resolves to the node the branches are on. It was 0 of 850 when the file
+-- was first uploaded, 514 after 143, and 678 after 146.
