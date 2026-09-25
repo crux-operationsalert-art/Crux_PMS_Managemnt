@@ -1,0 +1,67 @@
+-- "There are issues in the pending uploading functions, there are irrelevant
+-- errors still there."
+--
+-- There were. Found by building each template's own example row out of
+-- upload_column, staging it through upload_stage and validating it. At the
+-- start, ELEVEN of the thirteen kinds refused their own example.
+--
+-- Applied as 142a..142d:
+--
+-- 142a + 142c - ZONE MEANT THE WRONG TREE. Four validators -- uv_rates,
+--   uv_collections, uv_sla_rules and uv_escalation -- checked:
+--
+--     not exists (select 1 from geo_node g
+--                  where g.level = 'ZONE' and lower(g.name) = lower(zone))
+--
+--   and geo_node's ZONE level holds Central, East, North, North East, South
+--   and West: the six REGIONS. An operating zone lives in op_node. So all four
+--   refused "Pune" -- which their own templates offer as the example, and which
+--   the Geography rule names in so many words ("the operating zone this place
+--   is served from - Pune, Kolkata") -- and told the reader to "load Geography
+--   first", which had been done weeks ago.
+--
+--   That is four of the eight uploads still to come: Rates, Collections,
+--   SLA rules and the Escalation matrix. Every one would have refused every
+--   real zone name typed into it.
+--
+--   This is the doubled meaning docs/CHECKLIST.md already warned about, left
+--   sitting in the code. There is one definition now, is_op_zone(), and all
+--   four use it.
+--
+--   142c exists because 142a got it half right: it replaced the table name and
+--   then asserted that the string "geo_node g" was gone, which it was -- but
+--   three of the four spell the filter "g.level = 'ZONE'" with spaces, and the
+--   replacement only matched the spelling without them. The assertion tested
+--   the text instead of the behaviour, so it passed while Rates, SLA rules and
+--   the Escalation matrix went on refusing Pune. 142c fixes the spelling and
+--   asserts by RUNNING each validator against its own example.
+--
+-- 142b - TWO EXAMPLES THAT BREAK THEIR OWN RULE.
+--   * Clients and branches, opened_on: the rule says YYYY-MM-DD and the
+--     example said 01-04-2024. Filling 1,825 branches, you copy the format
+--     from the example, not the note at the foot -- so every row would have
+--     been refused on a column that is optional. A template that teaches the
+--     wrong answer is the worst kind.
+--   * People, mobile: the example was 9021469966, which is Avinash Chaskar's
+--     real number. Copy it and the file is refused with "already belongs to
+--     Avinash Chaskar, who is a different person" -- true, useless, and
+--     entirely the template's fault.
+--
+-- 142d - THE EXAMPLES NAMED THINGS THAT DO NOT EXIST. Employee EMP-0114, chair
+--   RM, client NBK, ops.pune@cruxindia.co.in: none has ever existed here. The
+--   refusals were correct and the examples were not. They now point at real
+--   records, chosen by query rather than typed in, so the whole set can be
+--   checked by running it.
+--
+-- ---------------------------------------------------------------------
+-- VERIFIED by re-running the same self-test after each step:
+--
+--   before 142   2 of 13 kinds accepted their own example
+--   after 142a   5 of 13   (Collections fixed; Rates, SLA, Escalation still
+--                            refusing Pune -- the half-applied replacement)
+--   after 142b   6 of 13   (Clients and branches, People)
+--   after 142c   6 of 13 with every zone error gone
+--   after 142d  13 of 13
+--
+-- and the 13 test batches were cancelled: person still 636 rows, rate 0,
+-- business_record 0, nothing applied by any of it.
