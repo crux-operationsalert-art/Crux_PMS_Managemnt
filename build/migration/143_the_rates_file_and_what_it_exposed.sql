@@ -1,0 +1,75 @@
+-- The owner uploaded 850 rows of rates. Every single one was refused.
+--
+-- Three faults, all the tool's, found by reading the file rather than the
+-- error list. None of them had anything to do with the data being wrong.
+--
+-- 143a/143b - THE VALIDATOR WAS STRICTER THAN THE APPLIER.
+--   Every row failed "effective_from must be a real date, written YYYY-MM-DD".
+--   The file writes 01-09-26, 31-07-17 -- DD-MM-YY, which is how India writes
+--   a date and what Excel hands back when it decides a column is a date.
+--
+--   The tool already knew how to read that. ul_date() handles YYYY-MM-DD,
+--   DD-MM-YYYY and DD-Mon-YYYY and normalises dots and slashes. But no
+--   validator called it. All seven that check a date called is_ymd(), which
+--   accepts one format, while every applier called ul_date(). So the preview
+--   refused files the apply step would have read perfectly -- in Rates, SLA
+--   rules, Assignments, Clients and branches, Holidays, Opening balances and
+--   People alike.
+--
+--   Validation now asks the same question application answers: not "is this
+--   the one format I like" but "can this be read as a date". ul_date also
+--   learns the two-digit year, with the century rule stated rather than
+--   guessed: up to five years ahead of this one is this century.
+--
+--   143b exists because 143a used a regex to do it and left four validators
+--   with a bare ul_date(...) in a boolean position -- Postgres refused them
+--   outright. Caught by a check that RUNS every validator instead of reading
+--   it. That is the second time in two days a text rewrite has been asserted
+--   on its text rather than its behaviour, and the last.
+--
+-- 143c - ZONE RESOLUTION. Of the 29 zones the file names, 6 resolved. Four
+--   separate reasons, none the owner's fault:
+--     * Kolkata, New Delhi, Patna and Guwahati are op_node ZONEs flagged
+--       inactive. A rate effective from 2017 refers to the zone as it was;
+--       refusing it because the zone has since been retired is refusing
+--       history. Existence is the question, not currency.
+--     * The file writes "Pune / Nashik", "Mumbai / Goa" -- zone left, location
+--       right. The right-hand side is the more specific answer.
+--     * "Hyderabad" is filed as "Hyderabad Zone", "Chennai" as "Tamilnadu +
+--       Chennai", "Bengaluru" as "Bengaluru + Rest Of Karnataka + Kerela".
+--       Each is a whole word inside exactly one NAME. Counting rows rather
+--       than names made all of them look ambiguous on the first attempt,
+--       because nearly every zone here exists twice, at ZONE and at LOCATION.
+--     * "Lucknow" is ambiguous across two locations but names exactly one
+--       zone, and a rate's zone column means a zone.
+--   27 of 29 now resolve. Bhubaneswar (filed as "Bhuvaneshvar ODISHA Zone",
+--   a different transliteration) and Chandigarh (nothing like it exists) do
+--   not, and are named in the error rather than guessed at.
+--
+-- 143d - A CLIENT CODE IS NOT CASE-SENSITIVE. The file writes IDBI BANK and
+--   TEZZRACT; the master holds "IDBI Bank" and "Tezzract". 46 rows refused
+--   over capitalisation, which nobody types consistently and Excel changes on
+--   its own. Nine comparisons across seven validators, all made case- and
+--   space-insensitive.
+--
+-- ---------------------------------------------------------------------
+-- RESULT on the owner's actual file, computed against the live database:
+--
+--   before   0 of 850 rows could pass
+--   after  514 of 850 (60%)
+--
+-- The remaining 336 are the owner's data, not the tool's:
+--   298 rows name 22 client codes that are not in the client master --
+--       BOB and its five product lines, BOM MSME PRE/POST, NIDO, RBL, TJSB,
+--       COSMOS, ICICI, TATA CAPITAL and others. Six of those exist in the
+--       tool only as retired CLI-000nn cut-over records, so they were in the
+--       old master and not in the 17-client master that replaced it.
+--    48 rows name Bhubaneswar or Chandigarh.
+--
+-- And because a file with any error applies zero rows -- which is deliberate
+-- and stays -- 60% passing still means nothing loads until those are settled.
+--
+-- VERIFIED: all 13 upload kinds still accept their own example row; every
+-- validator executes; ul_date reads 01-09-26, 31-07-17, 2024-04-01 and
+-- 01/04/2024 and refuses nonsense; 27 of the file's 29 zones resolve and an
+-- invented one does not.
