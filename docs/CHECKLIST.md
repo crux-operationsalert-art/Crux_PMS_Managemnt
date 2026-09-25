@@ -111,9 +111,17 @@ Ideathon, Report access, Rate master.
 view, Reports, and the HR satisfaction block. Each names the table that
 answered and how many rows it had, so a zero is never mistaken for a result.
 
-**Two things the design has that this does not yet.** Moving a chair is a
-picker, not drag-and-drop. The MIS has no saved views, period comparison or
-export customisation — it groups by client, zone or owner and stops there.
+**The design and the tool now match**, measured rather than asserted —
+`docs/DESIGN-CONTRACT.md` holds every measurement and the commands to re-take
+them. Four groups, the blueprint's own: Ideathon first and apart, then Mine,
+Work and Company.
+
+Closed in the last pass: **Automations** — a whole screen that did not exist,
+showing every automation as the chain the design draws (what starts it, what
+must hold, what it does, who hears about it, and the guard) with what
+*actually* runs beside it; **Export** on every table; **drag-and-drop** on the
+structure tree, alongside the picker; and **month-on-month comparison and
+saved views** on the MIS.
 
 **Everything above was called for real before it shipped** — a short-lived
 session, the database calling the deployed functions through pg_net, every
