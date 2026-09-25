@@ -1,0 +1,44 @@
+-- "zone Hyderabad is not one of your operating zones or locations."
+--
+-- It is. op_zone_id resolves it and ua_rates prices against it. But uv_rates
+-- still tested the zone with an EXACT name match on op_node:
+--
+--     not exists (select 1 from op_node g where g.active
+--                  and g.level in ('ZONE','LOCATION')
+--                  and lower(g.name) = lower(ul_txt(r2.raw,'zone')))
+--
+-- so "Hyderabad" failed against "Hyderabad Zone", "New Delhi" failed against
+-- the alias that means Delhi, and "Pune / Pune" failed because nothing is
+-- called that. The validator and the applier disagreeing about what a zone
+-- is: the same fault as 142, 143 and 145, in the one shape none of those
+-- sweeps covered. 145d searched for geo_node; this is op_node with an exact
+-- match, so it read as correct.
+--
+-- Five validators had it -- uv_rates, uv_collections, uv_escalation,
+-- uv_sla_rules, uv_assignments -- and ua_assignments matched a location the
+-- same way. All six now ask the resolver, so a preview and an apply cannot
+-- disagree. The assertion is that NO upload function outside ua_geography,
+-- which loads the tree, matches a place by name at all.
+--
+-- The message they print also pointed at "Configuration, Locations", a screen
+-- migration 150 merged away. It now names Places, coverage and owners.
+--
+-- 154b: the other half of the report, which was not a bug.
+--
+-- The owner's file is 850 rows and 427 distinct ones: 423 lines are an exact
+-- copy of an earlier line, every field identical. The overlap check was right
+-- to refuse them -- two rates for one client and place over the same period is
+-- exactly what it exists to catch -- but it said "overlaps another row in this
+-- file", which sends the reader hunting for a date conflict that is not there.
+-- A repeated line now says it is a repeat and names the line it repeats; a
+-- genuine clash names the line it clashes with. The clash check also grouped
+-- by the zone as TYPED, so "Pune" and "Pune / Pune" read as two places; it now
+-- groups by the zone as RESOLVED. Resolving is done once per row in a CTE,
+-- because the self-join is 850 x 850 and calling a plpgsql resolver in the ON
+-- clause would be 722,500 evaluations.
+--
+-- 154c stages all eighteen zones the file was refused on, an exact repeat and
+-- a real clash, and checks the messages rather than the code. Its first draft
+-- asserted on lines 1 and 2 and failed against a validator that was working --
+-- upload_stage numbers a row by its line in the FILE, so the first data row is
+-- line 2, under the header. The test was wrong, not the code.
