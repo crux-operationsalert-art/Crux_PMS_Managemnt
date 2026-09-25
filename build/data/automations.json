@@ -1,0 +1,1107 @@
+[
+{
+"key": "J01",
+"title": "Outbox worker",
+"grp": "Scheduled jobs",
+"owner": "Technology",
+"state": "live",
+"trigger_on": [
+"Every 5 minutes"
+],
+"conditions": [
+"Rows in notification_outbox with status QUEUED",
+"Today’s mail budget not exhausted",
+"Attempt count under the ladder cap"
+],
+"actions": [
+"Claim a batch under an advisory lock",
+"Send through the channel adapter",
+"Write delivery row with the idempotency key"
+],
+"notifies": [
+"Nobody — this job is plumbing"
+],
+"guard": "One unique idempotency key per send. A second worker claiming the same row is refused by the lock, which is the defect that produced 1,892 sends from 77 keys.",
+"blocked_why": null
+},
+{
+"key": "J02",
+"title": "Monthly matrix dispatch",
+"grp": "Scheduled jobs",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"1st of the month, 09:00"
+],
+"conditions": [
+"Client active for the month",
+"Branch matrix complete at all five levels",
+"No dispatch row already sent for this month marker"
+],
+"actions": [
+"Build one dispatch row per branch",
+"Queue to the outbox with month-keyed idempotency"
+],
+"notifies": [
+"Client contact ladder levels 1–5",
+"Branch Manager on failure"
+],
+"guard": "A branch with an incomplete matrix is held out, not sent to. Held branches are listed with their reason rather than silently skipped.",
+"blocked_why": null
+},
+{
+"key": "J03",
+"title": "Escalation chase",
+"grp": "Scheduled jobs",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Hourly, 10:00–17:00 business hours"
+],
+"conditions": [
+"Escalation open past its level TAT",
+"Next level exists in the matrix"
+],
+"actions": [
+"Raise the next escalation level",
+"Write ESCALATED with a level-scoped idempotency key"
+],
+"notifies": [
+"Next level holder",
+"Assignor and assignee"
+],
+"guard": "hash(assignment, cycle, level, trigger) is unique, so a re-run cannot double-escalate.",
+"blocked_why": null
+},
+{
+"key": "J04",
+"title": "Matrix completeness chase",
+"grp": "Scheduled jobs",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Monday 11:00"
+],
+"conditions": [
+"Branch matrix missing any level",
+"Branch active for a live client"
+],
+"actions": [
+"Write the gap to the branch record",
+"Start or continue the P-06 14-day clock"
+],
+"notifies": [
+"Branch Manager",
+"Regional Manager at day 10"
+],
+"guard": "The clock is per branch and per level, so fixing one level does not reset the others.",
+"blocked_why": null
+},
+{
+"key": "J05",
+"title": "Penalty sweep",
+"grp": "Scheduled jobs",
+"owner": "Finance",
+"state": "blocked",
+"trigger_on": [
+"Nightly 00:05"
+],
+"conditions": [
+"Penalty rule active",
+"Cutoff passed",
+"No instance already raised for this rule and period"
+],
+"actions": [
+"Raise a penalty instance at the amount in force on the cutoff date",
+"Post to the ledger"
+],
+"notifies": [
+"Person penalised",
+"HR for payroll rules, Finance for P-06"
+],
+"guard": "Amount is captured at raise time. Changing a rule later never restates a penalty already raised.",
+"blocked_why": "Four penalty amounts are still placeholders. The sweep runs and reports but will not post until they are finalised."
+},
+{
+"key": "J06",
+"title": "Daily count lock",
+"grp": "Scheduled jobs",
+"owner": "Business Excellence",
+"state": "live",
+"trigger_on": [
+"23:59 daily"
+],
+"conditions": [
+"Person files a daily count",
+"Count not yet submitted"
+],
+"actions": [
+"Lock the day",
+"Mark it missed if empty"
+],
+"notifies": [
+"Reporting manager on a miss"
+],
+"guard": "A locked day can only be reopened by HR with a reason, so the count cannot be back-filled quietly.",
+"blocked_why": null
+},
+{
+"key": "J07",
+"title": "Auto-close sweep",
+"grp": "Scheduled jobs",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Nightly 00:10"
+],
+"conditions": [
+"Escalation resolved and acknowledged",
+"No request pending",
+"7 days since resolution"
+],
+"actions": [
+"Close the escalation",
+"Stop every clock"
+],
+"notifies": [
+"Raiser"
+],
+"guard": "Refuses to close while any requirement is incomplete or any request is open.",
+"blocked_why": null
+},
+{
+"key": "J08",
+"title": "Monthly summary pack",
+"grp": "Scheduled jobs",
+"owner": "Business Excellence",
+"state": "live",
+"trigger_on": [
+"10th of the month"
+],
+"conditions": [
+"Month closed",
+"Targets exist for the month"
+],
+"actions": [
+"Assemble target vs achieved per person",
+"Attach attributes and FYI notes",
+"Publish the review pack"
+],
+"notifies": [
+"Every chair holder and their manager"
+],
+"guard": "Reads the roll-up, never the transaction tables, so a review pack cannot slow the tool at month end.",
+"blocked_why": null
+},
+{
+"key": "J09",
+"title": "Appreciation nudge",
+"grp": "Scheduled jobs",
+"owner": "Human Resources",
+"state": "live",
+"trigger_on": [
+"Monday 09:30"
+],
+"conditions": [
+"A person met target every day last week",
+"No appreciation sent in 30 days"
+],
+"actions": [
+"Draft an appreciation note for the manager to send"
+],
+"notifies": [
+"Reporting manager, not the person"
+],
+"guard": "Drafted, never auto-sent. Praise from a robot is worth nothing.",
+"blocked_why": null
+},
+{
+"key": "J10",
+"title": "Note classification",
+"grp": "Scheduled jobs",
+"owner": "Business Excellence",
+"state": "live",
+"trigger_on": [
+"Nightly, after the daily lock"
+],
+"conditions": [
+"Open notes filed today",
+"Note is not empty"
+],
+"actions": [
+"Classify as an Attribute with a heading, or as FYI",
+"File into the monthly review"
+],
+"notifies": [
+"Author, so they can correct the filing"
+],
+"guard": "The author can always overrule the classification, and the original text is kept verbatim beside it.",
+"blocked_why": null
+},
+{
+"key": "J11",
+"title": "Roll-up rebuild",
+"grp": "Scheduled jobs",
+"owner": "MIS",
+"state": "live",
+"trigger_on": [
+"Nightly 01:00"
+],
+"conditions": [
+"Yesterday closed"
+],
+"actions": [
+"Rebuild KPI roll-ups per chair, branch, region and company"
+],
+"notifies": [
+"MIS on a variance"
+],
+"guard": "Reconciles to source counts and refuses to publish on a variance, rather than publishing a wrong number.",
+"blocked_why": null
+},
+{
+"key": "J12",
+"title": "Claim reminder",
+"grp": "Scheduled jobs",
+"owner": "Finance",
+"state": "live",
+"trigger_on": [
+"Daily 10:00"
+],
+"conditions": [
+"Claim submitted and unapproved past 3 days"
+],
+"actions": [
+"Remind the approver"
+],
+"notifies": [
+"Approver, then their manager at day 7"
+],
+"guard": "Escalates once, then stops. A reminder loop is what filled the old audit log with noise.",
+"blocked_why": null
+},
+{
+"key": "O01",
+"title": "TAT resolution and snapshot",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "blocked",
+"trigger_on": [
+"Assignment submitted"
+],
+"conditions": [
+"Client, verification type, geography and quantity known",
+"A matching SLA rule exists"
+],
+"actions": [
+"Score every matching rule by specificity",
+"Snapshot the winning TAT onto the instance",
+"Write the full rule trace including runners-up"
+],
+"notifies": [
+"Assignor sees the resolved TAT before assigning"
+],
+"guard": "Snapshotted. A rule change later never moves a clock that is already running.",
+"blocked_why": "Holiday calendars are empty. No TAT may be enforced until holidays are loaded for this and next financial year."
+},
+{
+"key": "O02",
+"title": "SLA status tick",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Every 5 minutes"
+],
+"conditions": [
+"Instance open",
+"Elapsed business minutes crossed 75% or 100%"
+],
+"actions": [
+"Set AT_RISK, then BREACHED",
+"Write SLA_AT_RISK / SLA_BREACHED"
+],
+"notifies": [
+"Next action owner",
+"Assignor at breach"
+],
+"guard": "sla_status is an attribute, not a state. A breached assignment still shows its operator the correct next action.",
+"blocked_why": null
+},
+{
+"key": "O03",
+"title": "Clock segment ledger",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Any state change on an assignment"
+],
+"conditions": [
+"An instance exists"
+],
+"actions": [
+"Close the open segment with its business minutes",
+"Open a new segment with state and attribution"
+],
+"notifies": [
+"Nobody — the ledger is the record"
+],
+"guard": "A partial unique index allows exactly one open segment per instance, so overlap is impossible rather than unlikely.",
+"blocked_why": null
+},
+{
+"key": "O04",
+"title": "RFI conditional pause",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"RFI raised"
+],
+"conditions": [
+"Consumed under 50% of TAT",
+"No pause already granted this cycle",
+"Reason is in the pause-eligible set"
+],
+"actions": [
+"Credit up to 120 business minutes",
+"Open a PAUSED segment attributed to the assignor"
+],
+"notifies": [
+"Assignee sees the decision and its arithmetic before submitting"
+],
+"guard": "Shown before submission, so a pause is never a surprise and never a free extension.",
+"blocked_why": null
+},
+{
+"key": "O05",
+"title": "Sub-TAT timers",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Request raised"
+],
+"conditions": [
+"RFI 2 hours, delay 1 hour"
+],
+"actions": [
+"Start the sub-TAT",
+"Mark it breached on expiry"
+],
+"notifies": [
+"Assignor, then their manager on breach"
+],
+"guard": "A sub-TAT breach escalates on the assignor side, so no strike can land on the assignee for that cycle.",
+"blocked_why": null
+},
+{
+"key": "O06",
+"title": "Delay auto-accept",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Delay sub-TAT expires unreviewed"
+],
+"conditions": [
+"No auto-accept already used on this assignment"
+],
+"actions": [
+"Resolve AUTO_ACCEPTED",
+"Attribute the minutes PENDING_REVIEW",
+"Cap the extension at due + 12 business hours"
+],
+"notifies": [
+"Assignor and their manager",
+"Adds to the Confirm Attribution tray"
+],
+"guard": "One auto-accept only. A second unreviewed delay escalates instead of self-approving, so silence never becomes a renewable extension.",
+"blocked_why": null
+},
+{
+"key": "O07",
+"title": "Escalation ladder L1–L4",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Breach, sub-TAT breach, or a manual raise"
+],
+"conditions": [
+"Level exists",
+"No instance with the same idempotency key"
+],
+"actions": [
+"Resolve the recipient",
+"Insert the escalation",
+"Hand to the outbox"
+],
+"notifies": [
+"Level holder",
+"Both sides of the assignment"
+],
+"guard": "One adapter, one key. No routing logic lives inside the assignment workflow.",
+"blocked_why": null
+},
+{
+"key": "O08",
+"title": "Hierarchy fallback",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Escalation recipient not found in the matrix"
+],
+"conditions": [
+"Exact, then client+location, then location keys all missed"
+],
+"actions": [
+"Walk the assignee location’s org hierarchy",
+"Deliver anyway",
+"Write ESCALATION_FALLBACK_USED"
+],
+"notifies": [
+"Resolved recipient"
+],
+"guard": "Never drops an escalation because configuration is incomplete.",
+"blocked_why": null
+},
+{
+"key": "O09",
+"title": "CONFIG_GAP alert",
+"grp": "OGL workflow",
+"owner": "Technology",
+"state": "live",
+"trigger_on": [
+"Fallback used"
+],
+"conditions": [
+"A matrix key was genuinely missing"
+],
+"actions": [
+"Raise a CONFIG_GAP naming the exact missing key"
+],
+"notifies": [
+"Administrator and Operations Head"
+],
+"guard": "Names the key rather than saying “escalation failed”, so the gap is fixable in one action.",
+"blocked_why": null
+},
+{
+"key": "O10",
+"title": "Strike generation",
+"grp": "OGL workflow",
+"owner": "Human Resources",
+"state": "live",
+"trigger_on": [
+"Nightly sweep under an advisory lock"
+],
+"conditions": [
+"Instance breached past grace",
+"Assignee-attributed minutes exceed the TAT",
+"No PENDING_REVIEW segment unresolved on that cycle"
+],
+"actions": [
+"Insert a strike_event with the location as at breach time"
+],
+"notifies": [
+"Person struck",
+"Their manager and HR"
+],
+"guard": "Unique on (assignment, cycle, trigger). The same sweep running twice cannot produce a second strike.",
+"blocked_why": null
+},
+{
+"key": "O11",
+"title": "Strike waiver",
+"grp": "OGL workflow",
+"owner": "Human Resources",
+"state": "live",
+"trigger_on": [
+"Dispute classified NOT_UPHELD"
+],
+"conditions": [
+"A strike exists on that cycle"
+],
+"actions": [
+"Set status WAIVED with a reason",
+"Count the failure on the assignor quality KPI"
+],
+"notifies": [
+"Person, their manager, HR"
+],
+"guard": "Waived, never deleted. The row stays visible as waived so the history is honest.",
+"blocked_why": null
+},
+{
+"key": "O12",
+"title": "Priority score recompute",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Every 10 minutes, and on any state change"
+],
+"conditions": [
+"Assignment open"
+],
+"actions": [
+"Recompute age, SLA pressure, escalation level, client tier and rework penalty",
+"Bucket as Breach, Attention or Normal"
+],
+"notifies": [
+"Nobody — it reorders the queue"
+],
+"guard": "Operators read the bucket; the number only orders. A score nobody can explain is not a priority.",
+"blocked_why": null
+},
+{
+"key": "O13",
+"title": "Control tower refresh",
+"grp": "OGL workflow",
+"owner": "MIS",
+"state": "live",
+"trigger_on": [
+"Every 5 minutes"
+],
+"conditions": [
+"Summary view stale"
+],
+"actions": [
+"Refresh the materialised assignment summary"
+],
+"notifies": [
+"Nobody"
+],
+"guard": "The tower reads the summary, never the transaction tables. Twelve live counts on every dashboard load is how you take the system down at 09:30.",
+"blocked_why": null
+},
+{
+"key": "O14",
+"title": "Repeat Point ID triage",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"A Point ID already on record is keyed again"
+],
+"conditions": [
+"A prior attempt exists",
+"Address compared and scored"
+],
+"actions": [
+"Write a decision row with the system’s proposal",
+"Hold the assignment in DRAFT with no clock"
+],
+"notifies": [
+"Assignor only — never the assignee"
+],
+"guard": "Proposes, never applies. Undecided repeats are a queue with an owner rather than a silent backlog.",
+"blocked_why": null
+},
+{
+"key": "O15",
+"title": "Duplicate check",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Assignment submitted"
+],
+"conditions": [
+"Live attempt on the same point, or a fuzzy name-address-pincode match"
+],
+"actions": [
+"Refuse a second live assignment",
+"Warn on a fuzzy match and require a reason"
+],
+"notifies": [
+"Assignor"
+],
+"guard": "An override is a row with an author and a reason, replacing the hand-maintained duplicate column.",
+"blocked_why": null
+},
+{
+"key": "O16",
+"title": "Arbitration trigger",
+"grp": "OGL workflow",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Third dispute attempt"
+],
+"conditions": [
+"Two disputes already raised"
+],
+"actions": [
+"Open arbitration with the lowest common manager",
+"Lock both parties out of further disputes"
+],
+"notifies": [
+"Both parties and the arbiter"
+],
+"guard": "The arbiter is computed from the closure table, so it cannot be chosen to suit either side.",
+"blocked_why": null
+},
+{
+"key": "N01",
+"title": "Mail budget guard",
+"grp": "Notification",
+"owner": "Technology",
+"state": "live",
+"trigger_on": [
+"Before every send"
+],
+"conditions": [
+"Daily sends under 1,800",
+"200 reserved for escalations"
+],
+"actions": [
+"Send, or hold in the outbox with a reason"
+],
+"notifies": [
+"Administrator when the reserve is touched"
+],
+"guard": "1,849 of the old system’s failures were quota exhaustion. The budget is a rule, not a hope.",
+"blocked_why": null
+},
+{
+"key": "N02",
+"title": "Retry ladder",
+"grp": "Notification",
+"owner": "Technology",
+"state": "live",
+"trigger_on": [
+"Delivery failure"
+],
+"conditions": [
+"Attempt under the cap",
+"Failure is retryable"
+],
+"actions": [
+"Retry under a NEW idempotency key",
+"Leave the old key failed in the ledger"
+],
+"notifies": [
+"Administrator after the final attempt"
+],
+"guard": "History shows one failure and one retry, never two sends.",
+"blocked_why": null
+},
+{
+"key": "N03",
+"title": "Bounce flagging",
+"grp": "Notification",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Hard bounce"
+],
+"conditions": [
+"Recipient is a client or branch contact"
+],
+"actions": [
+"Flag the contact on the branch record",
+"Add a confirm-this-contact task to the next visit"
+],
+"notifies": [
+"Branch Manager"
+],
+"guard": "A bad address becomes fieldwork rather than a repeating failure.",
+"blocked_why": null
+},
+{
+"key": "N04",
+"title": "Strike-3 warning ladder",
+"grp": "Notification",
+"owner": "Human Resources",
+"state": "live",
+"trigger_on": [
+"Third active strike inside the rolling 90 days"
+],
+"conditions": [
+"No strike waived below three",
+"Facts assembled"
+],
+"actions": [
+"Generate the warning with its facts",
+"Require acknowledgement"
+],
+"notifies": [
+"Person, manager, HR"
+],
+"guard": "The window is rolling and computed from events, so a strike ages out rather than being deleted.",
+"blocked_why": null
+},
+{
+"key": "P01",
+"title": "Daily count reminder and lock",
+"grp": "Performance",
+"owner": "Business Excellence",
+"state": "live",
+"trigger_on": [
+"17:30, then 23:59"
+],
+"conditions": [
+"Person files a count",
+"Not yet submitted"
+],
+"actions": [
+"Remind, then lock the day"
+],
+"notifies": [
+"Person, then their manager"
+],
+"guard": "One reminder and one lock. Not a loop.",
+"blocked_why": null
+},
+{
+"key": "P02",
+"title": "Target vs achieved roll-up",
+"grp": "Performance",
+"owner": "MIS",
+"state": "live",
+"trigger_on": [
+"On submission, and nightly"
+],
+"conditions": [
+"Targets exist for the month"
+],
+"actions": [
+"Compute achieved and percentage per KPI",
+"Roll up the chain"
+],
+"notifies": [
+"Chair holder and manager"
+],
+"guard": "Percentages are derived, never stored, so a corrected count corrects the roll-up.",
+"blocked_why": null
+},
+{
+"key": "P03",
+"title": "AI note filing",
+"grp": "Performance",
+"owner": "Business Excellence",
+"state": "live",
+"trigger_on": [
+"Note saved"
+],
+"conditions": [
+"Note has content"
+],
+"actions": [
+"File as an Attribute with a heading, or as FYI",
+"Show the source note beside it"
+],
+"notifies": [
+"Author"
+],
+"guard": "The author can always overrule it, and the original wording is never rewritten.",
+"blocked_why": null
+},
+{
+"key": "P04",
+"title": "Monthly review assembly",
+"grp": "Performance",
+"owner": "Human Resources",
+"state": "live",
+"trigger_on": [
+"Month close"
+],
+"conditions": [
+"Attributes and counts present"
+],
+"actions": [
+"Assemble the review pack per person"
+],
+"notifies": [
+"Person and manager"
+],
+"guard": "No individual is scored by a machine. The pack is evidence for a conversation.",
+"blocked_why": null
+},
+{
+"key": "X01",
+"title": "Rule application on cutoff",
+"grp": "Penalty",
+"owner": "Finance",
+"state": "blocked",
+"trigger_on": [
+"Cutoff reached"
+],
+"conditions": [
+"Rule active",
+"Condition still true at cutoff"
+],
+"actions": [
+"Raise an instance at the amount in force"
+],
+"notifies": [
+"Person and the recovering function"
+],
+"guard": "Amount captured at raise time.",
+"blocked_why": "Awaiting the four final amounts."
+},
+{
+"key": "X02",
+"title": "P-06 matrix clock",
+"grp": "Penalty",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Matrix found incomplete"
+],
+"conditions": [
+"14 days elapsed and still incomplete"
+],
+"actions": [
+"Raise the P-06 instance"
+],
+"notifies": [
+"Branch Manager, Regional Manager, Finance"
+],
+"guard": "The clock is visible on the branch from day one, with days elapsed shown, so nobody is surprised at day 14.",
+"blocked_why": null
+},
+{
+"key": "X03",
+"title": "Recovery routing",
+"grp": "Penalty",
+"owner": "Finance",
+"state": "live",
+"trigger_on": [
+"Penalty instance raised"
+],
+"conditions": [
+"Rule is payroll or Finance recoverable"
+],
+"actions": [
+"Route P-01 to P-05 and P-07 to HR payroll",
+"Route P-06 to Finance"
+],
+"notifies": [
+"Recovering function"
+],
+"guard": "One route per rule. A penalty cannot be recovered twice.",
+"blocked_why": null
+},
+{
+"key": "V01",
+"title": "Branch record write-back",
+"grp": "Visits",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Visit submitted"
+],
+"conditions": [
+"Visit has contact or finding data"
+],
+"actions": [
+"Update branch manager and POC details",
+"Append findings and pending issues"
+],
+"notifies": [
+"Branch Manager"
+],
+"guard": "The visit is the source of truth for contacts, which is what keeps the matrix current without a data-entry task.",
+"blocked_why": null
+},
+{
+"key": "V02",
+"title": "RAG and ageing",
+"grp": "Visits",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Visit submitted, and nightly"
+],
+"conditions": [
+"Next-visit date set"
+],
+"actions": [
+"Recompute the branch RAG and ageing chip",
+"State the reason for the colour"
+],
+"notifies": [
+"Branch Manager and Regional Manager"
+],
+"guard": "A colour with no reason beside it is decoration. The reason is always rendered.",
+"blocked_why": null
+},
+{
+"key": "V03",
+"title": "Collection commitment to FMEA",
+"grp": "Visits",
+"owner": "Finance",
+"state": "live",
+"trigger_on": [
+"Collection commitment date passes"
+],
+"conditions": [
+"Amount not received"
+],
+"actions": [
+"Write a missed-commitment FMEA line against the client"
+],
+"notifies": [
+"Branch Manager and Credit & Collections"
+],
+"guard": "The commitment is captured at the visit, so the miss is evidenced rather than argued.",
+"blocked_why": null
+},
+{
+"key": "V04",
+"title": "Satisfaction 1 raises an escalation",
+"grp": "Visits",
+"owner": "Operations",
+"state": "live",
+"trigger_on": [
+"Visit records satisfaction 1"
+],
+"conditions": [
+"Always"
+],
+"actions": [
+"Raise a service escalation automatically"
+],
+"notifies": [
+"Branch Manager, Regional Manager, Business Development"
+],
+"guard": "A very dissatisfied client cannot be recorded and left alone.",
+"blocked_why": null
+},
+{
+"key": "H01",
+"title": "Chair KPI inheritance",
+"grp": "Org and people",
+"owner": "Human Resources",
+"state": "live",
+"trigger_on": [
+"Chair KPI added or changed"
+],
+"conditions": [
+"Effective-dated from the next cadence period"
+],
+"actions": [
+"Apply to everyone holding the chair",
+"Leave the current period untouched"
+],
+"notifies": [
+"Chair holders and their managers"
+],
+"guard": "Nobody is re-scored against a rule that moved mid-month.",
+"blocked_why": null
+},
+{
+"key": "H02",
+"title": "Closure table rebuild",
+"grp": "Org and people",
+"owner": "Technology",
+"state": "live",
+"trigger_on": [
+"Reporting line or chair changed"
+],
+"conditions": [
+"The move does not create a cycle"
+],
+"actions": [
+"Rebuild org_unit_closure in the same transaction"
+],
+"notifies": [
+"Both managers"
+],
+"guard": "My-team scope, escalation fallback and arbitration all read the new line immediately, so the three cannot disagree.",
+"blocked_why": null
+},
+{
+"key": "H03",
+"title": "Vacancy surfacing",
+"grp": "Org and people",
+"owner": "Human Resources",
+"state": "live",
+"trigger_on": [
+"A holder leaves or a chair is created"
+],
+"conditions": [
+"No active holder"
+],
+"actions": [
+"Mark the chair vacant with its owned processes named"
+],
+"notifies": [
+"HR and the parent chair"
+],
+"guard": "Unowned processes are shown rather than hidden, because a hidden vacancy is how work goes unowned.",
+"blocked_why": null
+},
+{
+"key": "U01",
+"title": "Validate, preview, apply",
+"grp": "Bulk upload",
+"owner": "Administrator",
+"state": "live",
+"trigger_on": [
+"File uploaded"
+],
+"conditions": [
+"Same four validation levels as manual entry",
+"No error rows if all-or-nothing chosen"
+],
+"actions": [
+"Validate every row",
+"Show valid, warning and error counts with the first 50 errors",
+"Apply in one transaction"
+],
+"notifies": [
+"Uploader"
+],
+"guard": "Nothing is relaxed for a file. That is how the old datastore acquired 198,890 empty rows.",
+"blocked_why": null
+},
+{
+"key": "U02",
+"title": "Dependency order",
+"grp": "Bulk upload",
+"owner": "Administrator",
+"state": "live",
+"trigger_on": [
+"Upload requested"
+],
+"conditions": [
+"Prerequisite masters loaded"
+],
+"actions": [
+"Refuse with the missing dependency named"
+],
+"notifies": [
+"Uploader"
+],
+"guard": "Refused whole rather than half-applied.",
+"blocked_why": null
+},
+{
+"key": "U03",
+"title": "Rollback snapshot",
+"grp": "Bulk upload",
+"owner": "Administrator",
+"state": "live",
+"trigger_on": [
+"Scope-replacing upload applied"
+],
+"conditions": [
+"Within 7 days"
+],
+"actions": [
+"Keep a snapshot",
+"Allow a one-action reversal with a reason"
+],
+"notifies": [
+"Uploader and Administrator"
+],
+"guard": "A reversal is a new event that supersedes the upload, so the history shows both.",
+"blocked_why": null
+}
+]
