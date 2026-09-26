@@ -1,0 +1,33 @@
+-- Adding a person had four fields -- name, work e-mail, chair, manager --
+-- and the tool needs nine. The one that matters most is the employee number,
+-- because the performance upload joins people BY employee number: a person
+-- created without one has their rows dropped and nothing anywhere says so.
+-- Eleven active staff are in that state today, which is what this is for.
+--
+-- Two halves, and the split is the point.
+--
+-- The CONSTRAINTS are the floor, binding every path into the table -- this
+-- function, a future upload, a hand-written UPDATE at 2am. Checked against
+-- the 639 rows already there first: no duplicate employee number, no
+-- duplicate work address, no malformed mobile, nobody their own manager, no
+-- employee number in a strange shape, no joining date in the future. So they
+-- go on VALID and mean it. One exception: the e-mail shape, because a single
+-- row, "Migration:M1", is a migration sentinel and not a person -- that one
+-- is NOT VALID, binding new and changed rows without rewriting history to
+-- suit itself.
+--
+-- person_check() is the door. Same question, answered in sentences and all
+-- at once, so somebody filling a form is told every problem together rather
+-- than one per attempt. The screen calls it as they type; person_add calls
+-- it again before writing. A validator the applier does not share is a
+-- validator that drifts, and this codebase has paid for that twice -- once
+-- on rates and once on client codes.
+--
+-- 173b  the mobile check told the truth about the rule and lied about the
+--       help. "Country code and spaces are stripped for you", and
+--       "+91 98765 43210" came out as 919876543210 and was refused. A
+--       message that promises a kindness the code does not perform is worse
+--       than no message: the person retypes the same thing and gets the same
+--       answer. person_mobile() now does what the sentence says, once, and
+--       the constraint reads through it, so every writer normalises the same
+--       way. Proved on four formats.

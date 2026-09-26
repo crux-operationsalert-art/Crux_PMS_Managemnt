@@ -1,0 +1,54 @@
+-- The location chairs in the operating-structure recommendation were samples
+-- -- the owner said so, and the data agreed. The recommendation seats the
+-- geographic chairs against six labels (North, North East & East, South,
+-- West, Pune, Thane, "other West locations") while the operating geography
+-- the tool runs on has fifteen zones and thirty-seven locations, with a
+-- branch manager named for every one of them.
+--
+-- So the labels are generated from op_node rather than typed: a Zonal
+-- Manager per zone under the AVP, and per location a Branch Manager, a
+-- Location Partner, a Team Leader, a Back Office seat under the Team Leader,
+-- and a Collection, Business Development and Field Executive seat under the
+-- Branch Manager. 274 seatings where there were 44. Business Manager is left
+-- alone: one real chair with one real holder in one zone, and guessing which
+-- of fifteen it now belongs to would be inventing structure rather than
+-- reading it.
+--
+-- It puts NOBODY in a chair they were not already in. Seating a person in
+-- the Branch Manager chair puts them in a bonus scheme, and that is a
+-- decision with a number attached. Where somebody already holds a geographic
+-- chair and the coverage rules say which place they run, their chair_holder
+-- row is pointed at that place's seating instead of at a sample label --
+-- same person, same chair, named place.
+--
+-- plb_unseated() is the list for a human: eighteen people hold an open
+-- branch-manager coverage rule and only eight sit in the Branch Manager
+-- chair. Five are Location Partners, whom the scheme deliberately excludes
+-- and who are labelled as needing nothing. Five need a decision: Manoj
+-- Batham (seven places, no chair, no employee number), Shyam Sundar Kalta,
+-- Vinayak Patil, Varsha Sonawane (a Team Leader) and Vrunda Potdar (a Zonal
+-- Manager, a chair with no measure set).
+--
+-- 172a  source_ref is UNIQUE, which this found the hard way: eight chairs at
+--       one location cannot all be "op_node:<id>". The chair code goes in it.
+-- 172b  two more, both found by being refused rather than by waiting for
+--       somebody to hit them:
+--
+--       The guard "do not delete a sample label if op_node still has a node
+--       by that name" was sound and its test was wrong. op_node has a GROUP
+--       level above ZONE whose four members are North, South, East and West
+--       -- four of the six sample labels -- so "Branch Collection Executive
+--       - North" was protected on the grounds that North is a real place,
+--       which it is, at a level this tree never seats anybody at. The test
+--       now asks about the level the chair actually sits at.
+--
+--       One DELETE cannot remove a tree: a parent is protected by children
+--       the same statement is about to remove, because a statement sees the
+--       snapshot it started with. It loops until a pass removes nothing.
+--
+--       And a seating with a CLOSED chair_holder row is still referenced by
+--       it. The foreign key refused, rightly -- where somebody sat is a
+--       fact, and deleting the seat would erase it.
+--
+-- Five sample seatings survive on purpose, each anchored by somebody who sat
+-- there or by the Business Manager chair reporting to it.

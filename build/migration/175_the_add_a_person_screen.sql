@@ -1,0 +1,24 @@
+-- The screen for 173 and 174, on the HR page and only for somebody HR --
+-- vHR already knows whether this viewer is, so the card asks it rather than
+-- asking again. Source at build/app/screen-hr-add.js.
+--
+-- It checks as you type, against person_check() in the database, which is
+-- the same function person_add() calls before it writes. The form and the
+-- writer cannot disagree, which is the whole design.
+--
+-- Errors and warnings are the same shape and different colours, because
+-- "that mobile is already against somebody" should not stop you and "that
+-- address belongs to somebody" must.
+--
+-- The caret survives a repaint. Checking on every keystroke means redrawing
+-- on every keystroke, and a naive innerHTML would throw the cursor to the
+-- end of the field mid-word; hraRepaint remembers which field had focus and
+-- where the caret was, and puts both back.
+--
+-- A fourth base, hrapi, beside crux / api / ops / plb -- and a fourth edge
+-- function, because `api` owns the older request queue and is at the deploy
+-- size limit. The queue is not replaced: that one is somebody asking, HR
+-- approving, an administrator seating. This is the direct path for when the
+-- person asking IS HR.
+--
+-- app_page 335,491 -> 346,660 characters, md5 955cc4b48fa0bc0c638e76c8c2128571.

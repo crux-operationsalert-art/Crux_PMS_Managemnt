@@ -90,19 +90,14 @@ after each publish.
 
 ## Status
 
+All four delivered and live.
+
 | # | What | Where it is |
 |---|---|---|
-| 1 | Attribute proposals and approvals | **Live in the database.** Migration 168 applied; `plb` edge function at v3; screen written and gated, waiting to be applied |
-| 2 | The dispute window | **Live in the database.** Migration 169 and 170 applied; same screen |
-| 3 | Geography-driven seatings | Written and ready — `build/migration/pending/172_the_real_geography_seats_the_chairs.sql` |
-| 4 | Add a person | Not started |
-
-**Blocked:** the Supabase MCP tool has been returning "MCP tool call requires
-approval" for every call since migration 170 went in, including a bare
-`select 1`. Migration 171 (the screen) is written, syntax-checked and gated on
-an md5 so it cannot land wrong — it needs the approval prompt accepted before
-it can be applied. The engine behind it is already live, so nothing is
-half-applied: the screen simply does not yet show the new parts.
+| 1 | Attribute proposals and approvals | Live. Migrations 168, 170, 171; `plb` v3 |
+| 2 | The dispute window | Live. Migrations 169, 170, 171 |
+| 3 | Geography-driven seatings | Live. Migrations 172, 172b. 274 seatings from `op_node`; `plb_unseated()` lists the five people who need a decision |
+| 4 | Add a person | Live. Migrations 173, 173b, 174, 174b, 174c, 175; new `hr` edge function at v1 |
 
 ## Decision log
 
@@ -111,3 +106,6 @@ half-applied: the screen simply does not yet show the new parts.
 | 26 Sep | Add the PLB scheme beside the older appraisal screen rather than replace it | The older screen is a different scheme with live data |
 | 26 Sep | Pin the `issue` route's jsonb parameter with `$5::text` | postgres.js serialises a JS array as a Postgres array literal, so `[]` arrived as `{}` |
 | 26 Sep | Geography-driven seatings are generated; putting a named person in one is not | Seating someone in the Branch Manager chair puts them in a bonus scheme |
+| 26 Sep | `person_check()` lives in the database, and both the screen and the writer call it | A validator the applier does not share drifts; this codebase has paid for that on rates and on client codes |
+| 26 Sep | HR may not create an administrator | HR can create people. If HR could also set app_role freely, "who may make an admin" would be settled by a dropdown nobody had thought about |
+| 26 Sep | Add-person lives in a new `hr` edge function, not in `api` | `api` owns the older request queue and is at the deploy size limit |

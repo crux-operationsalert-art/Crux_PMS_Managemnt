@@ -1,0 +1,38 @@
+-- The writer. It calls person_check again rather than trusting the screen,
+-- and does four things in one transaction so a person cannot exist halfway:
+-- the person row, the seat in a chair, the coverage rule if a place was named
+-- and is free, and the trail. It does NOT issue the activation code -- that
+-- is the edge function's, because a code belongs in an e-mail and never in a
+-- database log.
+--
+-- The coverage rule is made only when nobody else holds that place in that
+-- role today. Two people covering one place is sometimes real and sometimes
+-- a mistake and this function cannot tell which, so it names who is already
+-- there and leaves the rule to the Places screen, which is built for exactly
+-- that argument.
+--
+-- 174b  person_add wrote app_role 'MEMBER', which is not a member of
+--       role_kind -- the enum is ADMIN, MANAGER, LOCATION_HEAD, VIEWER.
+--       Caught by the enum, which is the right place for it. Fixing the
+--       label raised the better question: what may somebody creating a
+--       person hand out? HR can create people; if HR could set app_role
+--       freely, HR could mint an administrator, and "who may make an admin"
+--       would be settled by a dropdown nobody had thought about. Default
+--       VIEWER; MANAGER and LOCATION_HEAD to anyone who may add; ADMIN only
+--       from an existing ADMIN, refused with a sentence rather than quietly
+--       downgraded. Tested with a real HR actor after the first test used an
+--       ADMIN one and therefore proved nothing.
+-- 174c  coverage_rule.scope_type is NOT NULL and was not set, so the one
+--       branch the tests had not reached -- adding somebody to a place
+--       nobody covers -- failed on the insert. Found by going looking for a
+--       free location rather than by waiting for it to happen to somebody.
+--       Every rule carrying an op_node_id uses LOCATION.
+--
+-- Proved end to end on probes since deleted: refused for a branch manager,
+-- five problems reported at once for an empty form, HR refused an admin,
+-- a nonsense role refused, duplicate address and number caught against the
+-- person just created, "Bhubaneswar is already covered by Shyam Sundar
+-- Kalta" when the place was taken, and a clean add at Nanded that seated
+-- them at Nanded's real seating from 172, created the coverage rule,
+-- normalised +91 98765 43210 to 9876543210, set VIEWER, and moved the PLB
+-- scheme from twelve people to thirteen.

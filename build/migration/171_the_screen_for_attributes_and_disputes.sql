@@ -1,0 +1,26 @@
+-- The screen for 168, 169 and 170. Source at build/app/screen-plb.js,
+-- byte-identical to what the page holds (md5 4585c8e836d13a300277b60b4d7377e9,
+-- 48,863 bytes), proved by reading the substring back out and comparing
+-- digests rather than by trusting the UPDATE.
+--
+-- Three things the employee could not do and now can: propose A-4 and A-5
+-- with the evidence and the three monthly milestones the admissibility test
+-- asks for; see where the proposal stands; and, once a result is published,
+-- disagree with one named element of it inside ten working days, counted on
+-- the calendar of the place they actually work in.
+--
+-- Three the manager could not do and now can: approve or return a proposal,
+-- with the automatic overlap flag in front of them; countersign an attribute
+-- score above 7.5, which the month cannot lock without; and respond to, or
+-- decide, a dispute.
+--
+-- The result card shows the ring-fence when there is one: what is contested,
+-- and what is payable now. s.6.3 promises the undisputed part is paid on
+-- time, and until this the promise had nowhere to appear.
+--
+-- Two ids were nearly shared. Somebody who runs the scheme can have their own
+-- dispute card and an employee's open at the same time, so the two cards
+-- carry different ids for their panel and their message box; a single
+-- "pbdmsg" would have put one person's error under another's.
+--
+-- app_page 315,298 -> 335,491 characters.
