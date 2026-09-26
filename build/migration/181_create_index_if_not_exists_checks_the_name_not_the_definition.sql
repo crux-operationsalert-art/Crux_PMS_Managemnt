@@ -1,0 +1,33 @@
+-- Applied as: 181_create_index_if_not_exists_checks_the_name_not_the_definition
+--
+-- A correction to something the owner was told 173 had done.
+--
+-- 173 ran:
+--
+--     create unique index if not exists person_employee_no_uniq
+--       on person (lower(btrim(employee_no)))
+--      where employee_no is not null and superseded_by is null;
+--
+-- and I reported that employee numbers were now unique case-insensitively.
+-- They were not. An index of that NAME already existed, on plain
+-- (employee_no) WHERE employee_no IS NOT NULL. IF NOT EXISTS matches the
+-- NAME, not the definition, so the statement was a no-op and said nothing
+-- about it. The old index folded no case and did not exclude superseded
+-- rows.
+--
+-- Both parts mattered by then. Case, because "emp-0019" and "EMP-0019" are
+-- the same number to everybody except that index. Superseded rows, because
+-- 180d depends on the merged-away record being allowed to keep its number
+-- -- which only works if the rule ignores superseded rows.
+--
+-- So: dropped and recreated with the definition 173 claimed.
+--
+-- person_work_email_uniq was left alone. It already folds case and already
+-- excludes superseded rows; its extra `left_on is null` clause is
+-- deliberate -- somebody who has left should not block their own address
+-- being reissued.
+--
+-- The general lesson, which has now cost twice: IF NOT EXISTS is a
+-- statement about a name. Asserting afterwards that the index EXISTS would
+-- have passed just as happily. The assertion has to be about its
+-- definition -- pg_get_indexdef -- or it is not an assertion.

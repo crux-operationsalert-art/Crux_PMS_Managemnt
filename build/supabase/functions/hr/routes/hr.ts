@@ -95,4 +95,43 @@ r.post("/add", async (req: any, res: any) => {
   });
 });
 
+// ------------------------------------------------------------ merging
+
+// Two live records with the same name. Neither side is suggested as the
+// winner -- both are laid out with what each carries and a person decides.
+r.get("/duplicates", async (req: any, res: any) => {
+  if (!mayAdd(req)) return res.status(403).json({ error: "not_permitted" });
+  const o = await one(`select person_duplicates() as o`);
+  return res.json({ pairs: o.o });
+});
+
+// Read-only, and it says everything that would happen: every table a row
+// would move out of, every place two rows would land on each other, and
+// anything that stops the merge before it starts.
+r.post("/merge/plan", async (req: any, res: any) => {
+  if (!mayAdd(req)) return res.status(403).json({ error: "not_permitted" });
+  const b = req.body || {};
+  const o = await one(`select person_merge_plan($1,$2) as o`, [b.loserId, b.winnerId]);
+  return res.json(o.o);
+});
+
+// The act. It re-runs the plan itself and refuses on any blocker, so a plan
+// read five minutes ago cannot authorise a merge the database would now
+// reject. `confirm` has to be the loser's name, typed out.
+r.post("/merge", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select person_merge($1,$2,$3,coalesce($4::text,'{}')::jsonb,$5) as o`,
+    [req.person.id, b.loserId, b.winnerId,
+     JSON.stringify(b.choices || {}), b.confirm || null]);
+  return out(res, o.o);
+});
+
+// Who has no employee number, and why each one is on the list -- a merge,
+// a number, or nothing at all.
+r.get("/without-number", async (req: any, res: any) => {
+  if (!mayAdd(req)) return res.status(403).json({ error: "not_permitted" });
+  const o = await one(`select person_without_number() as o`);
+  return res.json({ people: o.o });
+});
+
 export default r;

@@ -78,8 +78,14 @@ press it.
 - Migration 169: the screen for both.
 - Migration 170: geography-derived seatings.
 - Migration 171: the add-person gate and its screen.
-- `plb` edge function at v3+; `build/app/screen-plb.js` kept byte-identical to
-  what `app_page` holds.
+- Migrations 176-178: the employee-number backfill, and the two latent hazards
+  it exposed (an upload matching a retired person; nineteen upload functions
+  open to `anon`).
+- Migrations 179-184: merging two records of one person -- the plan, the act,
+  the duplicate finder, and the screen.
+- `plb` edge function at v3+, `hr` at v2; `build/app/screen-plb.js`,
+  `build/app/screen-hr-add.js` and `build/app/screen-hr-merge.js` kept
+  byte-identical to what `app_page` holds.
 
 ## Validation
 
@@ -90,14 +96,17 @@ after each publish.
 
 ## Status
 
-All four delivered and live.
+All four delivered and live, plus the backfill and the merge that followed
+from them.
 
 | # | What | Where it is |
 |---|---|---|
 | 1 | Attribute proposals and approvals | Live. Migrations 168, 170, 171; `plb` v3 |
 | 2 | The dispute window | Live. Migrations 169, 170, 171 |
 | 3 | Geography-driven seatings | Live. Migrations 172, 172b. 274 seatings from `op_node`; `plb_unseated()` lists the five people who need a decision |
-| 4 | Add a person | Live. Migrations 173, 173b, 174, 174b, 174c, 175; new `hr` edge function at v1 |
+| 4 | Add a person | Live. Migrations 173, 173b, 174, 174b, 174c, 175, 175b; new `hr` edge function at v1 |
+| 5 | Employee-number backfill | Done. Migration 176: eleven resolved into six mints, two merges, three non-people. 177 and 178 close what it exposed |
+| 6 | Merge two records of one person | Live. Migrations 179-184; `hr` at v2. Two real merges are queued for the owner to decide: Ananya Gawade and Vinayak Jondale |
 
 ## Decision log
 
@@ -109,3 +118,22 @@ All four delivered and live.
 | 26 Sep | `person_check()` lives in the database, and both the screen and the writer call it | A validator the applier does not share drifts; this codebase has paid for that on rates and on client codes |
 | 26 Sep | HR may not create an administrator | HR can create people. If HR could also set app_role freely, "who may make an admin" would be settled by a dropdown nobody had thought about |
 | 26 Sep | Add-person lives in a new `hr` edge function, not in `api` | `api` owns the older request queue and is at the deploy size limit |
+| 26 Sep | A merge is planned before it is acted on, and the plan is generated from `pg_constraint` | A hand-written list of tables is correct the day it is written and silently wrong the first time somebody adds one |
+| 26 Sep | A seat that loses a merge is closed with today's date, never deleted | Where somebody sat is a fact |
+| 26 Sep | The merged-away record is superseded, kept and readable, and keeps its old employee number | The uniqueness rule excludes superseded rows, so the survivor can take that number in the same transaction |
+| 26 Sep | Where one side of a merge is blank and the other is not, the side with a value is pre-selected | Defaulting to the survivor everywhere keeps a blank over a fact and says nothing |
+| 26 Sep | The two real merges are left for the owner | Vinayak Jondale is a PARTNER record and an EMPLOYEE record in the Branch Manager chair, which is in the bonus scheme. That is a business decision, not a tidy-up |
+
+## Open questions
+
+- **Vinayak Jondale.** EMP-0041, PARTNER, in Location Partner / Franchisee
+  Partner; and a second record, no employee number, EMPLOYEE, LOCATION_HEAD,
+  in Branch Manager -- which is in the PLB scheme. Merging decides which
+  employment type and which chair survive, and therefore whether this person
+  is in the bonus scheme. Needs the owner.
+- **Ananya Gawade.** EMP-0019 with a work address, and a second record with a
+  gmail address, Operations, designation Executive, in Field Executives /
+  Verifiers. The survivor should almost certainly be EMP-0019 taking the
+  other's department and designation, but it is still somebody's decision.
+- `plb_unseated()` and `person_without_number()` exist and are correct, but no
+  screen shows them yet.

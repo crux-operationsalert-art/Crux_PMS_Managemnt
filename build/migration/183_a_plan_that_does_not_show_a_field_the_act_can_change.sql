@@ -1,0 +1,44 @@
+-- Applied as: person_merge_plan_shows_every_field_the_merge_can_set
+--             person_merge_side_one_description_of_a_person_in_a_merge
+--             person_merge_plan_drop_the_stray_declaration_and_restore_the_wording
+--             person_merge_plan_stop_promising_to_drop_a_seat_it_never_drops
+--
+-- Three corrections found while building the screen on top of the plan.
+-- All three are the same species: the plan described something other than
+-- what the act does, and a plan is believed.
+--
+-- ------------------------------------------------------- 1. two missing fields
+-- person_merge() can take a side for eleven fields. person_merge_plan()
+-- described nine. The two it left out were personal e-mail and
+-- designation, which meant the screen could offer no choice for them, so
+-- the survivor's blank would quietly win over the merged-away record's
+-- value. The very first real pair proves it: the surviving Ananya Gawade
+-- record has no department and no designation; the other has Operations
+-- and Executive. Department was already offered. Designation would have
+-- been lost, and nothing would have said so.
+--
+-- The two sides were being built twice, inline, which is how they came to
+-- drift from what the act can set. They are now built once, by
+-- person_merge_side(person).
+--
+-- --------------------------------------------- 2. a seat is not a duplicate fact
+-- The plan listed person_one_primary_chair under collisions and told the
+-- reader "the loser's copy is dropped and the winner's kept". That is the
+-- one thing that does not happen to it: person_merge() excludes
+-- chair_holder from the drop loop on purpose and settles seats separately
+-- (180b). The plan now makes the same exclusion, for the same reason, and
+-- chair_holder's entry under "what would move" says "moved, once the seat
+-- below is settled".
+--
+-- ------------------------------------------------------------ 3. my own slips
+-- The first of these replacements went in carrying a declared variable
+-- nothing read, and a call to person_merge_side() before that function
+-- existed. Postgres accepted both: plpgsql validates syntax at CREATE, not
+-- the existence of functions called from inside it. It also silently
+-- carried a sentence whose grammar I had changed while moving it. All
+-- three were fixed before anything called the function -- but the first
+-- one was live and broken for the length of two statements, and the only
+-- reason it was caught is that the next thing I did was run it.
+--
+-- Worth keeping: `create or replace function` on a plpgsql body is not a
+-- compile. Run the function.

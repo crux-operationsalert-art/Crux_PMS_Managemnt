@@ -1,0 +1,48 @@
+-- Applied as: 180_person_merge
+--             180b_the_seat_is_settled_before_the_rows_are_moved
+--             180c_foreach_slice_wants_an_array
+--             180d_supersede_before_taking_the_loser_s_number
+--
+-- The act. It re-runs person_merge_plan() itself and refuses on any
+-- blocker, so a plan read five minutes ago cannot authorise a merge the
+-- database would now reject, and it will not proceed unless p_confirm is
+-- the loser's full name typed out.
+--
+-- What it does, in order, and the order is the whole content of this file:
+--
+--   1. permission -- HR, or an administrator, checked here and not only in
+--      the service, so a caller that skips the service is refused too
+--   2. confirm, then re-plan and refuse on blockers
+--   3. if the winner reports to the loser, break that line first, or the
+--      merge leaves somebody reporting to themselves
+--   4. settle the seat
+--   5. drop the rows that would collide
+--   6. move everything else
+--   7. revoke the loser's sign-ins -- a session is a login, not a fact
+--   8. supersede the loser
+--   9. apply the field choices
+--  10. person_event on both, and one audit row carrying what moved
+--
+-- ------------------------------------------------------------ the probe
+-- Three fabricated people exercised: a manager repointed, a winner
+-- reporting to the loser, colliding perf_month rows, two primary chairs,
+-- coverage rules. It caught three ordering bugs in sequence, and each one
+-- is a step above:
+--
+-- 180b. The generic repoint moved BOTH primary chairs onto the winner
+--       before the seat choice was applied, and person_one_primary_chair
+--       refused. The seat is now settled while each row is still on its
+--       own owner -- close the ones that lose, with today's date, then
+--       move what is left. Never delete: where somebody sat is a fact.
+--
+-- 180c. `foreach pick slice 1 in array fields` with `pick` declared text.
+--       SLICE 1 over a 2-D array yields rows, so the loop variable has to
+--       be text[], not text.
+--
+-- 180d. The winner took the loser's employee number while the loser still
+--       held it live, and the uniqueness rule refused. Supersede first:
+--       the partial index excludes superseded rows, so the merged-away
+--       record keeps its old number harmlessly and the survivor can take
+--       it in the same transaction.
+--
+-- The probe was cleaned up in full: 639 people, 0 probes, 0 superseded.

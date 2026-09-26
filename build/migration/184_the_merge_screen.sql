@@ -1,0 +1,47 @@
+-- Applied as: app_page_merge_two_records_into_one_person
+--
+-- The screen, onto the HR page beside Add a person. Source of record is
+-- build/app/screen-hr-merge.js; what went into app_page is byte-identical
+-- to it, and that was checked rather than assumed (below).
+--
+-- ------------------------------------------------------------ the design
+-- A merge is the least reversible thing in this tool, so the screen is
+-- built around looking before acting. Both records are laid out side by
+-- side; the person deciding picks a side per field, picks the seat that
+-- survives, reads the generated list of what would move, and types the
+-- name of the record being merged away. Nothing is pre-decided except one
+-- thing, deliberately: where the survivor's value is blank and the
+-- merged-away record has one, the merged-away one is pre-selected.
+-- Defaulting to the survivor everywhere would keep a blank over a fact and
+-- say nothing -- which is exactly how a merge loses a department.
+--
+-- The screen asks for the seat BEFORE the confirm box rather than letting
+-- somebody type a name out and then be refused, and it offers a choice for
+-- all eleven fields person_merge() can set and for nothing else. A field
+-- shown without a choice is a field quietly lost; a field with a choice
+-- the act ignores is a lie.
+--
+-- ------------------------------------------------------- the splice, after 175b
+-- 175 anchored an insertion on 'function vHR(){', which is a substring of
+-- 'async function vHR(){'. It cut the async off, the page stopped parsing,
+-- and the migration's own checks all passed -- because they asked whether
+-- each new thing was PRESENT, not whether what it sat beside had survived.
+-- Presence is not integrity.
+--
+-- So this one asserts each anchor is unique before using it, and
+-- afterwards counts (a) 'async function vHR(){' = 1, (b) 'function vHR(){'
+-- = 1 -- the same one, so nothing lost its async and no second one
+-- appeared -- and (c) that the number of async declarations in the whole
+-- page rose by exactly the three the screen carries.
+--
+-- Then, out of band, the page was reconstructed: remove the three
+-- insertions and it hashes back to a36d487428d9cd216097ead206a8c458,
+-- 346660 characters -- the exact page that was live before. So the page is
+-- the old page plus 835 characters of style, 16 characters of host call,
+-- and 14378 characters that md5 to 06c953815e9b8f2e155aa5be0820907c: the
+-- same bytes as the file that `node --check` accepts. Nothing else moved,
+-- and nothing was mangled in transit.
+--
+-- New style: .mgcell .mgon .mgseat .mgseats .mgclash.
+-- New service routes (hr v2): GET /hr/duplicates, POST /hr/merge/plan,
+-- POST /hr/merge, GET /hr/without-number.

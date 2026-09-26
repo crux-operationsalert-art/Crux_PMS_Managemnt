@@ -1,0 +1,35 @@
+-- Applied as: 179_merging_two_people_is_a_plan_before_it_is_an_act
+--             179b_a_partial_index_predicate_belongs_inside_the_subquery
+--
+-- The backfill in 176 turned up eleven people with no employee number and
+-- resolved them into six mints, two merges and three non-people. This is
+-- the machinery for the two merges -- and for the next two, which will
+-- happen, because two records of one person is what you get when somebody
+-- is added twice under two spellings of the same name.
+--
+-- The decision this file encodes: a merge is described before it is done,
+-- and the description is generated, not written. person_merge_plan() reads
+-- pg_constraint at run time and asks, of every foreign key that points at
+-- person, how many rows would move. That is 136 columns across about
+-- ninety tables today. A hand-maintained list would be correct on the day
+-- it was written and wrong the first time somebody added a table -- and
+-- wrong silently, which is the part that matters, because the rows it
+-- forgot would simply stay pointing at a superseded person.
+--
+-- It also asks, of every unique index on those tables, whether the loser
+-- and the winner both hold a row that would collide. Those are the rows a
+-- merge has to drop rather than move: two records of one fact.
+--
+-- 179b: the first cut put a partial index's predicate in the WHERE of the
+-- join, where its bare column names were ambiguous between the two sides.
+-- The predicate has to go INSIDE each side's subquery, where the names
+-- resolve to that side and nothing about the predicate has to be
+-- understood or rewritten:
+--
+--     side := format('(select * from %s%s)', r.rel,
+--               case when r.pred is null then '' else ' where ' || r.pred end);
+--
+-- That one change is the difference between handling every partial unique
+-- index in the schema and handling the ones somebody thought of.
+--
+-- Superseded later by three corrections; see 183.

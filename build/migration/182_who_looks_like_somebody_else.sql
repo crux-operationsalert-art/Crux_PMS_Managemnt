@@ -1,0 +1,30 @@
+-- Applied as: 182_who_looks_like_somebody_else
+--
+-- person_duplicates(): two live records whose names match once case,
+-- spacing and punctuation are set aside --
+--
+--     lower(regexp_replace(full_name, '[^a-zA-Z]', '', 'g'))
+--
+-- and that is the whole check. It will not catch a duplicate recorded
+-- under a different spelling, and the screen says so rather than implying
+-- a completeness it does not have.
+--
+-- Excluded: client contacts, who are not staff, and names under four
+-- letters, which collide for no reason.
+--
+-- Each side carries what it would cost to merge it away -- performance
+-- rows, places covered, people reporting in -- and the sides are ordered
+-- heaviest first. The screen offers the heavier one as the survivor
+-- because merging into the emptier record moves more rows, NOT because it
+-- is more likely to be the real one. Nothing here decides which record is
+-- right; there is a Swap button and a person.
+--
+-- person_without_number() sits beside it: who has no employee number, and
+-- why each one is on the list -- waiting on a merge, waiting on a number,
+-- or not a person at all.
+--
+-- It found the two that 176 left open:
+--   Ananya Gawade   -- EMP-0019 + a gmail-addressed second record
+--   Vinayak Jondale -- EMP-0041 PARTNER in Location Partner, and a
+--                      numberless EMPLOYEE in Branch Manager, which is in
+--                      the bonus scheme. That one is not a tidy-up.
