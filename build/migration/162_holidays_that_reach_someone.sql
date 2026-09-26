@@ -1,0 +1,52 @@
+-- "Holidays are all National and regional holidays, whatever data is
+--  available online"
+--
+-- Before adding anything, what was there had to be checked, and the check
+-- failed three times over: of 73 holiday rows, 37 applied to nobody at all.
+--
+--   1. holiday_applies matches a row either because it is national, or
+--      because the centre asked about appears by name in the row's comma
+--      list. Rows labelled 'Festival' -- Maha Shivaratri, Janmashtami,
+--      Dussehra, Muharram, Milad-un-Nabi and thirteen more in 2027 -- are
+--      neither, so they matched nothing. Nor did 'Maharashtra'.
+--   2. Only 10 of the 37 operating locations had a centre at all. Pune,
+--      KOLHAPUR, NASHIK, Solapur, Latur, Delhi, Kolkata Zone, Hyderabad
+--      Zone, Tamilnadu + Chennai and the rest resolved to nothing, so for
+--      them even the rows that did work were invisible.
+--   3. All 21 'Festival' rows are also confirmed = false.
+--
+-- A holiday that silently applies to no one is worse than a missing one:
+-- nothing anywhere says it is not a working day.
+--
+-- 1 and 2 are mapping faults and are fixed. A location's alias became a comma
+-- list of the labels that reach it -- its RBI centre, its state, and
+-- 'Festival' -- and holiday_applies now intersects the two lists. No schema
+-- change: the column already held text. Every operating location is mapped,
+-- from geography. The assertion is what caught Nanded and Amravati
+-- (Maharashtra) missing from the first draft, and Amravati (Maharashtra) is a
+-- different place from Amaravati in Andhra.
+--
+-- 3 is deliberately not touched. Those 21 are the lunar festivals, whose
+-- dates move; whoever loaded them marked them provisional, which is right,
+-- and confirming a date this migration cannot verify would be inventing a
+-- fact. The RBI does not publish the 2027 city-wise matrix until near the
+-- year. The mapping is now in place so that the moment they are confirmed
+-- they reach everybody, and a test proves an unconfirmed date still does not
+-- count as a holiday.
+--
+-- 162b: the alias primary key is on city, which is case sensitive, so the
+-- seeded 'Ahmedabad' and the operating location 'AHMEDABAD' are two rows and
+-- the scalar subquery returned two -- raising 21000 for every caller, not
+-- just Ahmedabad. Aggregating instead of selecting a scalar fixes it, and is
+-- also the right behaviour: two spellings of one place should contribute both
+-- their label sets.
+--
+-- Result: 45 places mapped, 970 location-day pairs now live where most were
+-- inert, and the counts differ correctly by place -- Pune 6 holidays in the
+-- October quarter, Kolkata 5, Chennai 3.
+--
+-- Eight rows still reach nobody, correctly: Chapchar Kut and the Mizoram and
+-- Arunachal statehood days, Losar, Shab-I-Qadr and a Kerala new year. Crux has
+-- no office in those states. One real gap: the owner's RBI 2026 data has no
+-- Bhopal centre, so Bhopal, Indore and GWALIOR get national, festival and any
+-- Madhya Pradesh row, but nothing Bhopal-specific.

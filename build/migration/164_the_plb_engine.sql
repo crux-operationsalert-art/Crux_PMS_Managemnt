@@ -1,0 +1,49 @@
+-- The PLB engine. PLB = Target x Payout Factor x Consistency Factor.
+--
+-- Two functions carry the whole scheme, written from the published curve
+-- rather than a table of points, so there is no cliff anywhere and no row to
+-- get out of step.
+--
+--   plb_payout_factor  0 below 50; linear at 100/35 per point to exactly 100
+--                      at 85; half a point per point to 105 at 95; one for
+--                      one to the 125 ceiling at 115.
+--   plb_consistency    mean monthly score / 10, floored at 0.30.
+--
+-- Both are proved rather than asserted. The migration reproduces every
+-- published point on the curve -- 60 to 28.6, 70 to 57.1, 80 to 85.7, 85 to
+-- 100, 90 to 102.5, 95 to 105, 100 to 110, 110 to 120, 115 to 125 -- plus the
+-- explainer's interpolated 65 to 42.86, and then all five of its worked
+-- examples on a 50,000 quarter: 44,000 · 36,000 · 30,000 · 57,000 · nil.
+-- Those five are the real test, because they were computed independently of
+-- the curve description.
+--
+-- Six tables: the goal sheet, its KPIs, its attributes, the monthly scores,
+-- the result, and a correction log. The monthly score is a stored generated
+-- column, 0.75 x KPI + 0.25 x attribute, so it cannot drift from its inputs.
+--
+-- 164b -- the operations layer, encoding the rules the documents make
+-- non-negotiable:
+--
+--   * a manager selects no KPI and sets no weight; a sheet is built from the
+--     chair's registry and there is no argument to override either
+--   * nobody issues, scores or certifies for themselves
+--   * scores move in half-point steps, and nothing else is accepted
+--   * a gap of 2.0 or more against the self-evaluation cannot be saved
+--     without a one-line reason -- the score still stands, the sentence is
+--     compulsory
+--   * a locked month cannot be rescored
+--   * a month nobody scored is excluded and the denominator reduces
+--   * a target cannot move after data freeze
+--
+-- 164c -- plb_sheet() returns all twelve things section 6.2 of the guide says
+-- an employee must always be able to see, in one object, so a screen cannot
+-- accidentally show eleven. It also returns the arithmetic as a sentence,
+-- because a number nobody can reproduce is not a published result either.
+--
+-- One thing the test caught that is worth recording: the explainer's table
+-- shows monthly scores 7.88, 8.75, 7.50 and a mean of 8.04. Averaging those
+-- displayed figures gives 8.043; averaging the exact scores (7.875, 8.75,
+-- 7.50) gives 8.042. The engine does the latter -- no double rounding -- and
+-- both publish as 8.04. On a 50,000 quarter the difference is about five
+-- rupees, which is exactly the size of thing a dispute gets made of, so it is
+-- written down here rather than left to be rediscovered.

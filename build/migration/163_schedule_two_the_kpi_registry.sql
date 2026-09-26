@@ -1,0 +1,37 @@
+-- Schedule 2: the KPI registry, from the four documents the owner supplied.
+--
+-- 61 KPIs across the 16 chairs in the PLB scheme, plus the five attributes.
+-- Thirteen chairs carry four KPIs at 25% each and three carry three at 33.33%
+-- -- AVP Operations & Growth, Company Secretary and Engineering & Platform,
+-- exactly the three the scorecard guide names.
+--
+-- Six chairs are verbatim from the Control & Enablement deck, which is
+-- Schedule 2 as published: Assurance HR & Compliance, Business Excellence &
+-- PMO, MIS & Business Analytics, Technology, Engineering & Platform, Company
+-- Secretary.
+--
+-- The other ten had no deck in what was supplied, so their sets are built
+-- from the Operating Structure -- each chair's own OWNS list, which is what
+-- the Constitution calls the published measure set. The owner authorised
+-- this: "if any are missing you can make them." Each measure carries the
+-- Operating Structure's own code in its unit line (D1, F4, R6, AC2 and so on)
+-- so the derivation can be checked rather than taken on trust, and each was
+-- tested against the deck's own four questions: on the chair's measure list,
+-- producible by a system, inside the chair's control, and landable monthly
+-- rather than only at quarter end.
+--
+-- Weights are not stored anywhere. The deck fixes them at 100 / number of
+-- KPIs, so a stored weight could only ever disagree with the count.
+--
+-- Two chairs the scheme names did not exist and were created: Operations Head
+-- and Regional Manager.
+--
+-- kpi_scope required a chair or a person, which is right for a KPI and wrong
+-- for an attribute -- an attribute belonging to a chair would not be
+-- "identical for every chair in the company", which is what the deck says it
+-- is. The constraint was widened rather than worked around, and still refuses
+-- a row naming both a chair and a person.
+--
+-- Worth the owner knowing: only 12 people are currently seated in a chair
+-- that is in the scheme -- 11 Branch Managers and one AVP. The other 14
+-- chairs have a scorecard and nobody in them.
