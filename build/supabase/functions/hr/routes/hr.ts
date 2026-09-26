@@ -134,4 +134,15 @@ r.get("/without-number", async (req: any, res: any) => {
   return res.json({ people: o.o });
 });
 
+// ------------------------------------------------------- loose ends
+// The two lists above plus the number that makes sense of them: how many
+// active people sit in a chair the scheme can actually score. One read,
+// because a screen that has to make three calls to say one thing tends to
+// end up saying it in three places.
+r.get("/loose-ends", async (req: any, res: any) => {
+  if (!mayAdd(req)) return res.status(403).json({ error: "not_permitted" });
+  const o = await one(`select hr_loose_ends() as o`);
+  return res.json(o.o);
+});
+
 export default r;

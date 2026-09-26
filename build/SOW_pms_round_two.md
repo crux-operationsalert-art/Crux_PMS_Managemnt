@@ -83,6 +83,8 @@ press it.
   open to `anon`).
 - Migrations 179-184: merging two records of one person -- the plan, the act,
   the duplicate finder, and the screen.
+- Migration 185: `hr_loose_ends()` and the Loose ends card -- what the tool
+  knows it cannot see.
 - `plb` edge function at v3+, `hr` at v2; `build/app/screen-plb.js`,
   `build/app/screen-hr-add.js` and `build/app/screen-hr-merge.js` kept
   byte-identical to what `app_page` holds.
@@ -106,7 +108,8 @@ from them.
 | 3 | Geography-driven seatings | Live. Migrations 172, 172b. 274 seatings from `op_node`; `plb_unseated()` lists the five people who need a decision |
 | 4 | Add a person | Live. Migrations 173, 173b, 174, 174b, 174c, 175, 175b; new `hr` edge function at v1 |
 | 5 | Employee-number backfill | Done. Migration 176: eleven resolved into six mints, two merges, three non-people. 177 and 178 close what it exposed |
-| 6 | Merge two records of one person | Live. Migrations 179-184; `hr` at v2. Two real merges are queued for the owner to decide: Ananya Gawade and Vinayak Jondale |
+| 6 | Merge two records of one person | Live. Migrations 179-184; `hr` at v2. Ananya Gawade merged 26 Sep. Vinayak Jondale held -- see Open questions |
+| 7 | Loose ends on a screen | Live. Migration 185; `hr` at v3. `plb_unseated()` and `person_without_number()` now have a card, under the number they add up to |
 
 ## Decision log
 
@@ -126,14 +129,43 @@ from them.
 
 ## Open questions
 
-- **Vinayak Jondale.** EMP-0041, PARTNER, in Location Partner / Franchisee
-  Partner; and a second record, no employee number, EMPLOYEE, LOCATION_HEAD,
-  in Branch Manager -- which is in the PLB scheme. Merging decides which
-  employment type and which chair survive, and therefore whether this person
-  is in the bonus scheme. Needs the owner.
-- **Ananya Gawade.** EMP-0019 with a work address, and a second record with a
-  gmail address, Operations, designation Executive, in Field Executives /
-  Verifiers. The survivor should almost certainly be EMP-0019 taking the
-  other's department and designation, but it is still somebody's decision.
-- `plb_unseated()` and `person_without_number()` exist and are correct, but no
-  screen shows them yet.
+### 1. The scheme reaches 12 of 105 people
+
+The KPI registry was built on the recommended operating structure's chair
+catalogue; the people and geography were loaded into a different one. They
+overlap in two chairs. Everybody outside Branch Manager and AVP sits in a
+chair with no measure set, so the engine has nothing to read for them.
+
+Fourteen measure sets are written for chairs nobody is in. This is now the
+first thing on the HR page. Resolving it means deciding, chair by chair,
+which of the seated chairs should carry measures -- which is the same
+decision as who is in the bonus scheme. Owner's call; the KPIs screen does
+it.
+
+### 2. Vinayak Jondale -- held, not merged
+
+Two records match by name, but one of them contradicts itself:
+
+| | EMP-0041 | the other |
+|---|---|---|
+| name in the file | VINAYAK JONDALE | Vinayak Jondale |
+| work e-mail | **vinayak.patil**@cruxindia.co.in | vinjondhale@gmail.com |
+| employment type | PARTNER | EMPLOYEE |
+| chair | Location Partner / Franchisee Partner | **Branch Manager (in the scheme)** |
+| mobile | 9422882297 | none |
+
+Both rows are in the owner's own `crux-people-template.csv`, separately
+(rows 42 and 103). And there is a **third, separate person**: Vinayak Patil,
+EMP-0102, no e-mail and no mobile at all, who runs KOLHAPUR.
+
+So EMP-0041 carries a company address belonging to a different surname, for
+which a real person exists who has no address. Either EMP-0041's e-mail is
+wrong and it is Jondale, or EMP-0041's name is wrong and it is Patil.
+Merging locks in whichever is picked, and there is no unmerge. Not done.
+
+### 3. Three people run a place and sit in no chair at all
+
+Manoj Batham (EMP-0099, 7 places), Shyam Sundar Kalta (EMP-0100,
+Bhubaneswar), Vinayak Patil (EMP-0102, KOLHAPUR). All three came from the
+performance workbook and have no chair, no e-mail and no mobile. Listed on
+the Loose ends card.

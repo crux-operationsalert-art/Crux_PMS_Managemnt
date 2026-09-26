@@ -1,0 +1,58 @@
+-- Applied as: hr_loose_ends_what_the_tool_knows_it_cannot_see
+--             app_page_loose_ends_what_the_tool_knows_it_cannot_see      (failed its
+--                                                                        own check,
+--                                                                        wrote nothing)
+--             app_page_loose_ends_what_the_tool_knows_it_cannot_see_v2
+--             verify_only_reconstruct_the_previous_page_and_abort        (wrote nothing)
+--
+-- plb_unseated() and person_without_number() had been correct and
+-- invisible since they were written. Correct and invisible is very nearly
+-- the same as absent. This gives them a screen.
+--
+-- ------------------------------------------------- the number underneath them
+-- Building the card turned up the thing neither function had ever been
+-- asked to add up. The KPI registry (schedule two) was written against the
+-- chair catalogue in the recommended operating structure -- Accounts,
+-- Business Manager, Regional Manager, Operations Head, Finance Head, MIS,
+-- Technology, Bids, Credit & Collections and so on. The people file and the
+-- geography loaded afterwards seat people in a different set entirely:
+-- Executive, Team Leader / Supervisor, Location Partner, Zonal Manager,
+-- Branch Manager.
+--
+-- Those two sets overlap in TWO chairs. Branch Manager, which has four
+-- measures and eleven people, and Assistant Vice President, which has three
+-- and one. Everybody else -- 63 Executives, 9 Team Leaders, 2 Zonal
+-- Managers, the seven Location Partners, every Head -- sits in a chair that
+-- carries no measure set. Meanwhile fourteen measure sets are written for
+-- chairs with nobody in them.
+--
+-- So: 12 of 105 active people can be scored. Not scored badly, not scored
+-- zero -- plb_compute() refuses to compute at all when the weights do not
+-- add up (see 165), so it correctly produces nothing. The engine is right,
+-- the curve is right, the registry is right. Nothing was broken to cause
+-- this and nothing was ever going to announce it.
+--
+-- It is NOT fixed here, deliberately. Giving a chair a measure set is what
+-- puts its holders in the bonus scheme, and who is in the bonus scheme is
+-- the owner's decision, one chair at a time, on the KPIs screen. What this
+-- migration refuses to allow is for it to stay invisible: hr_loose_ends()
+-- puts the ratio at the top of the HR page, above everything else, with the
+-- list of which chairs are short.
+--
+-- ------------------------------------------------------------- the splice
+-- The first attempt asserted '.hereach{' appeared exactly once after the
+-- write. It appears twice -- in the rule and again in its media query. The
+-- check was wrong, not the splice. The DO block is a single statement, so
+-- nothing was written and app_page was still byte-identical afterwards,
+-- which is the whole argument for doing it this way. The check moved to
+-- '.hebig{', which is genuinely once.
+--
+-- Afterwards, as in 184: the screen region in app_page md5s to
+-- b8200e16fd6f24d6f268903bbe8a579d, the same bytes as the file `node
+-- --check` accepts, and removing the three insertions rebuilds the previous
+-- page exactly -- 361892 characters, b60cd648262f4d0006bb983f54500725. The
+-- delta is 16 characters of host call + 6759 of screen + 410 of style =
+-- 7185, which is all of it.
+--
+-- New route (hr v3): GET /hr/loose-ends.
+-- New style: .hereach .hebig.
