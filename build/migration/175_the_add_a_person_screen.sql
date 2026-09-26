@@ -22,3 +22,23 @@
 -- person asking IS HR.
 --
 -- app_page 335,491 -> 346,660 characters, md5 955cc4b48fa0bc0c638e76c8c2128571.
+--
+-- 175b  the splice anchored on "function vHR(){" and vHR is declared
+--       "async function vHR(){". The replace matched INSIDE the declaration
+--       and cut the keyword off its own function: the page ended up with a
+--       bare "async" followed by ten kilobytes of comment, and vHR without
+--       the async its first-line await needs.
+--
+--       The migration's own checks passed, because they asked whether each
+--       new thing was present and not whether the thing it was inserted next
+--       to had survived. Presence is not integrity. `node --check` over the
+--       published page caught it, which is exactly why that step exists.
+--
+--       The lesson is the anchor, not the accident: "function vHR(){" is a
+--       substring of "async function vHR(){" and was never a safe boundary.
+--       An anchor for an insertion has to start at a token boundary, and the
+--       check afterwards now counts async declarations rather than looking
+--       for a marker. Verified after: 168 asyncs in the page, 167 on
+--       functions and one the `async defer` on Google's script tag.
+--
+-- app_page md5 a36d487428d9cd216097ead206a8c458.
