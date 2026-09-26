@@ -80,3 +80,40 @@
 --   MTD needs a person and a named KPI. The workbook gives a location and a
 --   client. Whether a location's case count belongs to its branch manager or
 --   its handler is a question about how people are measured, not a mapping.
+--
+-- ---------------------------------------------------------------------------
+-- AND THEN THE TWO HELD-BACK NUMBERS, ONCE THE OWNER SETTLED THEM
+--
+-- "Use this revenue, this is not linked with collections or invoices, it is
+--  only for calculations and performances purpose. So use it as it is as one
+--  of the KPIs" -- and the case count belongs to the branch manager.
+--
+-- So neither goes near perf_revenue. Both are KPI achievements in perf_month
+-- against the branch manager of the place, 4,202 rows each. That also sidesteps
+-- what would have made perf_revenue wrong regardless: it insists on a realised
+-- figure the workbook does not have.
+--
+-- Revenue is recomputed as cases x the rate in force rather than carried from
+-- the file. That is a check, not a shortcut -- Revenue = MTD x Rate holds
+-- exactly on all 4,202 rows, and the rate table now agrees with the workbook
+-- on all 392 versions, so a disagreement would mean the rate table is wrong.
+-- The migration refuses to write anything at all if one row cannot find its
+-- rate or its manager. None failed.
+--
+-- The reconciliation afterwards:
+--
+--   cases     1,757,393 in the workbook, 1,757,393 loaded. Exact.
+--   revenue   543,738,015 in the workbook, 543,738,005.41 computed -- short by
+--             9.59 rupees, all of it in seven rows whose rate does not
+--             terminate: 40.7333..., 227.2727..., 833.3333..., 586.3013...,
+--             178.4070..., 151.1363..., 390.8802... Those rates were worked
+--             out as revenue divided by cases in the first place, so the
+--             revenue is the primary figure; 3,000 cases at a stored 40.73 is
+--             ten rupees short of 3,000 at 40.7333... Those seven now carry
+--             the workbook's own revenue. Both totals reconcile to the rupee.
+--
+-- One thing the owner should know: five of the eighteen branch managers have no
+-- employee number -- the three created here plus Kapil Harwara and Varsha
+-- Sonawane. It does not affect any of this, which works from person ids, but
+-- the Past performance upload matches people BY employee number with a join,
+-- so a future file for those five would drop rows silently rather than refuse.
