@@ -1,0 +1,64 @@
+-- The Performance & bonus screen.
+--
+-- Spliced in ahead of route(), the last thing the page defines before it
+-- starts running, so every function is in scope by the time anything can ask
+-- for one. Source kept at build/app/screen-plb.js, byte-identical to what the
+-- page now holds (md5 be7cff4168d21dd8127dd21ba7707155, 24,726 bytes), which
+-- was checked by reading the substring back out of app_page and comparing
+-- digests rather than by trusting the UPDATE.
+--
+-- The screen follows the documents' own structure, in the documents' own
+-- order, because the scheme sets itself a test in the employee explainer --
+-- "If explaining any individual result needs more than this plus your own
+-- goal sheet, the design has failed its own test" -- and a screen that shows
+-- the answer without the sum fails it on the employee's behalf:
+--
+--   How your bonus is worked out   the formula, then the three factors, then
+--                                  the shape of the curve in words: steepest
+--                                  between 50 and 85, flat on purpose between
+--                                  85 and 95, no cliff anywhere.
+--   Your goal sheet                every KPI with weight, target, basis
+--                                  level, monthly split, actual and ratio;
+--                                  then the five attributes, marked fixed or
+--                                  yours to propose. Acknowledge, when the
+--                                  sheet is ISSUED -- and the page says in
+--                                  terms that not acknowledging changes
+--                                  nothing, because it does not.
+--   Your monthly scores            each month's KPI and attribute points, the
+--                                  monthly score they make, your own
+--                                  self-evaluation beside the assessor's, who
+--                                  scored it, and the reason where the two
+--                                  were 2.0 or more apart. Excluded months
+--                                  say so and say the denominator reduced.
+--   Your result                    Achievement, payout factor, monthly mean,
+--                                  consistency and the figure, then the whole
+--                                  arithmetic as one sentence from
+--                                  plb_sheet(), then the section 6.2
+--                                  checklist of the twelve things an employee
+--                                  must always be able to see -- rendered as
+--                                  twelve ticks, with a warning naming how
+--                                  many are absent. Section 6.2 says that if
+--                                  any is missing they have not been given a
+--                                  published result, so the screen counts
+--                                  them rather than claiming them.
+--   Running the quarter            only when the service says maySetUp:
+--                                  sheets issued, people in the scheme with
+--                                  no sheet yet, and per sheet a panel to
+--                                  score a month, lock it, record quarter-end
+--                                  actuals, certify and publish.
+--
+-- Nothing here recomputes pay. Every number on the page comes from
+-- plb_sheet() / plb_quarter(), which call plb_compute(), which calls
+-- plb_payout_factor() and plb_consistency() -- the curve and the dial written
+-- once, in the database, from the published breakpoints. A second opinion
+-- about somebody's bonus, held in a browser, is the one thing this screen
+-- must never have.
+--
+-- Deliberately not built yet, and named here so it is not mistaken for an
+-- oversight: setting KPI targets and the monthly split after issue, approving
+-- the two proposed growth attributes, and the dispute window. The engine has
+-- the columns and the functions; the screen reaches them through Issue and
+-- the actuals table for now.
+--
+-- Applied as migration 166. app_page 286,508 -> 311,179 characters,
+-- md5 24f8e0fd2385502a701e77e231998f61.

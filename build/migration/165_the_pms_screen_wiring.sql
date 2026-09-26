@@ -1,0 +1,30 @@
+-- The four small joins that let a new screen exist, done before the screen
+-- itself, so that a moved anchor is found out about before 25KB of JavaScript
+-- is in flight:
+--
+--   a base     var PLB / var plb, beside OPS / ops. A fourth front door,
+--              because `api` is already at the deploy size limit and `ops` is
+--              close to it, and the PLB scheme will keep growing -- disputes,
+--              clawbacks, gates, calibration.
+--   a route    plb:vPlb in the run map
+--   a nav      ["plb","Performance & bonus"] under Mine, beside the older
+--              ["pms","Performance & appraisal"]. The older screen is the
+--              daily-filing appraisal, a different scheme with its own live
+--              data; adding beside it rather than over it means nothing that
+--              works today stops working.
+--   the CSS    .pbscheme .pbformula .pbthree .pbstep .pbn .pbgap .pbsum
+--              .pbpay .pbcheck input.pbact, appended after the .plform rules.
+--              Nothing was removed.
+--
+-- Every anchor is asserted present before the write and every result asserted
+-- present after it, read back from the table rather than from the variable
+-- that was just assigned.
+--
+-- allowed() was left alone deliberately. The screen is for everybody: an
+-- employee sees their own sheet, and the manager block renders only when the
+-- service says maySetUp, so the page never offers a button the service will
+-- refuse. Hiding the tab from people not in the scheme would hide the
+-- explanation of the scheme from exactly the people most likely to ask about
+-- it -- and the empty state says, in terms, which chairs are outside it.
+--
+-- Applied as migration 165. app_page 284,561 -> 286,508 characters.
