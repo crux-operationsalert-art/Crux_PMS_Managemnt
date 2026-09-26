@@ -1,0 +1,82 @@
+-- Full_Data.xlsx: 4,202 rows, one flat sheet, carrying four different things
+-- at once -- Date, Location, Client, Branch Manager, Handler, MTD, Revenue,
+-- Rate. The owner asked for it to be verified first and then pushed.
+--
+-- WHAT THE FILE IS
+--
+-- It is internally consistent in a way that matters: Revenue = MTD x Rate on
+-- all 4,202 rows, exactly, with no exceptions. 78 month-end dates from
+-- 2020-01-31 to 2026-08-31, plus 2026-09-24 for the month in progress.
+--
+-- Its Location column is the tree's own location names, not the commercial
+-- zone names the rates CSV used: Pune, KOLHAPUR, NASHIK, Solapur and Latur
+-- all appear side by side. So in this file "Pune" is the location. That is a
+-- different convention from the rates file, where "Pune" was the zone and
+-- "Pune / Pune" the location, and both files are right about themselves.
+--
+-- WHAT IT MATCHED
+--
+--   35 locations   34 matched outright. The 35th, a bare "NAGPUR", is
+--                  NAGPUR (Sudhir): its only branch manager in the file is
+--                  Sudhir Khobragade, on all 24 of its rows, and the file
+--                  lists NAGPUR (YASH) separately under a different manager.
+--   37 clients     35 matched. "BOB Car Loan +" is "BOB CAR LOAN+" -- one
+--                  space. "PUNJAB & SIND BANK" is a client the tool did not
+--                  have; it is a real bank and a different one from Punjab
+--                  National Bank, the only near name on file.
+--   21 people      15 matched exactly. Three needed mapping: Mahesh More ->
+--                  Mahesh Rokadeshwar More, Yash Desai -> yash.desai, and
+--                  Shiva Kumar -> Shivakumar V. The last is a judgement --
+--                  there are also two copies of Shivakumar Mallayya Mathapati
+--                  with no employee number, and Shivakumar V is the one that
+--                  has one and was already a branch manager in the South,
+--                  which is where the workbook puts Shiva Kumar.
+--                  Three did not match anything and were created: Vinayak
+--                  Patil, Manoj Batham and Shyam Sundar Kalta. The near names
+--                  are other people -- Vinayak Jondale is not Vinayak Patil,
+--                  Manoj Verma is not Manoj Batham.
+--
+-- WHAT IT CORRECTED
+--
+--   Branch managers. 716 rules existed at BRANCH scope, every one written on
+--   2026-09-16 with that date as its effective_from. Not history: ten days
+--   old, one pass at cutover, covering 6 of 35 locations and contradicting
+--   themselves -- Mumbai alone carried six different managers across its
+--   branches. The workbook gives all 35 and never disagrees with itself.
+--   Indore is the one place with two, and it is not a handover: for all seven
+--   months Varsha Sonawane has BOM MSME PRE and Manoj Batham has the rest.
+--
+--   Handlers. 43 open rules for three people who are not the workbook's
+--   handlers, all written the day before. The workbook gives one handler for
+--   each of the 35 locations and never disagrees.
+--
+--   Rates. 385 of 391 comparable location-months already agreed, because a
+--   zone rate resolves to the same number at its locations. Six did not:
+--   three had nothing loaded at all (Amaravati for BOM, IDBI and LIC HFL) and
+--   three were wrong (BOM MSME POST at Bhopal, CAN FIN HOMES at Mumbai, and
+--   LIC HFL at NASHIK where a 60.00 row spanned eight months instead of one).
+--   Fixed one by one rather than by replacing the lot, which would have cost
+--   the 2017-2019 history the workbook does not reach. Re-run afterwards:
+--   392 of 392.
+--
+-- HOW THE OLD RULES WERE CLEARED
+--
+-- coverage_no_overlap is per person, per role, and only counts rules still in
+-- force today. So the old rules were end-dated to yesterday rather than
+-- deleted -- honest about the nine days that record stood -- and that left the
+-- new rules free to carry the date the workbook actually shows each person
+-- taking the place on, back to January 2020 for Mumbai, Pune, Delhi,
+-- Hyderabad, Bengaluru and Latur. LOCATION_HEAD rules were left alone: the
+-- workbook does not speak about location heads.
+--
+-- WHAT IS NOT PUSHED, AND WHY
+--
+-- MTD and Revenue are held, because both need a decision the file does not
+-- contain and both would be written against named people:
+--
+--   perf_revenue requires invoiced_inr AND realised_inr, both NOT NULL. The
+--   workbook has one revenue number. Putting it in both would assert that
+--   everything invoiced was collected.
+--   MTD needs a person and a named KPI. The workbook gives a location and a
+--   client. Whether a location's case count belongs to its branch manager or
+--   its handler is a question about how people are measured, not a mapping.
