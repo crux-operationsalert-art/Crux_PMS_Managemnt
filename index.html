@@ -350,6 +350,8 @@ tr.warnrow td{background:var(--gold-bg)}
 .pbcheck li.off:before{content:"\2022";color:var(--mute)}
 .pbcheck li.off{color:var(--mute)}
 input.pbact{width:110px}
+.pbsplit input{width:54px;margin-right:3px}
+input.pbtg,input.pbbl{width:92px}
 @media(max-width:900px){.pbthree{grid-template-columns:1fr}.pbcheck{grid-template-columns:1fr}}
 @media(max-width:900px){.plwrap{grid-template-columns:1fr}.pltree{max-height:300px}}
 @media(max-width:760px){
@@ -1800,22 +1802,50 @@ function pbManager(){
 }
 
 /* -------------------------------------------------- one sheet, for a manager */
+/* Everything the three decisions need, on one panel. The Constitution says a
+   manager selects no KPI and removes none -- those come from the registry --
+   so what is editable here is exactly what is theirs: the Target PLB, each
+   measure's target, the basis level it was set from, and the monthly split.
+   The actual is the quarter-end fact, beside the target it is read against. */
 function pbOpenSheet(){
   var s = PB.open;
   if (!s) return "";
   var months = pbMonths(s.quarter);
+  var v = function(x){ return x === null || x === undefined ? "" : esc(x); };
   var arows = (s.kpis || []).map(function(k){
-    return '<tr><td><b>' + esc(k.name) + '</b></td>' +
-      '<td class="num">' + pbNum(k.target) + '</td>' +
-      '<td><input class="pbact" data-k="' + esc(k.kpiId) + '" type="number" step="0.01" ' +
-        'value="' + (k.actual === null || k.actual === undefined ? '' : esc(k.actual)) +
-        '" style="width:110px"></td></tr>';
+    var sp = k.split || [];
+    return '<tr><td><b>' + esc(k.name) + '</b><div class="mute">' + esc(k.unit || "") + '</div></td>' +
+      '<td class="num">' + pbNum(k.weight, 2) + '%</td>' +
+      '<td><input class="pbtg" data-k="' + esc(k.kpiId) + '" type="number" step="0.01" value="' + v(k.target) + '"></td>' +
+      '<td><input class="pbbl" data-k="' + esc(k.kpiId) + '" type="number" min="1" max="5" step="1" value="' + v(k.basisLevel) + '"></td>' +
+      '<td class="pbsplit">' +
+        '<input class="pbm1" data-k="' + esc(k.kpiId) + '" type="number" step="1" value="' + v(sp[0]) + '">' +
+        '<input class="pbm2" data-k="' + esc(k.kpiId) + '" type="number" step="1" value="' + v(sp[1]) + '">' +
+        '<input class="pbm3" data-k="' + esc(k.kpiId) + '" type="number" step="1" value="' + v(sp[2]) + '"></td>' +
+      '<td><input class="pbact" data-k="' + esc(k.kpiId) + '" type="number" step="0.01" value="' + v(k.actual) + '"></td>' +
+      '<td class="num">' + (k.ratio === null ? '—' : pbNum(k.ratio, 1) + '%') + '</td></tr>';
   }).join("");
 
   return '<div class="plform"><h4 class="plh">' + esc(s.person) + ' · ' +
       esc(pbQuarterName(s.quarter)) + '</h4>' +
     '<p class="mute">' + esc(s.chair) + ' · ' + esc((s.status||"").toLowerCase()) +
-      ' · target ' + pbMoney(s.targetPlb) + '</p>' +
+      (s.lockedAt ? ' · locked ' + esc(when(s.lockedAt)) : '') + '</p>' +
+    '<h4 class="plh">The goal sheet — target, basis and split</h4>' +
+    '<div class="plbar">' +
+      '<label>Target PLB for the quarter <input id="pbtpq" type="number" step="1" min="0" ' +
+        'value="' + v(s.targetPlb) + '" style="width:130px"></label>' +
+      '<span class="mute">20% of fixed cash salary a year, a quarter of it in play now.</span>' +
+    '</div>' +
+    '<div class="scroll"><table>' +
+      '<tr><th>Measure</th><th>Weight</th><th>Target</th><th>Basis</th>' +
+      '<th>Split M1 / M2 / M3</th><th>Actual</th><th>Ratio</th></tr>' + arows + '</table></div>' +
+    '<div class="plbar">' +
+      '<button class="btn primary" id="pbsavegoal">Save the goal sheet</button>' +
+      '<button class="btn" id="pbsaveact">Save actuals only</button>' +
+      '<button class="btn" id="pbslock">Lock the sheet</button>' +
+      '<span class="mute">Basis is the level the target was set from, 1 to 5. ' +
+      'A split must be three numbers adding to 100, or left wholly empty.</span>' +
+    '</div>' +
     '<h4 class="plh">Score a month</h4>' +
     '<div class="plbar">' +
       '<select id="pbmm">' + months.map(function(mi){
@@ -1827,17 +1857,39 @@ function pbOpenSheet(){
       '<button class="btn" id="pbmgo">Score</button>' +
       '<button class="btn" id="pbmlock">Lock the month</button>' +
     '</div>' +
-    '<h4 class="plh">Quarter-end actuals</h4>' +
-    '<div class="scroll"><table><tr><th>Measure</th><th>Target</th><th>Actual</th></tr>' +
-      arows + '</table></div>' +
+    '<h4 class="plh">Close the quarter</h4>' +
     '<div class="plbar">' +
-      '<button class="btn" id="pbsaveact">Save actuals</button>' +
-      '<button class="btn primary" id="pbcert">Certify the quarter</button>' +
+      '<button class="btn primary" id="pbcert">Certify</button>' +
       '<button class="btn" id="pbpub">Publish to the employee</button>' +
-      '<button class="btn" id="pbclose">Close</button>' +
+      '<button class="btn" id="pbclose">Close this panel</button>' +
     '</div>' +
     '<p class="pbsum">' + esc(s.arithmetic || "") + '</p>' +
     '<div id="pbformmsg"></div></div>';
+}
+
+/* The manager's three decisions, read back off the panel in the shape
+   plb_sheet_issue expects. A row is sent whether or not it changed: the
+   function coalesces a null onto what is already stored, so sending a blank
+   never wipes a value somebody else set. */
+function pbTargets(){
+  var out = [], bad = null;
+  Array.prototype.forEach.call(el("view").querySelectorAll(".pbtg"), function(t){
+    var k = t.getAttribute("data-k");
+    var pick = function(cls){
+      var e = el("view").querySelector("." + cls + '[data-k="' + k + '"]');
+      return e && e.value !== "" ? Number(e.value) : null;
+    };
+    var m1 = pick("pbm1"), m2 = pick("pbm2"), m3 = pick("pbm3");
+    var set = [m1, m2, m3].filter(function(x){ return x !== null; }).length;
+    if (set && set < 3) bad = bad || "A monthly split needs all three months, or none.";
+    if (set === 3 && Math.round(m1 + m2 + m3) !== 100) {
+      bad = bad || "A monthly split must add to 100. One of these adds to " +
+        Math.round(m1 + m2 + m3) + ".";
+    }
+    out.push({ kpi_id: k, target: t.value === "" ? null : Number(t.value),
+      basis: pick("pbbl"), m1: m1, m2: m2, m3: m3 });
+  });
+  return bad ? { error: bad } : out;
 }
 
 /* ------------------------------------------------------------- the render */
@@ -1944,8 +1996,24 @@ function pbWire(){
       setTimeout(pbReload, 900);
   };
 
+  if (el("pbsavegoal")) el("pbsavegoal").onclick = async function(){
+    var t = pbTargets();
+    if (t.error) { pbSay("pbformmsg", "bad", t.error); return; }
+    if (await pbDo(el("pbsavegoal"), "/plb/issue", {
+          personId: PB.open.personId, quarter: PB.open.quarter,
+          targetPlb: Number(el("pbtpq").value || 0), targets: t }, "pbformmsg"))
+      setTimeout(pbReload, 900);
+  };
+  if (el("pbslock")) el("pbslock").onclick = async function(){
+    if (!confirm("Lock " + PB.open.person + "'s goal sheet?\n\nAfter this the KPIs, " +
+      "the weights and the targets are frozen for the quarter.")) return;
+    if (await pbDo(el("pbslock"), "/plb/lock", { sheetId: PB.open.sheetId }, "pbformmsg"))
+      setTimeout(pbReload, 900);
+  };
+
   if (el("pbsaveact")) el("pbsaveact").onclick = async function(){
     var ins = el("view").querySelectorAll(".pbact"), ok = true;
+    el("pbsaveact").disabled = true;
     for (var i = 0; i < ins.length; i++) {
       var v = ins[i].value;
       if (v === "") continue;
@@ -1953,6 +2021,7 @@ function pbWire(){
         sheetId: PB.open.sheetId, kpiId: ins[i].getAttribute("data-k"), actual: Number(v) } });
       if (out.error) { pbSay("pbformmsg", "bad", out.reason || out.error); ok = false; break; }
     }
+    el("pbsaveact").disabled = false;
     if (ok) { pbSay("pbformmsg", "ok", "Actuals recorded."); setTimeout(pbReload, 900); }
   };
 
