@@ -1,0 +1,47 @@
+-- A manager could issue a goal sheet and could not put a target on it, so
+-- every sheet the screen created was one that could never compute: ratio
+-- null, Achievement null, "Not yet computable" forever. The registry gives
+-- the KPIs and the weights -- a manager selects no KPI and removes none --
+-- but the Target PLB, each measure's target, the basis level it was set from
+-- and the monthly split are the manager's three decisions, and there was
+-- nowhere on the screen to make them.
+--
+-- The panel now carries all three, beside the actual and the ratio, and the
+-- split is checked before it is sent: three numbers adding to 100, or none at
+-- all. Locking the sheet moved onto the panel too; it was a route with no
+-- button.
+--
+-- Also fixed, in the same pass and for the same reason -- the Issue button
+-- could not work at all as it stood. routes/plb.ts passed b.targets || [] to
+-- a jsonb parameter, and postgres.js serialises by the JS type it is handed:
+-- an object becomes JSON, but an ARRAY becomes a Postgres array literal. An
+-- empty array would have arrived as {}, and jsonb_to_recordset refuses a
+-- non-array. The parameter is now pinned with $5::text and the value sent as
+-- a JSON string, so there is no guess left to get wrong. plb redeployed at v2.
+--
+-- Two regions of the screen replaced by position between asserted-unique
+-- markers rather than by matching the old text, and the whole screen's md5
+-- compared against build/app/screen-plb.js afterwards, so the surgery is
+-- proved rather than assumed. Two things that check found before they
+-- shipped:
+--
+--   "the render */" is not a unique marker. Two screens carry that banner;
+--   function pbRender(){ is the thing that is actually unique.
+--
+--   A \uXXXX escape written into a migration arrives at the database as the
+--   character itself. Five of them, twenty-five characters, and the md5
+--   assertion refused the write rather than leaving the page and its source
+--   quietly different. The source file now holds the characters.
+--
+-- Proved end to end against the engine before any of this was published, on
+-- a probe sheet since deleted: issue with no targets, issue with targets, a
+-- self-evaluation and a score for each of three months, four actuals
+-- including one at 200% of target, certify, publish. Achievement came out
+-- 105.000 -- 0.25 x (100 + 110 + 150 + 60), the 200% correctly capped at 150
+-- for Achievement while the ratio still shows the true 200% -- payout factor
+-- 115.000, monthly mean 7.875, consistency 0.7875, and
+-- 50,000 x 1.15 x 0.7875 = 45,281.25, which is what plb_certify recorded.
+-- All twelve of the section 6.2 items were present in the payload.
+--
+-- Applied as migration 167. app_page 311,179 -> 315,298 characters,
+-- md5 f8433fc23d59268798684a731e5fdf9e.

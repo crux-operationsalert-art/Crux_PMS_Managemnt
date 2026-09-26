@@ -135,10 +135,16 @@ r.post("/issue", async (req: any, res: any) => {
     });
   }
   const b = req.body || {};
+  // $5::text, and JSON.stringify, on purpose. postgres.js decides how to
+  // serialise by the JS type it is given: an object becomes JSON, but an
+  // ARRAY becomes a Postgres array literal -- so [] would arrive as {}, and
+  // jsonb_to_recordset would refuse it as a non-array. Pinning the parameter
+  // to text and casting on the server takes the guess out of it.
   const o = await one(
-    `select plb_sheet_issue($1,$2,$3,$4,$5,$6) as o`,
+    `select plb_sheet_issue($1,$2,$3,$4, coalesce($5::text,'[]')::jsonb, $6) as o`,
     [req.person.id, b.personId, quarterOf(b.quarter), b.targetPlb || 0,
-     b.targets || [], b.isDefault === true],
+     JSON.stringify(Array.isArray(b.targets) ? b.targets : []),
+     b.isDefault === true],
   );
   return out(res, o.o);
 });
