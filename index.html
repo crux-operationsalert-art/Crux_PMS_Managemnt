@@ -5652,7 +5652,7 @@ async function vIdeas(){
    Employee information, satisfaction and performance. No payroll: that stays
    where it is. Every block says how it is worked out, because a number whose
    derivation is not stated is a number nobody will act on.                */
-async /* ================================================================ hr-add
+/* ================================================================ hr-add
    Adding a person.
 
    The rule this screen is built to: a person added here cannot be added
@@ -5884,7 +5884,7 @@ function hraWire(){
   };
 }
 
-function vHR(){
+async function vHR(){
   var d = await ops("/access/hr/overview");
   if (d.error) { el("view").innerHTML = "<h1>HR</h1>" + msg("bad", d.reason||d.error); return; }
   var h = d.head||{};
