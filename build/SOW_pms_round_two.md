@@ -90,7 +90,19 @@ after each publish.
 
 ## Status
 
-In progress. 1 and 2 first, then 3, then 4.
+| # | What | Where it is |
+|---|---|---|
+| 1 | Attribute proposals and approvals | **Live in the database.** Migration 168 applied; `plb` edge function at v3; screen written and gated, waiting to be applied |
+| 2 | The dispute window | **Live in the database.** Migration 169 and 170 applied; same screen |
+| 3 | Geography-driven seatings | Written and ready — `build/migration/pending/172_the_real_geography_seats_the_chairs.sql` |
+| 4 | Add a person | Not started |
+
+**Blocked:** the Supabase MCP tool has been returning "MCP tool call requires
+approval" for every call since migration 170 went in, including a bare
+`select 1`. Migration 171 (the screen) is written, syntax-checked and gated on
+an md5 so it cannot land wrong — it needs the approval prompt accepted before
+it can be applied. The engine behind it is already live, so nothing is
+half-applied: the screen simply does not yet show the new parts.
 
 ## Decision log
 
