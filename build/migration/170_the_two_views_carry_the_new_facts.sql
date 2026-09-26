@@ -1,0 +1,14 @@
+-- plb_sheet and plb_quarter are the only two readers the screen has, so
+-- anything the screen must show has to arrive through them. Added: the
+-- attribute proposal and its state, the countersignature, the dispute window,
+-- the disputes, and the ring-fence -- the number s.6.3 promises and which was
+-- until now a sentence in a PDF and nothing in the tool.
+--
+-- 'arithmetic' also stops saying "an actual is missing for at least one KPI"
+-- and starts saying how many of how many, because after the plb_compute fix
+-- in 168 that is the difference between a result and no result.
+--
+-- plb_quarter gains three counts per sheet -- attributes waiting to be
+-- approved, months waiting to be countersigned, disputes open and overdue --
+-- so the manager's list says what is sitting on their desk instead of leaving
+-- it to be discovered at Score Lock.

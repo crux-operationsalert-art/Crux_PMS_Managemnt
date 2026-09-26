@@ -206,4 +206,75 @@ r.post("/publish", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// ------------------------------------------------- attributes A-4, A-5
+
+// The employee proposes. The three admissibility questions are asked in the
+// database, not here, so an upload or a script gets the same answers.
+r.post("/attr/propose", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select plb_attr_propose($1,$2,$3,$4,$5,$6,$7,$8) as o`,
+    [req.person.id, b.sheetId, b.kpiId, b.proposal, b.evidence, b.m1, b.m2, b.m3]);
+  return out(res, o.o);
+});
+
+// The manager approves or returns it. "Nobody approves their own" is checked
+// in the function, so an ADMIN reviewing their own sheet is refused too.
+r.post("/attr/decide", async (req: any, res: any) => {
+  if (!maySetUp(req)) return res.status(403).json({ error: "not_permitted" });
+  const b = req.body || {};
+  const o = await one(`select plb_attr_decide($1,$2,$3,$4,$5) as o`,
+    [req.person.id, b.sheetId, b.kpiId, b.approve === true, b.note || null]);
+  return out(res, o.o);
+});
+
+// 4.5: an attribute score above 7.5 out of 10 is checked, not waved through.
+r.post("/countersign", async (req: any, res: any) => {
+  if (!maySetUp(req)) return res.status(403).json({ error: "not_permitted" });
+  const b = req.body || {};
+  const o = await one(`select plb_countersign($1,$2,$3) as o`,
+    [req.person.id, b.sheetId, b.month]);
+  return out(res, o.o);
+});
+
+// ---------------------------------------------------------- the dispute
+
+// Raising is the employee's, and only theirs. No guard here beyond the one in
+// the function, which also holds the window open or shut.
+r.post("/dispute", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select plb_dispute_raise($1,$2,$3,$4,$5,$6,$7,$8) as o`,
+    [req.person.id, b.sheetId, b.element, b.kpiId || null, b.month || null,
+     b.claimed, b.claimedValue ?? null, b.evidence]);
+  return out(res, o.o);
+});
+
+r.post("/dispute/respond", async (req: any, res: any) => {
+  if (!maySetUp(req)) return res.status(403).json({ error: "not_permitted" });
+  const b = req.body || {};
+  const o = await one(`select plb_dispute_respond($1,$2,$3) as o`,
+    [req.person.id, b.disputeId, b.response]);
+  return out(res, o.o);
+});
+
+r.post("/dispute/escalate", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select plb_dispute_escalate($1,$2,$3) as o`,
+    [req.person.id, b.disputeId, b.why]);
+  return out(res, o.o);
+});
+
+r.post("/dispute/decide", async (req: any, res: any) => {
+  if (!maySetUp(req)) return res.status(403).json({ error: "not_permitted" });
+  const b = req.body || {};
+  const o = await one(`select plb_dispute_decide($1,$2,$3,$4) as o`,
+    [req.person.id, b.disputeId, b.outcome, b.decision]);
+  return out(res, o.o);
+});
+
+r.post("/dispute/withdraw", async (req: any, res: any) => {
+  const o = await one(`select plb_dispute_withdraw($1,$2) as o`,
+    [req.person.id, (req.body || {}).disputeId]);
+  return out(res, o.o);
+});
+
 export default r;

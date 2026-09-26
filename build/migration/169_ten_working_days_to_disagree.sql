@@ -1,0 +1,32 @@
+-- The dispute window, from s.6.3 and s.7 of the scorecard guide.
+--
+-- Three stages, each with a clock on both sides: 10 working days to raise, 5
+-- to respond; 5 to escalate, 10 to decide. Four protections, each a rule here
+-- rather than a paragraph:
+--
+--   "A response that cites no evidence is not a response, and the clock keeps
+--    running" -- an empty response is refused and the due date is not touched.
+--   "Nobody who made an earlier decision in your matter can decide your
+--    appeal" -- the responder cannot be the decider.
+--   "You are paid at the undisputed level meanwhile -- the contested part is
+--    ring-fenced, not withheld" -- plb_dispute_impact computes what the claim
+--    is worth by substituting the claimed figure into the same weights and
+--    the same published curve, and plb_sheet subtracts only that.
+--   "If CRUX misses a deadline, it escalates automatically and your own time
+--    limits extend by the delay" -- the lateness is measured in working days
+--    and added to the employee's next deadline when it is set.
+--
+-- And: raising a dispute is not a ground for any adverse consequence. There
+-- is deliberately no column anywhere in this model that could carry one -- no
+-- count of disputes on a person, no flag on a sheet, nothing a later score,
+-- attribute, gate or assessment could read.
+--
+-- Proved end to end on a probe sheet since deleted. Four KPIs at target,
+-- three months at 8.0, target 40,000: achievement 100, payout factor 110,
+-- consistency 0.8, amount 35,200. A dispute claiming one actual of 150
+-- against a target of 100 ring-fenced 4,000.00 -- which is
+-- 40,000 x 0.8 x (1.225 - 1.10), derived by hand before the function was run
+-- and matched to the paisa. Raising before publication, raising with no
+-- evidence, raising on somebody else's sheet, responding to your own dispute,
+-- responding with nothing, and deciding a matter you already answered were
+-- each refused with the sentence that explains why.

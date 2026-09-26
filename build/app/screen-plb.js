@@ -105,11 +105,23 @@ function pbGoalSheet(s){
   }).join("");
 
   var arows = attrs.map(function(a){
+    var ms = (a.milestones || []).filter(function(x){ return x; });
     return '<tr><td><b>' + esc(a.name) + '</b><div class="mute">' + esc(a.unit || "") + '</div></td>' +
       '<td>' + (a.fixed
         ? '<span class="pill">same for everyone</span>'
-        : (a.proposal ? esc(a.proposal)
-                      : '<span class="pill warn">you propose this</span>')) + '</td></tr>';
+        : (a.proposal
+            ? '<b>' + esc(a.proposal) + '</b>' +
+              (a.evidence ? '<div class="mute">Evidence: ' + esc(a.evidence) + '</div>' : '') +
+              (ms.length ? '<ol class="pbms">' + ms.map(function(x){
+                  return '<li>' + esc(x) + '</li>'; }).join("") + '</ol>' : '') +
+              (a.overlapNote ? '<div class="pbgap">Overlap flagged — ' + esc(a.overlapNote) +
+                '. An activity cannot count twice.</div>' : '') +
+              (a.decidedNote ? '<div class="mute">' + esc(a.decidedNote) + '</div>' : '')
+            : '<span class="pill warn">you propose this</span>')) + '</td>' +
+      '<td>' + pbAttrState(a) + '</td>' +
+      '<td class="plact">' + (a.fixed ? '' :
+        '<button class="btn" data-pbattr="' + esc(a.kpiId) + '">' +
+        (a.proposal ? 'Change' : 'Propose') + '</button>') + '</td></tr>';
   }).join("");
 
   return '<div class="card"><h2>Your goal sheet</h2>' +
@@ -124,8 +136,14 @@ function pbGoalSheet(s){
       '<tr><th></th><th>Measure</th><th>Weight</th><th>Target</th>' +
       '<th>Monthly split</th><th>Actual</th><th>Ratio</th></tr>' + rows + '</table></div>' +
     '<h4 class="plh">Attributes — how you work · 25% of the monthly score, none of Achievement</h4>' +
-    '<div class="scroll"><table><tr><th>Attribute</th><th>What it is</th></tr>' +
-      arows + '</table></div>' +
+    '<div class="scroll"><table><tr><th>Attribute</th><th>What it is</th>' +
+      '<th>Where it stands</th><th></th></tr>' + arows + '</table></div>' +
+    '<div id="pbattrpanel"></div><div id="pbattrmsg"></div>' +
+    '<p class="mute">A-4 and A-5 are the only things in the whole scheme you choose. ' +
+    'Three questions decide whether a proposal is admissible: is it externally verifiable, ' +
+    'does it have a milestone for each month rather than one end date, and is it absent ' +
+    'from your measure set. The third is checked automatically and flagged, not refused — ' +
+    'your manager looks at it.</p>' +
     '<p class="mute">Your manager selects no KPI, adds none and removes none — they ' +
     'come from your chair\'s published measure set, identical for every seat of the ' +
     'chair. Only the target values differ.</p>' +
@@ -136,6 +154,134 @@ function pbGoalSheet(s){
       : (s.acknowledgedAt
           ? '<p class="mute">Acknowledged ' + esc(when(s.acknowledgedAt)) + '.</p>' : '')) +
     '</div>';
+}
+
+/* The four states an attribute can be in, said plainly. EMPTY is not an
+   error -- it is a sentence not yet written. */
+function pbAttrState(a){
+  if (a.fixed) return '<span class="mute">fixed</span>';
+  if (a.state === "APPROVED") return '<span class="pill ok">approved' +
+    (a.approvedBy ? ' by ' + esc(a.approvedBy) : '') + '</span>';
+  if (a.state === "PROPOSED") return '<span class="pill warn">waiting on your manager</span>';
+  if (a.state === "RETURNED") return '<span class="pill bad">returned — propose again</span>';
+  return '<span class="mute">nothing proposed</span>';
+}
+
+/* Proposing. Every field the admissibility test asks for is a field here, so
+   a rejection for a missing milestone happens before the manager reads it. */
+function pbAttrForm(kpiId){
+  var s = PB.data.sheet, a = null;
+  (s.attributes || []).forEach(function(x){ if (x.kpiId === kpiId) a = x; });
+  if (!a) return;
+  var ms = a.milestones || [];
+  var v = function(x){ return x === null || x === undefined ? "" : esc(x); };
+  el("pbattrpanel").innerHTML = '<div class="plform">' +
+    '<h4 class="plh">' + esc(a.name) + '</h4>' +
+    '<p class="mute">' + esc(a.unit || "") + '</p>' +
+    '<label>What you are proposing<br><input id="pbap" style="min-width:420px" value="' +
+      v(a.proposal) + '"></label>' +
+    '<p class="mute">Q1 — externally verifiable. A certificate, a ticket, a sign-off, ' +
+    'a document reference. Self-assessment is not evidence.</p>' +
+    '<label>Evidence<br><input id="pbae" style="min-width:420px" value="' + v(a.evidence) + '"></label>' +
+    '<p class="mute">Q2 — a milestone for each month, not one end date. Without them you ' +
+    'score zero in the months before completion.</p>' +
+    '<label>Month 1<br><input id="pbam1" style="min-width:320px" value="' + v(ms[0]) + '"></label> ' +
+    '<label>Month 2<br><input id="pbam2" style="min-width:320px" value="' + v(ms[1]) + '"></label> ' +
+    '<label>Month 3<br><input id="pbam3" style="min-width:320px" value="' + v(ms[2]) + '"></label>' +
+    '<p><button class="btn primary" id="pbago">Propose</button> ' +
+    '<button class="btn" id="pbacancel">Cancel</button></p></div>';
+  el("pbacancel").onclick = function(){ el("pbattrpanel").innerHTML = ""; };
+  el("pbago").onclick = async function(){
+    if (await pbDo(el("pbago"), "/plb/attr/propose", {
+          sheetId: s.sheetId, kpiId: kpiId,
+          proposal: el("pbap").value, evidence: el("pbae").value,
+          m1: el("pbam1").value, m2: el("pbam2").value, m3: el("pbam3").value }, "pbattrmsg"))
+      setTimeout(pbReload, 900);
+  };
+}
+
+/* ------------------------------------------------------------- disputes */
+/* Ten working days, counted on the calendar of the place the person actually
+   works in -- which is why the window closes on a different day in Pune than
+   in Kolkata, and why the screen says which calendar it used. */
+function pbDisputes(s, mine){
+  var w = s.disputeWindow || {}, ds = s.disputes || [];
+  if (!w.published && !ds.length) return "";
+  /* Somebody running the scheme can have their own dispute card and
+     somebody else's open at once, so the two cards cannot share ids. */
+  var panel = mine ? "pbdpanel" : "pbmdpanel", box = mine ? "pbdmsg" : "pbmdmsg";
+
+  var rows = ds.map(function(d){
+    var stage = (d.stage || "").toLowerCase();
+    return '<tr class="' + (d.overdue ? "pbover" : "") + '">' +
+      '<td><b>' + esc(pbElement(d)) + '</b>' +
+        '<div class="mute">' + esc(d.claimed) + '</div>' +
+        '<div class="mute">Evidence: ' + esc(d.evidence) + '</div></td>' +
+      '<td>' + esc(stage) + (d.outcome ? ' · ' + esc(d.outcome.toLowerCase().replace(/_/g," ")) : '') +
+        (d.overdue ? '<div class="pbgap">overdue — your own time limits extend by the delay</div>' : '') +
+        '</td>' +
+      '<td class="mute">' + esc(pbClock(d)) + '</td>' +
+      '<td class="num">' + (d.ringFenced ? pbMoney(d.ringFenced) : '—') + '</td>' +
+      '<td>' + (d.response ? '<div>' + esc(d.response) + '</div><div class="mute">' +
+          esc(d.respondedBy || "") + '</div>' : '<span class="mute">none yet</span>') +
+        (d.escalateReason ? '<div class="pbgap">Escalated: ' + esc(d.escalateReason) + '</div>' : '') +
+        (d.decision ? '<div class="pbsum">' + esc(d.decision) + ' — ' +
+          esc(d.decidedBy || "") + '</div>' : '') + '</td>' +
+      '<td class="plact">' + pbDisputeActions(d, mine) + '</td></tr>';
+  }).join("");
+
+  return '<div class="card"><h2>If you disagree</h2>' +
+    (w.published
+      ? '<p class="plsub">Published ' + esc(day(w.opensOn)) + ' · the window closes ' +
+        esc(day(w.closesOn)) + ' · ten working days on the ' +
+        esc(w.centre || "national") + ' calendar · ' +
+        (w.open ? esc(w.workingDaysLeft) + ' working day(s) left' : 'closed') + '</p>'
+      : '<p class="plsub">' + esc(w.why || "Not published yet") + '</p>') +
+    '<p class="mute">Name one element and the figure you believe is right, with your ' +
+    'evidence. You are paid at the undisputed level meanwhile — the contested part is ' +
+    'ring-fenced, not withheld. Raising a dispute is not a ground for any adverse ' +
+    'consequence and may not show up in any later score, attribute, gate or assessment.</p>' +
+    (ds.length
+      ? '<div class="scroll"><table><tr><th>What</th><th>Stage</th><th>Clock</th>' +
+        '<th>Ring-fenced</th><th>Their answer</th><th></th></tr>' + rows + '</table></div>'
+      : '') +
+    '<div id="' + panel + '"></div>' +
+    (mine && w.open
+      ? '<p><button class="btn" id="pbdnew">Raise a dispute</button></p>'
+      : '') +
+    '<div id="' + box + '"></div></div>';
+}
+
+function pbElement(d){
+  var n = { TARGET:"Target", ACTUAL:"Actual", WEIGHT:"Weight", MONTH_SCORE:"Monthly score",
+    ACHIEVEMENT:"Achievement", PAYOUT_FACTOR:"Payout factor", MONTHLY_MEAN:"Monthly mean",
+    CONSISTENCY:"Consistency factor", GATE:"Gate", TARGET_PLB:"Target PLB",
+    AMOUNT:"The final figure", ARITHMETIC:"The arithmetic" }[d.element] || d.element;
+  if (d.kpi) return n + " — " + d.kpi;
+  if (d.month) return n + " — " + pbMonthName(String(d.month).slice(0,10));
+  return n;
+}
+
+function pbClock(d){
+  if (d.closedAt) return "closed " + day(d.closedAt);
+  if (d.stage === "RAISED") return "they respond by " + day(d.respondDue);
+  if (d.stage === "RESPONDED") return "you escalate by " + day(d.escalateDue);
+  if (d.stage === "ESCALATED") return "decided by " + day(d.decideDue);
+  return "";
+}
+
+function pbDisputeActions(d, mine){
+  if (d.closedAt) return "";
+  var b = [];
+  if (mine && d.stage === "RESPONDED")
+    b.push('<button class="btn" data-pbesc="' + esc(d.id) + '">Escalate</button>');
+  if (mine && d.stage !== "DECIDED")
+    b.push('<button class="btn" data-pbwd="' + esc(d.id) + '">Withdraw</button>');
+  if (!mine && d.stage === "RAISED")
+    b.push('<button class="btn primary" data-pbresp="' + esc(d.id) + '">Respond</button>');
+  if (!mine && (d.stage === "ESCALATED" || d.stage === "RAISED"))
+    b.push('<button class="btn" data-pbdec="' + esc(d.id) + '">Decide</button>');
+  return b.join(" ");
 }
 
 /* ------------------------------------------------------- monthly scores */
@@ -163,7 +309,12 @@ function pbMonthTable(s){
       '<td class="mute">' + (m.selfKpi === null || m.selfKpi === undefined ? 'not submitted'
         : pbNum(m.selfKpi,1) + ' / ' + pbNum(m.selfAttr,1)) + '</td>' +
       '<td class="mute">' + esc(m.scoredBy || "") +
-        (m.gapReason ? '<div class="pbgap">' + esc(m.gapReason) + '</div>' : '') + '</td></tr>';
+        (m.gapReason ? '<div class="pbgap">' + esc(m.gapReason) + '</div>' : '') +
+        (m.needsCountersign
+          ? (m.countersignAt
+              ? '<div class="mute">countersigned by ' + esc(m.countersignBy || "") + '</div>'
+              : '<div class="pbgap">above 7.5 — awaiting a countersignature</div>')
+          : '') + '</td></tr>';
   }).join("");
 
   return '<div class="card"><h2>Your monthly scores</h2>' +
@@ -219,6 +370,10 @@ function pbResult(s){
       '<div class="counter"><span>Monthly mean</span><b>' + pbNum(c.monthlyMean, 2) + '</b></div>' +
       '<div class="counter"><span>Consistency</span><b>' + pbNum(c.consistency, 3) + '</b></div>' +
       '<div class="counter pbpay"><span>You are paid</span><b>' + pbMoney(c.amount) + '</b></div>' +
+      (Number(s.ringFenced || 0) > 0
+        ? '<div class="counter"><span>Ring-fenced</span><b>' + pbMoney(s.ringFenced) + '</b></div>' +
+          '<div class="counter pbpay"><span>Payable now</span><b>' + pbMoney(s.payableNow) + '</b></div>'
+        : '') +
     '</div>' +
     '<p class="pbsum">' + esc(s.arithmetic || "") + '</p>' +
     '<h4 class="plh">What you must be able to see</h4>' +
@@ -249,11 +404,12 @@ function pbManager(){
       '<td>' + esc((s.status || "").toLowerCase()) +
         (s.acknowledged ? '' : '<div class="mute">not acknowledged</div>') + '</td>' +
       '<td class="num">' + esc(s.monthsScored) + ' of 3</td>' +
+      '<td>' + pbWaiting(s) + '</td>' +
       '<td class="num">' + pbMoney(s.targetPlb) + '</td>' +
       '<td class="num">' + (s.published ? pbMoney(s.amount)
         : (s.certified ? pbMoney(s.amount) + '<div class="mute">certified</div>' : '—')) + '</td>' +
       '<td class="plact"><button class="btn" data-pbopen="' + esc(s.sheetId) + '">Open</button></td></tr>';
-  }).join("") : '<tr><td colspan="6" class="mute">No goal sheet has been issued for this quarter.</td></tr>';
+  }).join("") : '<tr><td colspan="7" class="mute">No goal sheet has been issued for this quarter.</td></tr>';
 
   var prows = pending.length ? pending.map(function(p){
     return '<tr><td><b>' + esc(p.person) + '</b><div class="mute">' +
@@ -273,13 +429,30 @@ function pbManager(){
     '<div id="pbmgrmsg"></div><div id="pbpanel"></div>' +
     '<h4 class="plh">Sheets issued</h4>' +
     '<div class="scroll"><table><tr><th>Who</th><th>Status</th><th>Months scored</th>' +
-      '<th>Target</th><th>Result</th><th></th></tr>' + srows + '</table></div>' +
+      '<th>Waiting on you</th><th>Target</th><th>Result</th><th></th></tr>' +
+      srows + '</table></div>' +
     '<h4 class="plh">In the scheme, with no sheet yet</h4>' +
     '<div class="scroll"><table><tr><th>Who</th><th>Chair</th><th>Measure set</th><th></th></tr>' +
       prows + '</table></div>' +
     '<p class="mute">If nobody issues a sheet by day 15, the registry default applies and ' +
     'the person cannot be scored below what it produces. Your missing a deadline never ' +
     'costs them.</p></div>';
+}
+
+/* What is actually sitting on a manager's desk for this sheet. Three things
+   block a quarter and each one is somebody pressing a button, so they are
+   named rather than left to be discovered at Score Lock. */
+function pbWaiting(s){
+  var b = [];
+  if (Number(s.attrsPending || 0))
+    b.push('<span class="pill warn">' + esc(s.attrsPending) + ' attribute(s) to approve</span>');
+  if (Number(s.needsCountersign || 0))
+    b.push('<span class="pill warn">' + esc(s.needsCountersign) + ' to countersign</span>');
+  if (Number(s.disputesOverdue || 0))
+    b.push('<span class="pill bad">' + esc(s.disputesOverdue) + ' dispute(s) overdue</span>');
+  else if (Number(s.disputesOpen || 0))
+    b.push('<span class="pill">' + esc(s.disputesOpen) + ' dispute(s) open</span>');
+  return b.length ? b.join(" ") : '<span class="mute">nothing</span>';
 }
 
 /* -------------------------------------------------- one sheet, for a manager */
@@ -338,6 +511,8 @@ function pbOpenSheet(){
       '<button class="btn" id="pbmgo">Score</button>' +
       '<button class="btn" id="pbmlock">Lock the month</button>' +
     '</div>' +
+    pbMgrAttributes(s) +
+    pbMgrCountersign(s) +
     '<h4 class="plh">Close the quarter</h4>' +
     '<div class="plbar">' +
       '<button class="btn primary" id="pbcert">Certify</button>' +
@@ -345,7 +520,54 @@ function pbOpenSheet(){
       '<button class="btn" id="pbclose">Close this panel</button>' +
     '</div>' +
     '<p class="pbsum">' + esc(s.arithmetic || "") + '</p>' +
-    '<div id="pbformmsg"></div></div>';
+    '<div id="pbformmsg"></div></div>' +
+    pbDisputes(s, false);
+}
+
+/* What the employee proposed for A-4 and A-5, and the two buttons. The
+   overlap flag is shown here in full: it is the thing the manager is being
+   asked to judge, and s.4.3 calls it the most common rejection. */
+function pbMgrAttributes(s){
+  var open = (s.attributes || []).filter(function(a){ return !a.fixed && a.state === "PROPOSED"; });
+  var done = (s.attributes || []).filter(function(a){ return !a.fixed && a.state !== "PROPOSED"; });
+  if (!open.length && !done.length) return "";
+  var row = function(a, live){
+    var ms = (a.milestones || []).filter(function(x){ return x; });
+    return '<tr><td><b>' + esc(a.name) + '</b></td>' +
+      '<td>' + esc(a.proposal || "—") +
+        (a.evidence ? '<div class="mute">Evidence: ' + esc(a.evidence) + '</div>' : '') +
+        (ms.length ? '<ol class="pbms">' + ms.map(function(x){
+            return '<li>' + esc(x) + '</li>'; }).join("") + '</ol>' : '') +
+        (a.overlapNote ? '<div class="pbgap">Overlap against their own measure set — ' +
+          esc(a.overlapNote) + '</div>' : '') + '</td>' +
+      '<td>' + pbAttrState(a) + '</td>' +
+      '<td class="plact">' + (live
+        ? '<button class="btn primary" data-pbok="' + esc(a.kpiId) + '">Approve</button> ' +
+          '<button class="btn" data-pbno="' + esc(a.kpiId) + '">Return</button>'
+        : '') + '</td></tr>';
+  };
+  return '<h4 class="plh">Their two growth attributes</h4>' +
+    '<div class="scroll"><table><tr><th>Attribute</th><th>Proposed</th>' +
+      '<th>State</th><th></th></tr>' +
+      open.map(function(a){ return row(a, true); }).join("") +
+      done.map(function(a){ return row(a, false); }).join("") + '</table></div>' +
+    '<div class="plbar"><input id="pbanote" placeholder="Reason, required when returning" ' +
+      'style="min-width:380px"></div>';
+}
+
+/* 4.5: an attribute score above 7.5 needs a second pair of eyes before the
+   month can lock. The button is only offered where it is actually needed. */
+function pbMgrCountersign(s){
+  var need = (s.months || []).filter(function(m){ return m.needsCountersign && !m.countersignAt; });
+  if (!need.length) return "";
+  return '<h4 class="plh">Awaiting a countersignature</h4>' +
+    '<p class="mute">An attribute score above 7.5 out of 10 is checked, not waved through, ' +
+    'and the month cannot lock until somebody other than the scorer has signed.</p>' +
+    '<div class="plbar">' + need.map(function(m){
+      var mi = String(m.month).slice(0,10);
+      return '<button class="btn" data-pbcs="' + esc(mi) + '">' +
+        esc(pbMonthName(mi)) + ' · ' + pbNum(m.attrPoints, 1) + '/10</button>';
+    }).join(" ") + '</div>';
 }
 
 /* The manager's three decisions, read back off the panel in the shape
@@ -393,7 +615,7 @@ function pbRender(){
     '</div><div><select id="pbq">' + qs.join("") + '</select></div></div>' +
     '<div id="pbmsg"></div>' +
     pbScheme() +
-    (s ? pbGoalSheet(s) + pbMonthTable(s) + pbResult(s)
+    (s ? pbGoalSheet(s) + pbMonthTable(s) + pbResult(s) + pbDisputes(s, true)
        : '<div class="card"><h2>Your goal sheet</h2>' +
          (d.inScheme
            ? '<div class="empty">No goal sheet has been issued to you for ' +
@@ -460,6 +682,75 @@ function pbWire(){
   });
 
   if (el("pbclose")) el("pbclose").onclick = function(){ PB.open = null; pbRender(); };
+
+  /* ---- attributes: the employee proposes, the manager decides ---- */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbattr]"), function(b){
+    b.onclick = function(){ pbAttrForm(b.getAttribute("data-pbattr")); };
+  });
+  var decide = function(sel, approve){
+    Array.prototype.forEach.call(el("view").querySelectorAll(sel), function(b){
+      b.onclick = async function(){
+        var note = el("pbanote") ? el("pbanote").value : "";
+        if (!approve && !String(note).trim()) {
+          pbSay("pbformmsg", "bad", "Returning a proposal says why, so it can be fixed " +
+            "rather than guessed at. Put the reason in the box.");
+          return;
+        }
+        if (await pbDo(b, "/plb/attr/decide", {
+              sheetId: PB.open.sheetId, kpiId: b.getAttribute(approve ? "data-pbok" : "data-pbno"),
+              approve: approve, note: note }, "pbformmsg"))
+          setTimeout(pbReload, 900);
+      };
+    });
+  };
+  decide("[data-pbok]", true);
+  decide("[data-pbno]", false);
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbcs]"), function(b){
+    b.onclick = async function(){
+      if (await pbDo(b, "/plb/countersign",
+            { sheetId: PB.open.sheetId, month: b.getAttribute("data-pbcs") }, "pbformmsg"))
+        setTimeout(pbReload, 900);
+    };
+  });
+
+  /* ---- disputes ---- */
+  if (el("pbdnew")) el("pbdnew").onclick = function(){ pbDisputeForm(); };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbwd]"), function(b){
+    b.onclick = async function(){
+      if (!confirm("Withdraw this dispute?\n\nNothing follows from having raised it.")) return;
+      if (await pbDo(b, "/plb/dispute/withdraw",
+            { disputeId: b.getAttribute("data-pbwd") }, "pbdmsg"))
+        setTimeout(pbReload, 900);
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbesc]"), function(b){
+    b.onclick = function(){ pbTextForm("pbdpanel", "Escalate",
+      "Say why the response is not accepted. The Functional Head decides in writing.",
+      async function(text){
+        return await pbDo(b, "/plb/dispute/escalate",
+          { disputeId: b.getAttribute("data-pbesc"), why: text }, "pbdmsg");
+      }); };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbresp]"), function(b){
+    b.onclick = function(){ pbTextForm("pbmdpanel", "Respond",
+      "In writing, with reasons and evidence. A response that cites no evidence is not a " +
+      "response, and the clock keeps running.",
+      async function(text){
+        return await pbDo(b, "/plb/dispute/respond",
+          { disputeId: b.getAttribute("data-pbresp"), response: text }, "pbmdmsg");
+      }); };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbdec]"), function(b){
+    b.onclick = function(){ pbTextForm("pbmdpanel", "Decide",
+      "The decision is in writing, with reasons. Nobody who made an earlier decision in " +
+      "this matter can decide it again.",
+      async function(text, outcome){
+        return await pbDo(b, "/plb/dispute/decide",
+          { disputeId: b.getAttribute("data-pbdec"), outcome: outcome, decision: text }, "pbmdmsg");
+      }, ["UPHELD","PARTLY_UPHELD","REJECTED"]); };
+  });
 
   if (el("pbmgo")) el("pbmgo").onclick = async function(){
     if (await pbDo(el("pbmgo"), "/plb/score", {
@@ -535,5 +826,83 @@ function pbIssueForm(personId, name){
           personId: personId, quarter: PB.quarter,
           targetPlb: Number(el("pbtp").value || 0) }, "pbformmsg"))
       setTimeout(pbReload, 1100);
+  };
+}
+
+/* A dispute names one element, the figure believed right, and the evidence.
+   The element list is the twelve things s.6.2 says must be visible -- you can
+   only dispute something you were shown. */
+function pbDisputeForm(){
+  var s = PB.data.sheet;
+  var kopts = (s.kpis || []).map(function(k){
+    return '<option value="' + esc(k.kpiId) + '">' + esc(k.name) + '</option>'; }).join("");
+  var mopts = pbMonths(s.quarter).map(function(mi){
+    return '<option value="' + esc(mi) + '">' + esc(pbMonthName(mi)) + '</option>'; }).join("");
+  el("pbdpanel").innerHTML = '<div class="plform">' +
+    '<h4 class="plh">Raise a dispute</h4>' +
+    '<div class="plbar">' +
+      '<select id="pbdel">' +
+        '<option value="ACTUAL">An actual on one measure</option>' +
+        '<option value="TARGET">A target on one measure</option>' +
+        '<option value="WEIGHT">A weight on one measure</option>' +
+        '<option value="MONTH_SCORE">A monthly score</option>' +
+        '<option value="ACHIEVEMENT">Achievement</option>' +
+        '<option value="PAYOUT_FACTOR">The payout factor</option>' +
+        '<option value="MONTHLY_MEAN">The monthly mean</option>' +
+        '<option value="CONSISTENCY">The consistency factor</option>' +
+        '<option value="GATE">A gate applied to me</option>' +
+        '<option value="TARGET_PLB">My target PLB</option>' +
+        '<option value="AMOUNT">The final figure</option>' +
+        '<option value="ARITHMETIC">The arithmetic</option>' +
+      '</select>' +
+      '<select id="pbdk">' + kopts + '</select>' +
+      '<select id="pbdm" style="display:none">' + mopts + '</select>' +
+      '<label>The figure you say is right <input id="pbdv" type="number" step="0.01" style="width:120px"></label>' +
+    '</div>' +
+    '<label>What you believe is right, and why<br>' +
+      '<input id="pbdc" style="min-width:460px"></label>' +
+    '<label>Your evidence<br><input id="pbde" style="min-width:460px"></label>' +
+    '<p class="mute">Where the claim is an actual or a target on one measure, the tool works ' +
+    'out what it is worth and ring-fences exactly that. The rest is paid on time.</p>' +
+    '<p><button class="btn primary" id="pbdgo">Raise it</button> ' +
+    '<button class="btn" id="pbdcancel">Cancel</button></p></div>';
+
+  var sync = function(){
+    var v = el("pbdel").value;
+    el("pbdk").style.display = (v === "ACTUAL" || v === "TARGET" || v === "WEIGHT") ? "" : "none";
+    el("pbdm").style.display = (v === "MONTH_SCORE") ? "" : "none";
+  };
+  el("pbdel").onchange = sync; sync();
+  el("pbdcancel").onclick = function(){ el("pbdpanel").innerHTML = ""; };
+  el("pbdgo").onclick = async function(){
+    var v = el("pbdel").value;
+    if (await pbDo(el("pbdgo"), "/plb/dispute", {
+          sheetId: s.sheetId, element: v,
+          kpiId: (v === "ACTUAL" || v === "TARGET" || v === "WEIGHT") ? el("pbdk").value : null,
+          month: v === "MONTH_SCORE" ? el("pbdm").value : null,
+          claimed: el("pbdc").value,
+          claimedValue: el("pbdv").value === "" ? null : Number(el("pbdv").value),
+          evidence: el("pbde").value }, "pbdmsg"))
+      setTimeout(pbReload, 1000);
+  };
+}
+
+/* One box, one button, and where a decision is being made, the outcome
+   beside it. Used for responding, escalating and deciding, because all
+   three are the same shape: writing, with reasons. */
+function pbTextForm(into, title, help, send, outcomes){
+  el(into).innerHTML = '<div class="plform">' +
+    '<h4 class="plh">' + esc(title) + '</h4>' +
+    '<p class="mute">' + esc(help) + '</p>' +
+    (outcomes ? '<div class="plbar"><select id="pbtout">' + outcomes.map(function(o){
+        return '<option value="' + esc(o) + '">' + esc(o.toLowerCase().replace(/_/g," ")) +
+          '</option>'; }).join("") + '</select></div>' : '') +
+    '<label>In writing<br><input id="pbtt" style="min-width:520px"></label>' +
+    '<p><button class="btn primary" id="pbtgo">' + esc(title) + '</button> ' +
+    '<button class="btn" id="pbtcancel">Cancel</button></p></div>';
+  el("pbtcancel").onclick = function(){ el(into).innerHTML = ""; };
+  el("pbtgo").onclick = async function(){
+    if (await send(el("pbtt").value, el("pbtout") ? el("pbtout").value : null))
+      setTimeout(pbReload, 1000);
   };
 }

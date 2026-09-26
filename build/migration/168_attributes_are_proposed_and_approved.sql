@@ -1,0 +1,37 @@
+-- A-4 and A-5 are the only things in the whole scheme the employee chooses.
+-- The engine had the columns for them and no way to fill them, so the choice
+-- existed on paper and nowhere else. plb_attr_propose asks the three
+-- admissibility questions from s.4.2 -- externally verifiable evidence, a
+-- milestone for each month rather than one end date, and absence from the
+-- measure set -- and plb_attr_decide is the manager's, never the employee's,
+-- whatever role they hold.
+--
+-- The third question is FLAGGED, not refused. The guide says HR's overlap
+-- check is automatic; it does not say it decides. plb_attr_overlap names the
+-- words and the measure they collided with and puts it in front of the
+-- approver. Proved on the guide's own worked example from s.4.3: a proposal
+-- to "reduce branch expense against budget" comes back flagged against the
+-- KPI "Branch expense against budget"; a proposal to write an SOP that two
+-- other branches adopt comes back clean.
+--
+-- Also here, because it was found while reading plb_compute for this work and
+-- is worse than anything this migration adds: Achievement was computed over
+-- the KPIs that HAVE an actual, and the comment "weights are percentages, so
+-- this is already a %" is only true when every KPI has one. With two of four
+-- actuals at exactly target, the weighted sum came to 50, the payout factor
+-- for 50 is 0, and the employee was shown a hard zero -- not "not yet
+-- computable", a zero -- for a quarter they had met in full so far. It now
+-- refuses to answer until the weights it has seen add up, which was proved
+-- both ways on a probe sheet: two of four actuals gives achievement null,
+-- four of four gives 100.000.
+--
+-- And the 4.5 guardrail: an attribute score above 7.5 out of 10 needs a
+-- countersignature from somebody who is neither the employee nor the scorer,
+-- and plb_score_lock refuses the month until it has one. High attribute
+-- scores are checked, not waved through.
+--
+-- New: plb_wd_after, plb_wd_count and plb_centre -- ten WORKING days counted
+-- where the person actually is. Proved that the centre argument changes the
+-- answer: ten working days from 1 Nov 2026 lands on the 14th in Pune, the
+-- 13th in Kolkata and the 12th nationally. Saturdays work, Sundays do not,
+-- and Gandhi Jayanti is not a working day anywhere.
