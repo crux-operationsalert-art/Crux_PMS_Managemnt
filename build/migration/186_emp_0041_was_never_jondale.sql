@@ -1,0 +1,61 @@
+-- Applied as: 186_emp_0041_was_never_jondale
+--
+-- EMP-0041 was named VINAYAK JONDALE and carried
+-- vinayak.patil@cruxindia.co.in. Separately there was a Vinayak Patil,
+-- EMP-0102, who runs Kolhapur and had no e-mail and no mobile at all. One
+-- of the two fields on EMP-0041 had to be wrong, and the data could not
+-- say which: the owner did. It is the name.
+--
+-- ------------------------------------------------------ what this corrects
+-- 176 sorted eleven people without an employee number into six who needed
+-- one minted, two who needed a merge, and three who were not people.
+-- Vinayak Patil was in the first group and was given EMP-0102 -- but he
+-- already had a number, EMP-0041, behind somebody else's name. So 176
+-- minted a second identity for a person who already had one, which is
+-- exactly the thing it was written to avoid.
+--
+-- It could not have known. Nothing in the data asserted it, and the two
+-- records shared no name, no address and no mobile. But the general shape
+-- is worth writing down, because it is a real limit of the tool that now
+-- ships: person_duplicates() keys on the name, so it cannot see a
+-- duplicate whose name is wrong. The merge screen says as much on its own
+-- empty state -- "it will not catch a duplicate recorded under a different
+-- spelling" -- and this is that sentence happening.
+--
+-- The thing that DID give it away was an internal contradiction inside one
+-- row: a company address whose surname was not the row's surname, and a
+-- real person of that surname with no address. Worth remembering as a
+-- smell; not worth automating on this evidence.
+--
+-- ---------------------------------------------------------- what it did
+--   1. EMP-0041 renamed VINAYAK JONDALE -> Vinayak Patil, with its own
+--      person_event and a PERSON_RENAMED audit row carrying the old value
+--      and why.
+--
+--   2. EMP-0102 merged into EMP-0041. The survivor is the number the
+--      owner's own people file carries; the number 176 minted is the one
+--      that goes. Only one of the two held a chair, so there was no seat
+--      to settle, and the single coverage rule -- Kolhapur, the whole
+--      reason EMP-0102 existed -- moved across.
+--
+--   3. Vinayak Jondale, now nobody's duplicate, was given EMP-0104. 176
+--      withheld a number from him only because he looked like a duplicate
+--      of EMP-0041. He sits in Branch Manager, which is one of only two
+--      seated chairs the bonus scheme can currently score, so of everyone
+--      on that list he was the one it cost most to leave without one.
+--
+-- ------------------------------------------------------------ afterwards
+--   person_duplicates()                        0
+--   person_without_number()                    1 -- Operations Alert, the
+--                                                   administrator account,
+--                                                   which needs none
+--   plb_unseated() needing a decision          5 -> 4, because Patil now
+--                                                   resolves to the Location
+--                                                   Partner chair and reads
+--                                                   as a partner, outside
+--                                                   the scheme by design,
+--                                                   like the other seven
+--   hr_loose_ends() reach                      12 of 104
+--
+-- Every one of those was asserted inside the migration before it committed,
+-- not checked afterwards.

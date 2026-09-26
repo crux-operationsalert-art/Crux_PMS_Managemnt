@@ -126,6 +126,10 @@ from them.
 | 26 Sep | The merged-away record is superseded, kept and readable, and keeps its old employee number | The uniqueness rule excludes superseded rows, so the survivor can take that number in the same transaction |
 | 26 Sep | Where one side of a merge is blank and the other is not, the side with a value is pre-selected | Defaulting to the survivor everywhere keeps a blank over a fact and says nothing |
 | 26 Sep | The two real merges are left for the owner | Vinayak Jondale is a PARTNER record and an EMPLOYEE record in the Branch Manager chair, which is in the bonus scheme. That is a business decision, not a tidy-up |
+| 26 Sep | Ananya's surviving seat is Executive, not Field Executives / Verifiers | The owner's own people file puts EMP-0019 there, and 63 colleagues sit in it; FE had one holder, the duplicate itself |
+| 26 Sep | EMP-0041's NAME was the field in error, not its e-mail | Owner's call. A separate Vinayak Patil existed with no address, and EMP-0041 carried one bearing that surname |
+| 26 Sep | The survivor of the Patil merge is EMP-0041, not EMP-0102 | EMP-0041 is the number the owner's people file carries; EMP-0102 was minted by 176 and is the synthetic one |
+| 26 Sep | The 12-of-104 scheme reach is reported, not fixed | Giving a chair a measure set is what puts its holders in the bonus scheme. That is the owner's decision, chair by chair |
 
 ## Open questions
 
@@ -142,30 +146,43 @@ which of the seated chairs should carry measures -- which is the same
 decision as who is in the bonus scheme. Owner's call; the KPIs screen does
 it.
 
-### 2. Vinayak Jondale -- held, not merged
-
-Two records match by name, but one of them contradicts itself:
-
-| | EMP-0041 | the other |
-|---|---|---|
-| name in the file | VINAYAK JONDALE | Vinayak Jondale |
-| work e-mail | **vinayak.patil**@cruxindia.co.in | vinjondhale@gmail.com |
-| employment type | PARTNER | EMPLOYEE |
-| chair | Location Partner / Franchisee Partner | **Branch Manager (in the scheme)** |
-| mobile | 9422882297 | none |
-
-Both rows are in the owner's own `crux-people-template.csv`, separately
-(rows 42 and 103). And there is a **third, separate person**: Vinayak Patil,
-EMP-0102, no e-mail and no mobile at all, who runs KOLHAPUR.
-
-So EMP-0041 carries a company address belonging to a different surname, for
-which a real person exists who has no address. Either EMP-0041's e-mail is
-wrong and it is Jondale, or EMP-0041's name is wrong and it is Patil.
-Merging locks in whichever is picked, and there is no unmerge. Not done.
-
-### 3. Three people run a place and sit in no chair at all
+### 2. Three people run a place and sit in no chair at all
 
 Manoj Batham (EMP-0099, 7 places), Shyam Sundar Kalta (EMP-0100,
-Bhubaneswar), Vinayak Patil (EMP-0102, KOLHAPUR). All three came from the
-performance workbook and have no chair, no e-mail and no mobile. Listed on
-the Loose ends card.
+Bhubaneswar) and Varsha Sonawane (EMP-0101, Indore, in Team Leader /
+Supervisor, which carries no measures); plus Vrunda Potdar (EMP-0086, Zonal
+Manager, 2 places). Four rows on the Loose ends card need a decision. Each
+is a case of question 1: either the chair gets a measure set, or the person
+is seated somewhere that already has one.
+
+## Closed
+
+### The merges -- both done, 26 Sep
+
+**Ananya Gawade.** Merged. EMP-0019 survives with the company address and
+the mobile, and takes Operations and the Executive designation from the
+record that had them. It keeps the Executive seat, where 63 colleagues sit
+and where the owner's own people file puts EMP-0019; Field Executives /
+Verifiers had one holder, the duplicate itself, and is closed with today's
+date rather than deleted.
+
+**Vinayak Jondale / Vinayak Patil.** Not the merge it looked like. EMP-0041
+was named VINAYAK JONDALE but carried `vinayak.patil@cruxindia.co.in`, and a
+separate Vinayak Patil (EMP-0102) ran Kolhapur with no address at all. The
+owner confirmed the *name* was the field in error. So:
+
+- EMP-0041 renamed to Vinayak Patil.
+- EMP-0102 -- the number migration 176 minted -- merged into EMP-0041, the
+  number the owner's people file carries. Kolhapur came across.
+- Vinayak Jondale, now nobody's duplicate, was given EMP-0104. 176 had
+  withheld one only because he looked like a duplicate, and he sits in
+  Branch Manager, one of the two seated chairs the scheme can score.
+
+This is also a correction to 176: it minted a second identity for a person
+who already had one, behind a wrong name. It had nothing to go on -- the two
+records shared no name, no address and no mobile. The standing limit is
+real and stated on the merge screen: a duplicate finder keyed on names
+cannot see a duplicate whose name is wrong.
+
+Afterwards: 0 duplicates; the only person without an employee number is the
+administrator account, which needs none.
