@@ -1,0 +1,30 @@
+-- Ten upload functions resolved a person by employee number with no guard on
+-- superseded_by -- twenty-three places in all.
+--
+-- The unique index from 173 covers live rows only, by design, because a
+-- superseded row has to be allowed to keep the number it had. So a
+-- merged-away row and the row it merged into can both carry it, and then
+--
+--     join person p on p.employee_no = ul_txt(r.raw, 'employee_no')
+--
+-- matches BOTH and the upload writes every row twice, once against a person
+-- who no longer exists.
+--
+-- Nobody has hit this, because nothing has been merged yet. But 176 has just
+-- put two merges on somebody's desk, and a merge is precisely the operation
+-- that creates the second row. Fixing it afterwards would mean fixing it
+-- after the duplicate performance rows.
+--
+-- The first attempt handled two shapes -- the join, and "from person p
+-- where" -- and its own assertion refused it: "ua_opening resolves a person
+-- 4 time(s) but only 2 came back guarded". The third shape is a bare
+-- "where x.employee_no = ..." against an alias bound earlier in the
+-- statement. So the rewrite stopped trying to recognise clauses and matches
+-- the comparison itself, capturing the alias so the guard names the right
+-- one. All twenty-three occurrences were read first to confirm every one
+-- sits in a boolean context -- an ON, a WHERE, or a WHERE inside NOT EXISTS.
+--
+-- Per function: count the resolutions, count the guarded ones, refuse unless
+-- they are equal afterwards. Postgres regular expressions have no lookahead,
+-- so the check counts the guarded form rather than hunting the unguarded one.
+-- Verified after: 10 functions, 23 resolutions, 23 guarded.

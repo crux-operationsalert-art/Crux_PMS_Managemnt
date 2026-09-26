@@ -1,0 +1,23 @@
+-- Found while checking that the 177 rewrite had not opened anything:
+-- nineteen of the twenty-six upload validators and appliers were executable
+-- by anon and by authenticated. They were open BEFORE 177 -- CREATE OR
+-- REPLACE preserves privileges, it does not reset them -- so this is an old
+-- hole rather than a new one. It was found looking for a new one, which is
+-- the argument for looking.
+--
+-- How bad: not very, and not nothing. None of the nineteen is SECURITY
+-- DEFINER, so they run as the caller and row-level security still applies to
+-- everything they touch. What they offered is a mutating entry point that
+-- takes p_actor as an argument -- an applier is told whom to attribute the
+-- writes to. The right posture is the one 158 set for the rest of the
+-- schema: the database is reachable only through the edge functions, which
+-- connect as the owner. Nothing in the page calls PostgREST at all; every
+-- call goes to /functions/v1/... So there was no caller to break.
+--
+-- Same shape as 158: find them rather than list them, close them, then
+-- assert that nothing in the family is open and that the RLS policy helpers
+-- are still callable -- because a policy helper anon cannot execute takes
+-- the whole application down, and that is the one way this change could do
+-- harm. Verified after: 0 upload functions open, and all four helpers the
+-- 52 policies actually call -- app_is_admin, app_person_id, app_scope_clients
+-- and app_subtree -- still executable by anon.

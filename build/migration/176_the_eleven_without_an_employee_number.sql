@@ -1,0 +1,49 @@
+-- Eleven active staff had no employee number. They are not eleven of the
+-- same thing, and minting eleven numbers would have made three of the cases
+-- worse rather than better.
+--
+--   SIX are real people who genuinely have no number: Kapil Harwara,
+--   Manoj Batham, Shyam Sundar Kalta, Varsha Sonawane, Vinayak Patil and
+--   Vinodh M. Between them 1,016 performance rows and thirteen open
+--   coverage rules, so they are unmistakably working. Nothing anywhere --
+--   not the people template, not any upload row -- carries a number for
+--   them, so there was none to adopt and EMP-0098 to EMP-0103 were minted.
+--
+--   TWO are duplicates of somebody who already HAS a number. Ananya Gawade
+--   exists twice (EMP-0019 with a work address in the Executive chair, and
+--   again on a gmail address in Field Executives); Vinayak Jondale exists
+--   twice (EMP-0041 as a PARTNER in Location Partner, and again as an
+--   EMPLOYEE in Branch Manager -- which is in the bonus scheme). Minting a
+--   second number for either would give one human two identities and split
+--   their performance between them, which is worse than having none. They
+--   need a merge, and a merge decides which chair and which employment type
+--   is real. That is somebody's decision, not this migration's -- and in the
+--   Jondale case the two sides sit on opposite sides of a bonus scheme.
+--
+--   THREE are not people. Operations Alert is the administrator account:
+--   622 audit entries, 162 uploads, all 8,404 performance rows loaded under
+--   it, nineteen sessions. Migration:M1 is a migration sentinel whose work
+--   address was the literal string "migration:m1". Cruxbposervicespvtltd is
+--   a company. The last two were referenced by nothing at all -- asserted,
+--   not assumed, immediately before the write -- and are retired.
+--
+-- Retiring Migration:M1 was refused on the first run by the e-mail shape
+-- constraint from 173, which is the constraint doing its job: a NOT VALID
+-- constraint binds any row you touch. Clearing the address was the honest
+-- fix rather than a reason to work around it. With that row gone the
+-- exception has no subject left, so the constraint is VALIDATEd at the foot
+-- of the migration and now binds all 639 rows rather than only new ones.
+--
+-- A CORRECTION, because the claim was made out loud and was wrong. These
+-- people's performance rows are NOT being dropped silently. They have rows
+-- -- the workbook load matched them by name -- and uv_past_perf refuses an
+-- unrecognised number out loud, with "employee_no X is not on the people
+-- master". The real cost of having no number is narrower and still worth
+-- fixing: Past performance, KPI targets and Assignments key on employee
+-- number with no name fallback, so a person without one cannot be carried
+-- in those files at all.
+--
+-- person_without_number() is the standing report. It classifies rather than
+-- filters, because "this is the administrator account" and "this needs a
+-- number" are different answers and a report that shows only the second
+-- hides the first. Eleven down to three, each with its reason.
