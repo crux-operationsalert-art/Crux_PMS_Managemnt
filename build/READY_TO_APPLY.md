@@ -1,3 +1,11 @@
+# Status
+
+**The sign-in fix is LIVE** — published 27 Sep as commit 473ce37, applied at
+publish time by `.github/build-tool.py` because Supabase could not be reached.
+Hard-refresh the page (Ctrl/Cmd + Shift + R) to get past the cached copy.
+
+Everything else below is still written, verified and not applied.
+
 # Written, verified, not yet applied
 
 The Supabase MCP approval gate refused every call while this was built —
@@ -24,10 +32,15 @@ database. Applying it is four steps and should take a couple of minutes.
    before touching anything. Guards the four unguarded `localStorage`
    calls, removes the dead `vPeople`, and splices in the act-as bar.
 
+   The storage guards in it are now also applied at publish time, so the
+   live page already has them. 188 puts them in the source where they
+   belong; once it lands, the publish-time patch detects them and becomes a
+   no-op, and can then be deleted from `build-tool.py`.
+
 4. **Bump `.github/app-page.sha`** to whatever 188 leaves, and push. The
    workflow republishes `index.html`.
 
-## What 188 actually fixes, and why it is the sign-in bug
+## The sign-in bug, reproduced and fixed
 
 Line 554 of the published page is the **first statement in the script**:
 
@@ -42,10 +55,20 @@ whole script with it: no function is ever defined, `boot()` never runs, the
 Google button never renders. What is left is the sign-in card, which is
 static HTML, with a Sign in button wired to nothing.
 
-That is indistinguishable from "sign-in is broken", and it is the only
-explanation that fits the one piece of evidence that did not:
+**Reproduced in Chromium with site data blocked**, against the page that was
+live: one error, `The operation is insecure.`, and `el("go").onclick`
+undefined — the Sign in button has no handler and `boot()` never runs, so the
+Google button never renders either. Function declarations hoist, so
+`window.boot` still exists, which is why it looks like a working page rather
+than a broken one.
+
+It is the only explanation that fits the one piece of evidence that did not:
 **`login_attempt` records no failures at all.** Not one. The request was
 never made.
+
+After the fix, same test: button wired, `boot()` ran, **zero errors**. With
+storage working, patched and unpatched behave identically — app opens, 21 nav
+links, no errors.
 
 Three further sites do the same thing unguarded — both places a token is
 stored after a successful sign-in, and sign-out. All four now go through
