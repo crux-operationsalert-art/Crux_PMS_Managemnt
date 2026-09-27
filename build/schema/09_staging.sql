@@ -260,3 +260,81 @@ create table if not exists stg.warnings (
   note text
 );
 
+alter table stg.audit_log add constraint audit_log_pkey PRIMARY KEY (row_no);
+alter table stg.branch_assignments add constraint branch_assignments_pkey PRIMARY KEY (row_no);
+alter table stg.branches add constraint branches_pkey PRIMARY KEY (row_no);
+alter table stg.city_state add constraint city_state_pkey PRIMARY KEY (city);
+alter table stg.clients add constraint clients_pkey PRIMARY KEY (row_no);
+alter table stg.email_log add constraint email_log_pkey PRIMARY KEY (row_no);
+alter table stg.escalation_events add constraint escalation_events_pkey PRIMARY KEY (row_no);
+alter table stg.escalations add constraint escalations_pkey PRIMARY KEY (row_no);
+alter table stg.holidays add constraint holidays_pkey PRIMARY KEY (row_no);
+alter table stg.job_log add constraint job_log_pkey PRIMARY KEY (row_no);
+alter table stg.matrix add constraint matrix_pkey PRIMARY KEY (row_no);
+alter table stg.people_events add constraint people_events_pkey PRIMARY KEY (row_no);
+alter table stg.people_events_copy add constraint people_events_copy_pkey PRIMARY KEY (row_no);
+alter table stg.run add constraint run_pkey PRIMARY KEY (id);
+alter table stg.settings add constraint settings_pkey PRIMARY KEY (row_no);
+alter table stg.sheet4 add constraint sheet4_pkey PRIMARY KEY (row_no);
+alter table stg.state_zone add constraint state_zone_pkey PRIMARY KEY (state);
+alter table stg.targets add constraint targets_pkey PRIMARY KEY (row_no);
+alter table stg.users add constraint users_pkey PRIMARY KEY (row_no);
+alter table stg.warnings add constraint warnings_pkey PRIMARY KEY (row_no);
+
+CREATE OR REPLACE FUNCTION stg.norm_email(t text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'stg', 'public'
+AS $function$
+  select case when not stg.present(t) then null else
+    replace(lower(btrim(t)), 'cruxinida.co.in', 'cruxindia.co.in')
+  end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION stg.norm_mobile(t text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'stg', 'public'
+AS $function$
+  select case when not stg.present(t) then null else
+    nullif(right(regexp_replace(t, '[^0-9]', '', 'g'), 10), '') end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION stg.norm_name(t text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'stg', 'public'
+AS $function$
+  select case when not stg.present(t) then null else
+    regexp_replace(initcap(lower(btrim(t))), '\s+', ' ', 'g') end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION stg.present(t text)
+ RETURNS boolean
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'stg', 'public'
+AS $function$
+  select t is not null and btrim(t) <> '' and btrim(t) <> '#N/A' and btrim(t) <> 'null';
+$function$
+;
+
+CREATE OR REPLACE FUNCTION stg.ts(t text)
+ RETURNS timestamp with time zone
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'stg', 'public'
+AS $function$
+  select case when not stg.present(t) then null else
+    (case when t ~ '^\d{4}-\d{2}-\d{2}' then t::timestamptz
+          when t ~ '^\d{1,2}/\d{1,2}/\d{4}' then to_timestamp(t, 'DD/MM/YYYY HH24:MI:SS')
+          else null end) end;
+$function$
+;
+
