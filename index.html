@@ -364,7 +364,82 @@ input.pbtg,input.pbbl{width:92px}
 .hrafield input,.hrafield select{min-height:38px;width:100%}
 .hrafield.hraerr input,.hrafield.hraerr select{border-color:var(--terra)}
 .hrabad{color:var(--terra-ink);font-size:12px;line-height:1.45}
+/* ---------------------------------------------------------- matrix
+   The monthly pack. A letter somebody is about to send should look
+   like a letter before they send it.                              */
+.mxline{margin:10px 15px;padding:8px 12px;font-size:13px;border-left:3px solid var(--line)}
+.mxline.due{background:var(--gold-bg);border-left-color:var(--gold);color:var(--gold-ink)}
+.mxline.done{background:var(--green-bg);border-left-color:var(--green);color:var(--body)}
+.mxlist{margin:6px 15px 10px 32px;padding:0;font-size:13px;color:var(--body)}
+.mxlist li{margin:2px 0}
+.mxpack{padding:4px 0 10px}
+.mxsays{margin:0 15px 6px;font-size:13px;color:var(--body)}
+.mxrecs{display:flex;flex-wrap:wrap;gap:8px 18px;padding:2px 15px 8px}
+.mxrec{display:inline-flex;align-items:center;gap:6px;font-size:13px;
+  white-space:nowrap;color:var(--body)}
+.mxrec input[type=checkbox]{width:15px;height:15px;min-height:0;padding:0;
+  margin:0;flex:0 0 15px;accent-color:var(--blue)}
+.mxbranches{padding:0 15px 6px}
+.mxb{border-top:1px solid var(--line3);padding:6px 0}
+.mxb summary{cursor:pointer;font-size:13px;color:var(--ink)}
+.mxlv{width:100%;margin:6px 0 2px;font-size:12.5px}
+.mxlv td{padding:3px 8px 3px 0;border:none;vertical-align:top}
+.mxl{width:28px;color:var(--mute);font-variant-numeric:tabular-nums}
+#mxperiod{width:auto;min-width:170px}
 .hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}
+/* ------------------------------------------------------------------ perf
+   A tree that opens, a bar that stops at 100 even when the number does
+   not, and a banner that says which of the two windows is still open.
+   The numbers are tabular so a column of them reads as a column.     */
+.pfperiod select{min-height:36px}
+.pftabs{display:flex;gap:8px;margin:0 0 14px}
+/* .chip paints itself with var(--ink2), which this sheet never
+   defines, so the count inherits the button's colour -- white on
+   near-white once the tab is selected, which is a count nobody can
+   read. Both states are stated here. */
+.pftabs .chip{color:var(--ink);margin-left:6px}
+.pftabs .primary .chip{background:rgba(255,255,255,.18);
+  border-color:rgba(255,255,255,.5);color:#fff}
+.pfwin{margin:0 0 14px;padding:8px 12px;background:var(--green-bg);
+  border-left:3px solid var(--green);font-size:13px;color:var(--body)}
+.pfwin.shut{background:var(--terra-bg);border-left-color:var(--terra);color:var(--terra-ink)}
+.pftree{padding:2px 0 8px}
+.pfrow{display:flex;align-items:center;gap:8px;padding:7px 15px;
+  border-top:1px solid var(--line3);font-size:13px}
+/* The page gives every button a 46px minimum and a blue hover. A
+   disclosure triangle is not that kind of button, so both are said
+   again here -- the hover included, because button:hover outranks a
+   plain class and would otherwise paint this one navy mid-click. */
+.pftog{width:20px;height:20px;min-height:20px;flex:0 0 20px;
+  border:1px solid var(--line);background:var(--white);color:var(--mute);
+  font-size:12px;line-height:1;cursor:pointer;border-radius:3px;padding:0}
+.pftog:hover{background:var(--panel);color:var(--ink);border-color:var(--field)}
+.pftog.pfnone{border:none;background:none}
+.pfname{flex:1 1 auto;min-width:0;color:var(--ink);overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.pfwho{font-weight:600}
+.pfval{flex:0 0 96px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}
+.pftgt{flex:0 0 96px;text-align:right;color:var(--mute);font-variant-numeric:tabular-nums}
+.pfpct{flex:0 0 52px;text-align:right;color:var(--body);font-variant-numeric:tabular-nums}
+.pfmeter{flex:0 0 90px}
+.pfbar{height:6px;background:var(--line2);border-radius:3px;overflow:hidden}
+.pfbar i{display:block;height:100%}
+.pfbar i.ok{background:var(--green)}
+.pfbar i.warn{background:var(--gold)}
+.pfbar i.bad{background:var(--terra)}
+input.pfin{width:120px}
+/* input{width:100%;min-height:44px} in the base sheet catches
+   checkboxes as well as text boxes, which is why a tick elsewhere in
+   the tool is a 44px-tall square. Here it is a tick.              */
+.pfsel{display:inline-flex;align-items:center;gap:5px;margin-right:10px;
+  font-size:12px;color:var(--mute);white-space:nowrap;vertical-align:middle}
+.pfsel input[type=checkbox]{width:15px;height:15px;min-height:0;padding:0;
+  margin:0;flex:0 0 15px;accent-color:var(--blue)}
+.pfpanel{padding:2px 0 6px}
+@media (max-width:720px){
+  .pfrow{flex-wrap:wrap}
+  .pftgt,.pfmeter{display:none}
+}
 /* The merge comparison. Two columns of the same person, and the side that
    will survive each field carries a tint -- so the shape of the decision is
    readable without reading every radio button in it. */
@@ -697,7 +772,7 @@ el("mobout").onclick = doSignOut;
 var NAV = [
   { label:"",        items:[ ["ideas","Ideathon"] ] },
   { label:"Mine",    items:[ ["today","Dashboard"], ["profile","My profile"],
-                             ["pms","Performance & appraisal"], ["plb","Performance & bonus"], ["visits","Visits & claims"] ] },
+                             ["perf","Performance"], ["visits","Visits & claims"] ] },
   { label:"Work",    items:[ ["ogl","OGL Assignment"], ["cases","Escalations"],
                              ["clients","Clients"], ["people","My team & structure"] ] },
   { label:"Company", items:[ ["hr","HR"], ["hiring","Hiring & pending chairs"],
@@ -712,6 +787,7 @@ var NAV = [
    row. They keep their own routes, so nothing that already links to them
    breaks; this is only how you get to them without knowing the URL. */
 var FAMILY = [
+  ["perf",    [["perf","This month"], ["pms","Appraisal"], ["plb","Bonus"]]],
   ["clients", [["clients","Clients"], ["matrix","Escalation matrix"]]],
   ["people",  [["people","My team"], ["org","Structure"]]],
   ["reports", [["reports","Reports"], ["mis","MIS dashboard"], ["tenday","10-day view"],
@@ -744,19 +820,19 @@ var badges = {};
    itself and refuses in its own words; hiding a screen stops somebody
    wandering into it and does nothing about somebody typing the URL. */
 var SCREENS = {
-  exec:    ["today","ogl","cases","pms","plb","visits","ideas","profile"],
-  team:    ["today","ogl","cases","pms","plb","people","visits","ideas","profile"],
-  branch:  ["today","ogl","cases","pms","plb","clients","people","hiring","joining",
+  exec:    ["today","ogl","cases","perf","visits","ideas","profile"],
+  team:    ["today","ogl","cases","perf","people","visits","ideas","profile"],
+  branch:  ["today","ogl","cases","perf","clients","people","hiring","joining",
             "visits","ideas","reports","history","profile"],
-  partner: ["today","ogl","cases","pms","plb","clients","people","hiring","joining",
+  partner: ["today","ogl","cases","perf","clients","people","hiring","joining",
             "visits","ideas","penalties","reports","history","profile"],
-  hr:      ["today","cases","pms","plb","people","hr","hiring","joining","visits",
+  hr:      ["today","cases","perf","people","hr","hiring","joining","visits",
             "ideas","penalties","reports","history","mail","auto","config","profile"],
-  finance: ["today","cases","pms","plb","clients","people","hiring","visits","ideas",
+  finance: ["today","cases","perf","clients","people","hiring","visits","ideas",
             "penalties","reports","history","auto","config","profile"],
-  analytics:["today","cases","pms","plb","people","ideas","data","coverage","reports",
+  analytics:["today","cases","perf","people","ideas","data","coverage","reports",
             "history","profile"],
-  staff:   ["today","cases","pms","plb","people","clients","visits","ideas","reports",
+  staff:   ["today","cases","perf","people","clients","visits","ideas","reports",
             "history","profile"]
 };
 
@@ -784,6 +860,7 @@ var CHAIR_LEVEL = {
 
 /* A screen reached from inside a parent follows its parent. */
 var UNDER = { matrix:"clients", org:"people", whatsapp:"mail",
+              pms:"perf", plb:"perf",
               mis:"reports", tenday:"reports", rates:"reports", access:"reports" };
 
 function myLevel(){
@@ -2591,7 +2668,7 @@ function route(){
   paintNav();
   paintSub();
   el("view").innerHTML = '<p class="mute">Loading…</p>';
-  var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms, plb:vPlb,
+  var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms, plb:vPlb, perf:vPerf,
     people:vPeople, penalties:vPenalties, org:vOrg, data:vData, mail:vMail,
     whatsapp:vWhats, config:vConfig, coverage:vCoverage,
     clients:vClients, history:vHistory, visits:vVisits, ideas:vIdeas, hr:vHR, joining:vJoining, access:vAccess, mis:vMis, tenday:vTenday, reports:vReports, rates:vRates,
@@ -2620,6 +2697,446 @@ async function refreshBadges(){
     if (n2) badges.cases = n2;
   } catch(e){}
   paintNav();
+}
+
+/* ================================================================== perf
+   The monthly cycle: what I am measured on, what I owe today, and — if
+   anybody reports to me — what my team is doing about theirs.
+
+   One screen, two faces, because they are the same thing seen from either
+   end. A branch manager files their own numbers AND sets their team's; a
+   field executive only ever does the first. The second face appears when
+   the database says somebody reports to you, not when a role says you are
+   a manager — those are different questions and only one of them is true
+   about a particular Tuesday.
+
+   Nothing here computes a number. Every value on this screen comes from
+   perf_value() through perf_tree(), which owns the one rule that makes a
+   roll-up correct: counts and rupees accumulate, a percentage or a score
+   is a level. A second opinion about somebody's performance is the last
+   thing a screen should hold.                                          */
+var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
+           who:null, open:{}, measures:null, measuresFor:null, form:null,
+           sel:{}, busy:false, says:"" };
+
+function pfMonth(d){ d = d || new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0,10); }
+
+function pfMonthName(s){
+  var d = new Date(s + "T00:00:00Z");
+  return d.toLocaleString("en-GB", { month:"long", year:"numeric", timeZone:"UTC" });
+}
+
+function pfNum(v, unit){
+  if (v === null || v === undefined || v === "") return "—";
+  var n = Number(v);
+  if (!isFinite(n)) return esc(v);
+  var s = Math.abs(n) >= 1000 ? n.toLocaleString("en-IN") : String(Math.round(n * 100) / 100);
+  return esc(s) + (unit ? ' <span class="mute">' + esc(unit) + '</span>' : '');
+}
+
+/* A bar is a claim about proportion, so it stops at 100 even when the
+   number does not -- and the figure beside it still says 143%. */
+function pfBar(pct){
+  if (pct === null || pct === undefined) return '';
+  var w = Math.max(0, Math.min(100, Number(pct)));
+  var tone = pct >= 95 ? "ok" : pct >= 75 ? "warn" : "bad";
+  return '<div class="pfbar"><i class="' + tone + '" style="width:' + w + '%"></i></div>';
+}
+
+/* A screen is published from one place and its service is deployed from
+   another, and the two do not always land in the same minute. When the
+   routes are not there yet the gateway answers no_route, and this screen
+   says that rather than inventing a reason of its own -- "the period has
+   not been opened" would send somebody looking for HR about a deploy. */
+function pfMissing(r){
+  return !!r && (r.error === "no_route" || r._status === 404);
+}
+
+/* --------------------------------------------------------------- the shell */
+async function vPerf(){
+  if (!PF.period) PF.period = pfMonth();
+  var c = await plb("/plb/perf/cycle?period=" + PF.period);
+  if (pfMissing(c)) {
+    el("view").innerHTML = '<h1>Performance</h1>' +
+      msg("warn", "This screen is published but the service behind it is not " +
+        "deployed yet, so there is nothing to show. Nothing is wrong with your " +
+        "account and nothing has been lost. Appraisal and Bonus, above, still work.");
+    return;
+  }
+  PF.cycle = c.cycle || null;
+  PF.mayOpen = !!c.mayOpen;
+  if (!PF.team) {
+    var t = await plb("/plb/perf/team");
+    PF.team = t.error ? [] : (t.people || []);
+  }
+  await pfLoadMine();
+  pfRender();
+}
+
+async function pfLoadMine(){
+  if (!PF.cycle) { PF.tree = null; PF.due = null; return; }
+  var r = await Promise.all([
+    plb("/plb/perf/tree?cycle=" + PF.cycle.id),
+    plb("/plb/perf/due"),
+  ]);
+  PF.tree = r[0]; PF.due = (r[1] || {}).due || [];
+}
+
+function pfRender(){
+  var head = '<div class="page-head"><div><h1>Performance</h1>' +
+    '<p class="mute">What you are measured on this period, what you owe today, and ' +
+    'where your numbers land once they have climbed.</p></div>' +
+    '<div class="pfperiod">' + pfPeriodPicker() + '</div></div>';
+
+  if (!PF.cycle) {
+    el("view").innerHTML = head +
+      '<div class="card"><h2>' + esc(pfMonthName(PF.period)) + ' has not been opened</h2>' +
+      '<p class="mute">A period has to be opened before anybody can be given a KPI for it. ' +
+      'Opening it sets two dates: the last day a manager may set targets, and the last day ' +
+      'numbers may still be filed.</p>' +
+      (PF.mayOpen
+        ? '<p><button class="btn primary" id="pfopen">Open ' + esc(pfMonthName(PF.period)) + '</button></p>'
+        : '<div class="empty">HR, Business Excellence or an administrator opens a period.</div>') +
+      '<div id="pfmsg">' + PF.says + '</div></div>';
+    pfWire();
+    return;
+  }
+
+  var tabs = '<div class="pftabs">' +
+    '<button class="btn' + (PF.tab === "mine" ? " primary" : "") + '" data-pftab="mine">Mine</button>' +
+    (PF.team.length
+      ? '<button class="btn' + (PF.tab === "team" ? " primary" : "") + '" data-pftab="team">' +
+        'My team <span class="chip">' + esc(PF.team.length) + '</span></button>'
+      : '') +
+    '</div>';
+
+  el("view").innerHTML = head + pfWindowBanner() + tabs +
+    (PF.tab === "team" ? pfTeam() : pfMine()) +
+    '<div id="pfmsg">' + PF.says + '</div>';
+  pfWire();
+}
+
+function pfPeriodPicker(){
+  var opts = "";
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - i);
+    var v = pfMonth(d);
+    opts += '<option value="' + v + '"' + (v === PF.period ? ' selected' : '') + '>' +
+      esc(pfMonthName(v)) + '</option>';
+  }
+  return '<select id="pfperiod">' + opts + '</select>';
+}
+
+function pfWindowBanner(){
+  var c = PF.cycle;
+  var bits = [];
+  bits.push(c.assign_open
+    ? 'KPIs may be set until <b>' + day(c.assign_closes) + '</b>'
+    : 'The window for setting KPIs closed on ' + day(c.assign_closes));
+  bits.push(c.entry_open
+    ? 'numbers may be filed until <b>' + day(c.entry_closes) + '</b>'
+    : 'filing closed on ' + day(c.entry_closes));
+  return '<div class="pfwin' + (c.entry_open ? '' : ' shut') + '">' +
+    bits.join(' · ') + '</div>';
+}
+
+/* ------------------------------------------------------------------ mine */
+function pfMine(){
+  var t = PF.tree || {};
+  if (t.says) {
+    return '<div class="card"><h2>' + esc(pfMonthName(PF.period)) + '</h2>' +
+      '<div class="empty">' + esc(t.says) + '</div></div>';
+  }
+  var measures = t.measures || [];
+  return pfDueCard() +
+    '<div class="card"><h2>What you are measured on</h2>' +
+    (measures.length
+      ? '<div class="pftree">' + measures.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>'
+      : '<div class="empty">Nothing has been set for you this period.</div>') +
+    '</div>';
+}
+
+function pfDueCard(){
+  var due = PF.due || [];
+  if (!PF.cycle.entry_open) return "";
+  if (!due.length) {
+    return '<div class="card"><h2>Due today</h2>' +
+      '<div class="empty">Nothing is due from you today. What you file and when is set ' +
+      'with your KPI, not by this screen.</div></div>';
+  }
+  var rows = due.map(function(d){
+    return '<tr><td><b>' + esc(d.name) + '</b>' +
+      (d.split ? ' <span class="mute">' + esc(d.split) + '</span>' : '') +
+      '<div class="mute">' + esc(String(d.cadence || "").toLowerCase().replace(/_/g," ")) +
+      (d.target ? ' · target ' + pfNum(d.target, d.unit) : '') + '</div></td>' +
+      '<td><input class="pfin" data-pffile="' + esc(d.assignmentId) + '" type="number" step="any" ' +
+        'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '"></td>' +
+      '<td class="plact"><button class="btn" data-pffileb="' + esc(d.assignmentId) + '">' +
+        (d.alreadyFiled ? 'Change' : 'File') + '</button></td></tr>';
+  }).join("");
+  return '<div class="card"><h2>Due today</h2>' +
+    '<p class="mute">The number is for today. Filing it tomorrow does not make it ' +
+    'tomorrow’s number.</p>' +
+    '<div class="scroll"><table>' + rows + '</table></div></div>';
+}
+
+/* One node, and its parts and its team under it. Depth is only indentation;
+   the shape comes from the database. */
+function pfNode(m, depth, isTeam){
+  var id = m.assignmentId;
+  var kids = (m.parts || []).length + (m.team || []).length;
+  var isOpen = !!PF.open[id];
+  var who = m.person
+    ? '<span class="pfwho">' + esc(m.person.name) +
+      (m.person.chair ? ' <span class="mute">' + esc(m.person.chair) + '</span>' : '') + '</span>'
+    : '';
+
+  var head = '<div class="pfrow" style="padding-left:' + (depth * 18) + 'px">' +
+    (kids
+      ? '<button class="pftog" data-pfopen="' + esc(id) + '">' + (isOpen ? '−' : '+') + '</button>'
+      : '<span class="pftog pfnone"></span>') +
+    '<span class="pfname">' + (isTeam ? who : esc(m.split || m.name)) +
+      (isTeam ? '' : (m.splitKind ? ' <span class="chip">' + esc(m.splitKind.toLowerCase()) + '</span>' : '')) +
+    '</span>' +
+    '<span class="pfval">' + pfNum(m.value, m.unit) + '</span>' +
+    '<span class="pftgt">' + (m.target ? 'of ' + pfNum(m.target) : '<span class="mute">no target</span>') + '</span>' +
+    '<span class="pfpct">' + (m.pct === null || m.pct === undefined ? '' : esc(m.pct) + '%') + '</span>' +
+    '<span class="pfmeter">' + pfBar(m.pct) + '</span>' +
+    '</div>';
+
+  var body = "";
+  if (isOpen) {
+    body = (m.parts || []).map(function(p){ return pfNode(p, depth + 1, false); }).join("") +
+           (m.team  || []).map(function(p){ return pfNode(p, depth + 1, true);  }).join("");
+  }
+  return head + body;
+}
+
+/* ------------------------------------------------------------------ team */
+function pfTeam(){
+  var rows = PF.team.map(function(p){
+    var open = PF.who === p.personId;
+    return '<tr><td><b>' + esc(p.name) + '</b>' +
+      (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
+      '<div class="mute">' + esc(p.chair || "no chair") + '</div></td>' +
+      '<td class="plact">' +
+        '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
+          (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
+        '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
+          (open ? 'Hide' : 'Open') + '</button></td></tr>' +
+      (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
+  }).join("");
+
+  var n = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; }).length;
+
+  return '<div class="card"><h2>Setting your team’s KPIs</h2>' +
+    '<p class="mute">A KPI you give somebody climbs into one of yours. Pick which one ' +
+    'as you set it — that link is what makes the numbers add up to a branch, and a ' +
+    'branch to a zone.</p>' +
+    '<div class="plbar">' +
+      '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
+        (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
+      '<button class="btn" id="pfcarry"' + (n ? '' : ' disabled') + '>Carry last month forward</button>' +
+    '</div>' +
+    '<div class="scroll"><table>' + rows + '</table></div>' +
+    (PF.form ? pfForm() : '') +
+    '</div>';
+}
+
+function pfPersonPanel(){
+  var t = PF.whoTree;
+  if (!t) return '<p class="mute">Loading…</p>';
+  if (t.error) return msg("bad", t.reason || t.error);
+  var ms = t.measures || [];
+  return '<div class="pfpanel">' +
+    (ms.length
+      ? '<div class="pftree">' + ms.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>'
+      : '<div class="empty">' + esc(t.says || "Nothing set for them this period.") + '</div>') +
+    '<p><button class="btn" id="pfadd">Set a KPI for ' + esc(t.person.name) + '</button></p>' +
+    '</div>';
+}
+
+/* ------------------------------------------------------------ the form */
+function pfForm(){
+  var f = PF.form, cat = (PF.measures || {}).catalogue || [], mine = (PF.measures || {}).mine || [];
+  if (!PF.measures) return '<div class="plform"><p class="mute">Loading the measures…</p></div>';
+
+  var cads = {};
+  cat.forEach(function(k){ if (k.cadence) cads[k.cadence] = 1; });
+  var cadOpts = Object.keys(cads).sort().map(function(c){
+    return '<option value="' + esc(c) + '"' + (f.cadence === c ? ' selected' : '') + '>' +
+      esc(c.toLowerCase().replace(/_/g, " ")) + '</option>'; }).join("");
+
+  return '<div class="plform">' +
+    '<h4 class="plh">' + (f.bulk ? 'The same KPI for everyone selected' : 'A KPI for ' + esc(f.name)) + '</h4>' +
+    '<div class="hragrid">' +
+      '<label class="hrafield"><span>Measure</span><select data-pff="kpiId">' +
+        '<option value="">— choose —</option>' +
+        cat.map(function(k){
+          return '<option value="' + esc(k.id) + '"' + (f.kpiId === k.id ? ' selected' : '') + '>' +
+            esc(k.name) + (k.unit ? ' (' + esc(k.unit) + ')' : '') + '</option>'; }).join("") +
+      '</select></label>' +
+      '<label class="hrafield"><span>Target</span>' +
+        '<input data-pff="target" type="number" step="any" value="' + esc(f.target || "") + '"></label>' +
+      '<label class="hrafield"><span>Weight %</span>' +
+        '<input data-pff="weight" type="number" step="any" value="' + esc(f.weight || "") + '"></label>' +
+      '<label class="hrafield"><span>They file</span><select data-pff="cadence">' +
+        '<option value="">— as the measure says —</option>' + cadOpts + '</select></label>' +
+      '<label class="hrafield"><span>On which day</span>' +
+        '<input data-pff="cadenceDay" type="number" min="1" max="28" ' +
+        'placeholder="10 for the 10th, 5 for Friday" value="' + esc(f.cadenceDay || "") + '"></label>' +
+      '<label class="hrafield"><span>Climbs into</span><select data-pff="rollsInto">' +
+        '<option value="">— nothing yet —</option>' +
+        mine.map(function(m){
+          return '<option value="' + esc(m.assignmentId) + '"' +
+            (f.rollsInto === m.assignmentId ? ' selected' : '') + '>' +
+            esc(m.name) + (m.split ? ' · ' + esc(m.split) : '') + '</option>'; }).join("") +
+      '</select></label>' +
+    '</div>' +
+    (PF.measures.note ? '<div class="plsub">' + msg("warn", PF.measures.note) + '</div>' : '') +
+    '<p class="mute">A measure with no target is not scored and does not drag the average ' +
+    'down — it is left out and says so. Leave it blank if you genuinely have not set one ' +
+    'yet, rather than putting a nought in.</p>' +
+    '<div class="plbar">' +
+      '<button class="btn primary" id="pfsave">' +
+        (f.bulk ? 'Give it to everyone selected' : 'Set it') + '</button>' +
+      '<button class="btn" id="pfcancel">Cancel</button>' +
+    '</div></div>';
+}
+
+/* The catalogue a manager picks from. Asked for one person, it comes back
+   as that chair's measure set rather than as every measure in the company,
+   which is the difference between choosing and searching. Cached per
+   person, because the one thing worse than a long list is a long list that
+   is fetched again every time the form is drawn. */
+async function pfMeasuresFor(personId){
+  var key = personId || "all";
+  if (PF.measuresFor === key && PF.measures) return;
+  PF.measures = null; PF.measuresFor = key; pfRender();
+  var q = "/plb/perf/measures?cycle=" + PF.cycle.id +
+          (personId ? "&person=" + encodeURIComponent(personId) : "");
+  var m = await plb(q);
+  /* A second click while the first was in flight wins; this one is stale. */
+  if (PF.measuresFor !== key) return;
+  PF.measures = m;
+  pfRender();
+}
+
+/* ---------------------------------------------------------------- wiring */
+function pfWire(){
+  if (el("pfperiod")) el("pfperiod").onchange = async function(){
+    PF.period = el("pfperiod").value; PF.tree = null; PF.who = null;
+    PF.whoTree = null; PF.says = ""; PF.measures = null; PF.measuresFor = null;
+    el("view").innerHTML = '<p class="mute">Loading…</p>';
+    await vPerf();
+  };
+
+  if (el("pfopen")) el("pfopen").onclick = async function(){
+    var o = await plb("/plb/perf/cycle/open", { method:"POST", body:{ period: PF.period } });
+    PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note);
+    await vPerf();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pftab]"), function(b){
+    b.onclick = function(){ PF.tab = b.getAttribute("data-pftab"); pfRender(); };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfopen]"), function(b){
+    b.onclick = function(){
+      var k = b.getAttribute("data-pfopen");
+      PF.open[k] = !PF.open[k];
+      pfRender();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfsel]"), function(b){
+    b.onchange = function(){ PF.sel[b.getAttribute("data-pfsel")] = b.checked; pfRender(); };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfwho]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-pfwho");
+      if (PF.who === id) { PF.who = null; PF.whoTree = null; PF.form = null; pfRender(); return; }
+      PF.who = id; PF.whoTree = null; PF.form = null; pfRender();
+      PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + id);
+      pfRender();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pffileb]"), function(b){
+    b.onclick = async function(){
+      if (PF.busy) return;
+      var id = b.getAttribute("data-pffileb");
+      var box = el("view").querySelector('[data-pffile="' + id + '"]');
+      if (!box || box.value === "") return;
+      PF.busy = true; b.disabled = true;
+      var o = await plb("/plb/perf/file", { method:"POST", body:{
+        assignmentId: id, asOf: new Date().toISOString().slice(0,10), value: box.value } });
+      PF.busy = false;
+      PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note);
+      await pfLoadMine(); pfRender();
+    };
+  });
+
+  if (el("pfadd")) el("pfadd").onclick = async function(){
+    PF.form = { personId: PF.who, name: (PF.whoTree.person || {}).name, bulk:false };
+    pfRender();
+    await pfMeasuresFor(PF.who);
+  };
+
+  if (el("pfbulk")) el("pfbulk").onclick = async function(){
+    PF.form = { bulk:true };
+    pfRender();
+    /* No one person, so no one chair: the whole catalogue, which is the
+       honest answer when the same measure is going to several chairs. */
+    await pfMeasuresFor(null);
+  };
+
+  if (el("pfcarry")) el("pfcarry").onclick = async function(){
+    var who = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; });
+    var done = 0, said = [];
+    for (var i = 0; i < who.length; i++) {
+      var o = await plb("/plb/perf/carry", { method:"POST",
+        body:{ cycleId: PF.cycle.id, personId: who[i] } });
+      if (o.error) said.push(o.reason || o.error); else done += (o.copied || 0);
+    }
+    PF.says = said.length ? msg("bad", said.join(" "))
+                          : msg("ok", done + " measure(s) carried forward. The targets are blank " +
+                                "on purpose — last month’s number is not this month’s promise.");
+    PF.whoTree = null; pfRender();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pff]"), function(f){
+    f.onchange = function(){ PF.form[f.getAttribute("data-pff")] = f.value; };
+  });
+
+  if (el("pfcancel")) el("pfcancel").onclick = function(){ PF.form = null; pfRender(); };
+
+  if (el("pfsave")) el("pfsave").onclick = async function(){
+    if (PF.busy) return;
+    var f = PF.form;
+    if (!f.kpiId) { PF.says = msg("bad", "Choose a measure first."); pfRender(); return; }
+    PF.busy = true; el("pfsave").disabled = true;
+    var body = { cycleId: PF.cycle.id, kpiId: f.kpiId, target: f.target,
+                 weight: f.weight, cadence: f.cadence, cadenceDay: f.cadenceDay,
+                 rollsInto: f.rollsInto };
+    var o;
+    if (f.bulk) {
+      o = await plb("/plb/perf/assign/bulk", { method:"POST", body:{
+        cycleId: PF.cycle.id,
+        people: Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; }),
+        measures: [body] } });
+    } else {
+      body.personId = f.personId;
+      o = await plb("/plb/perf/assign", { method:"POST", body: body });
+    }
+    PF.busy = false;
+    PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note || "Set.");
+    PF.form = null; PF.whoTree = null; PF.measures = null; PF.measuresFor = null;
+    if (PF.who) PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
+    pfRender();
+  };
 }
 
 /* --------------------------------------------------------------- today */
@@ -2669,8 +3186,10 @@ async function vToday(){
     '</div>' +
     '<div class="askbar"><div class="askline">' + esc(ask) + '</div>' +
       '<button class="onink" onclick="location.hash=\'#ogl\'">See what is owed</button></div>' +
+    '<div id="mxcard"></div>' +
     '<div class="card"><h2>Your appraisal cycle</h2>' + pmsSummary(pms) + '</div>' +
     (cases.empty ? '<div class="card"><h2>Escalations</h2>' + msg("warn", cases.empty) + '</div>' : "");
+  mxCardLoad();
 }
 
 function tile(v,l){ return '<div class="tile"><b>'+esc(v)+'</b><span>'+esc(l)+'</span></div>'; }
@@ -3375,6 +3894,7 @@ async function vMatrix(){
   var rows = out.branches || [];
   el("view").innerHTML = '<h1>Escalation matrix</h1>' +
     '<p class="mute">Five levels per branch. Completeness is computed, never stored.</p>' +
+    '<div id="mxmonth"><p class="mute">Loading this month\u2019s pack\u2026</p></div>' +
     (out.empty ? msg("warn", out.empty) : "") +
     '<div class="card"><h2>Branches still missing levels</h2>' +
       (rows.length ? '<div class="scroll"><table><tr><th>Branch</th><th>Client</th><th>Complete</th><th>Missing</th></tr>' +
@@ -3385,6 +3905,7 @@ async function vMatrix(){
             '<td><span class="pill bad">'+esc(b.missing)+'</span></td></tr>';
         }).join("") + '</table></div>'
         : '<div class="empty">Every branch in your coverage has all five levels.</div>') + '</div>';
+  mxMonthLoad();
 }
 async function matrixBranch(id){
   var out = await api("/matrix/branch/" + id);
@@ -3413,6 +3934,241 @@ async function matrixBranch(id){
         : msg("ok", "Saved. " + out2.completeLevels + " of 5 complete.");
     };
   });
+}
+
+/* ========================================================= matrix month
+   The escalation matrix as a thing that goes OUT.
+
+   The tool already held the matrix and chased the branches that were
+   missing a level. What it had nowhere was the monthly act: the pack that
+   goes to the client, who it went to, when, and what it said at the moment
+   it left. A branch manager could fill in five levels for a year and never
+   once be told whether the client had been sent them.
+
+   Two entrances, because it is one question asked in two places. The
+   dashboard says whether this month has gone out. The Escalation matrix
+   screen is where it goes out from.
+
+   Nothing here decides anything. matrix_month() says what may be seen,
+   matrix_pack() says what would go and what is held back, matrix_send()
+   says whether this person may send it -- and a branch with a blank level
+   is named and kept back rather than sent with a gap, because a matrix
+   with a hole in it reads as complete.                                  */
+var MX = { period:null, month:null, open:null, pack:null, to:{}, says:"", busy:false };
+
+function mxMonth(d){ d = d || new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0,10); }
+
+function mxMonthName(s){
+  var d = new Date(s + "T00:00:00Z");
+  return d.toLocaleString("en-GB", { month:"long", year:"numeric", timeZone:"UTC" });
+}
+
+/* A screen is published from one place and its service is deployed from
+   another, and the two do not always land in the same minute. */
+function mxMissing(r){
+  return !!r && (r.error === "no_route" || r._status === 404);
+}
+
+/* ------------------------------------------------------ the dashboard line */
+async function mxCardLoad(){
+  var box = el("mxcard");
+  if (!box) return;
+  var m = await ops("/pack/month").catch(function(){ return null; });
+  /* A chair with no client view gets no card at all, and neither does a
+     dashboard whose service is not deployed yet. An empty box is better
+     than a card that explains itself on somebody's first screen. */
+  if (!m || m.error || !m.clients || !m.clients.length) { box.innerHTML = ""; return; }
+
+  var late = m.clients.filter(function(c){ return !c.sentAt; });
+  box.innerHTML = '<div class="card"><h2>This month’s escalation matrix</h2>' +
+    '<div class="mxline' + (late.length ? ' due' : ' done') + '">' + esc(m.says) + '</div>' +
+    (late.length
+      ? '<ul class="mxlist">' + late.slice(0, 6).map(function(c){
+          return '<li>' + esc(c.name) + ' <span class="mute">' + esc(c.ready) +
+            ' of ' + esc(c.branches) + ' branches ready' +
+            (c.incomplete ? ', ' + esc(c.incomplete) + ' with a missing level' : '') +
+            '</span></li>'; }).join("") +
+        (late.length > 6 ? '<li class="mute">and ' + (late.length - 6) + ' more</li>' : '') +
+        '</ul>'
+      : '') +
+    '<div class="plbar"><button class="btn" onclick="location.hash=\'#matrix\'">' +
+      (late.length ? 'Send this month’s matrix' : 'Open the matrix') + '</button></div></div>';
+}
+
+/* ------------------------------------------------- the section on #matrix */
+async function mxMonthLoad(){
+  if (!el("mxmonth")) return;
+  if (!MX.period) MX.period = mxMonth();
+  MX.month = await ops("/pack/month?period=" + MX.period);
+  if (mxMissing(MX.month)) {
+    el("mxmonth").innerHTML = msg("warn",
+      "The monthly pack is published but the service behind it is not deployed " +
+      "yet. The five levels below are live and can still be filled in; what " +
+      "cannot be done yet is sending them.");
+    return;
+  }
+  mxRender();
+}
+
+function mxRender(){
+  var box = el("mxmonth");
+  if (!box) return;
+  var m = MX.month || {};
+  var rows = m.clients || [];
+
+  var picker = '<select id="mxperiod">';
+  for (var i = 0; i < 12; i++) {
+    var d = new Date(); d.setUTCDate(1); d.setUTCMonth(d.getUTCMonth() - i);
+    var v = mxMonth(d);
+    picker += '<option value="' + v + '"' + (v === MX.period ? ' selected' : '') + '>' +
+      esc(mxMonthName(v)) + '</option>';
+  }
+  picker += '</select>';
+
+  box.innerHTML =
+    '<div class="card"><h2>What goes to the client this month</h2>' +
+    '<div class="plbar">' + picker + '<span class="mute">' + esc(m.says || "") + '</span></div>' +
+    (rows.length
+      ? '<div class="scroll"><table>' +
+        '<tr><th>Client</th><th>Ready</th><th>Held back</th><th>This month</th><th></th></tr>' +
+        rows.map(mxRow).join("") + '</table></div>'
+      : '<div class="empty">' + esc(m.says || "There is nothing to send.") + '</div>') +
+    '<div id="mxmsg">' + MX.says + '</div></div>';
+  mxWire();
+}
+
+function mxRow(c){
+  var open = MX.open === c.clientId;
+  return '<tr><td><b>' + esc(c.name) + '</b> <span class="mute">' + esc(c.code) + '</span>' +
+      '<div class="mute">' + esc(c.branches) + ' branch(es) covered · ' +
+        esc(c.recipients) + ' contact(s) on file</div></td>' +
+    '<td>' + esc(c.ready) + '</td>' +
+    '<td>' + (c.incomplete
+      ? '<span class="pill bad">' + esc(c.incomplete) + '</span>'
+      : '<span class="mute">none</span>') + '</td>' +
+    '<td>' + (c.sentAt
+      ? '<span class="pill ok">sent ' + esc(day(c.sentAt)) + '</span>' +
+        '<div class="mute">' + esc(c.sentCount) + ' branch(es)' +
+          (c.heldBack ? ', ' + esc(c.heldBack) + ' held back' : '') + '</div>'
+      : '<span class="pill warn">not yet</span>') + '</td>' +
+    '<td class="plact"><button class="btn" data-mxopen="' + esc(c.clientId) + '">' +
+      (open ? 'Close' : 'Open') + '</button></td></tr>' +
+    (open ? '<tr><td colspan="5">' + mxPack() + '</td></tr>' : '');
+}
+
+/* One client's pack, as it would go. Looking is not sending, so this draws
+   the letter and then asks. */
+function mxPack(){
+  var p = MX.pack;
+  if (!p) return '<p class="mute">Loading the pack…</p>';
+  if (p.error) return msg("bad", p.reason || p.error);
+
+  var rec = p.recipients || [];
+  var ready = p.branches || [];
+  var held = p.heldBack || [];
+  var picked = rec.filter(function(r){ return MX.to[r.email]; }).length;
+  var may = (MX.month || {}).maySend;
+
+  return '<div class="mxpack">' +
+    '<div class="mxsays">' + esc(p.says) + '</div>' +
+
+    (rec.length
+      ? '<h4 class="plh">Who it goes to</h4>' +
+        '<div class="mxrecs">' + rec.map(function(r){
+          return '<label class="mxrec"><input type="checkbox" data-mxto="' + esc(r.email) + '"' +
+            (MX.to[r.email] ? ' checked' : '') + '> <b>' + esc(r.email) + '</b> ' +
+            '<span class="mute">' + esc(r.kind.toLowerCase().replace(/_/g," ")) +
+            (r.name ? ' · ' + esc(r.name) : '') + '</span></label>'; }).join("") + '</div>'
+      : msg("warn", "This client has no contacts on file, so there is nobody to send it to. " +
+                    "Add them on the client before sending."))  +
+
+    (held.length
+      ? '<h4 class="plh">Held back</h4>' +
+        '<ul class="mxlist">' + held.map(function(b){
+          return '<li>' + esc(b.name) + ' <span class="mute">' + esc(b.code) + ' · ' +
+            esc(b.missing) + ' level(s) still blank</span></li>'; }).join("") + '</ul>'
+      : '') +
+
+    '<h4 class="plh">' + esc(ready.length) + ' branch(es) in the letter</h4>' +
+    (ready.length
+      ? '<div class="mxbranches">' + ready.map(mxBranch).join("") + '</div>'
+      : '<div class="empty">Nothing is complete enough to send.</div>') +
+
+    '<div class="plbar">' +
+      (may
+        ? '<button class="btn primary" id="mxsend"' +
+            (picked && ready.length ? '' : ' disabled') + '>' +
+            (picked && ready.length
+              ? 'Send to ' + picked + ' recipient(s)'
+              : !ready.length ? 'Nothing to send' : 'Choose at least one recipient') +
+          '</button>'
+        : '<span class="mute">Operations owns the matrix. You may read this and not send it.</span>') +
+      (p.dispatch && p.dispatch.sentAt
+        ? '<span class="mute">Already sent ' + esc(day(p.dispatch.sentAt)) +
+          '. Sending again replaces the snapshot and is recorded.</span>'
+        : '') +
+    '</div></div>';
+}
+
+function mxBranch(b){
+  return '<details class="mxb"><summary>' + esc(b.name) +
+    ' <span class="mute">' + esc(b.code) +
+    (b.usingClientDefault ? ' · using the client default' : '') + '</span></summary>' +
+    '<table class="mxlv">' + (b.levels || []).map(function(l){
+      return '<tr><td class="mxl">L' + esc(l.level) + '</td>' +
+        '<td>' + esc(l.levelName || "") + '</td>' +
+        '<td><b>' + esc(l.name || "—") + '</b></td>' +
+        '<td>' + esc(l.mobile || "") + '</td>' +
+        '<td>' + esc(l.email || "") + '</td></tr>'; }).join("") + '</table></details>';
+}
+
+/* ---------------------------------------------------------------- wiring */
+function mxWire(){
+  if (el("mxperiod")) el("mxperiod").onchange = async function(){
+    MX.period = el("mxperiod").value;
+    MX.open = null; MX.pack = null; MX.says = "";
+    await mxMonthLoad();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-mxopen]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-mxopen");
+      if (MX.open === id) { MX.open = null; MX.pack = null; mxRender(); return; }
+      MX.open = id; MX.pack = null; MX.says = ""; mxRender();
+      var p = await ops("/pack/client/" + id + "?period=" + MX.period);
+      if (MX.open !== id) return;
+      MX.pack = p;
+      /* The primary contact and its copies are the people this letter is
+         for. They are ticked to start with, and every one of them can be
+         un-ticked -- the default is a convenience, not a decision. */
+      MX.to = {};
+      (p.recipients || []).forEach(function(r){
+        if (/PRIMARY|HEAD_OFFICE/.test(r.kind || "")) MX.to[r.email] = true;
+      });
+      mxRender();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-mxto]"), function(b){
+    b.onchange = function(){ MX.to[b.getAttribute("data-mxto")] = b.checked; mxRender(); };
+  });
+
+  if (el("mxsend")) el("mxsend").onclick = async function(){
+    if (MX.busy) return;
+    MX.busy = true; el("mxsend").disabled = true;
+    var to = Object.keys(MX.to).filter(function(k){ return MX.to[k]; });
+    var o = await ops("/pack/send", { method:"POST", body:{
+      clientId: MX.open, period: MX.period, to: to } });
+    MX.busy = false;
+    MX.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note);
+    MX.pack = null;
+    await mxMonthLoad();
+    if (MX.open) {
+      MX.pack = await ops("/pack/client/" + MX.open + "?period=" + MX.period);
+      mxRender();
+    }
+  };
 }
 
 /* ---------------------------------------------------------- performance */
