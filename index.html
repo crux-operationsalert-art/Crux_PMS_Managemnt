@@ -734,12 +734,80 @@ var LABEL = {}; TABS.forEach(function(t){ LABEL[t[0]] = t[1]; });
 FAMILY.forEach(function(f){ f[1].forEach(function(t){ if (!LABEL[t[0]]) LABEL[t[0]] = t[1]; }); });
 var badges = {};
 
+/* --------------------------------------------------------------- access
+   The v2 design gives every chair its own navigation and one of eight
+   scope levels. This is that table, keyed on the chair title the
+   session already returns.
+
+   It decides what appears in the navigation and what currentTab() will
+   open. It is NOT the permission check. Every service decides for
+   itself and refuses in its own words; hiding a screen stops somebody
+   wandering into it and does nothing about somebody typing the URL. */
+var SCREENS = {
+  exec:    ["today","ogl","cases","pms","plb","visits","ideas","profile"],
+  team:    ["today","ogl","cases","pms","plb","people","visits","ideas","profile"],
+  branch:  ["today","ogl","cases","pms","plb","clients","people","hiring","joining",
+            "visits","ideas","reports","history","profile"],
+  partner: ["today","ogl","cases","pms","plb","clients","people","hiring","joining",
+            "visits","ideas","penalties","reports","history","profile"],
+  hr:      ["today","cases","pms","plb","people","hr","hiring","joining","visits",
+            "ideas","penalties","reports","history","mail","auto","config","profile"],
+  finance: ["today","cases","pms","plb","clients","people","hiring","visits","ideas",
+            "penalties","reports","history","auto","config","profile"],
+  analytics:["today","cases","pms","plb","people","ideas","data","coverage","reports",
+            "history","profile"],
+  staff:   ["today","cases","pms","plb","people","clients","visits","ideas","reports",
+            "history","profile"]
+};
+
+/* Branch, region and national carry the same list in the design; what
+   differs between them is how far they SEE, which is the service's
+   question, not this one. */
+var CHAIR_LEVEL = {
+  "Executive":"exec", "Field Executives / Verifiers":"exec",
+  "Back Office / Processing Executives":"exec",
+  "Branch Collection Executive":"exec", "Central Collections Executives":"exec",
+  "Team Leader / Supervisor":"team", "Partner Team Leader / Supervisor":"team",
+  "Branch Manager":"branch", "Zonal Manager":"branch", "Regional Manager":"branch",
+  "Assistant Vice President":"branch", "Head \u2014 Operations":"branch",
+  "Operations Head":"branch", "Sales Manager":"branch",
+  "Location Partner / Franchisee Partner":"partner",
+  "Head \u2014 HR Operations":"hr", "HR Executive":"hr",
+  "Head \u2014 Human Resources":"hr", "HR Operations":"hr",
+  "Head \u2014 Finance Operations":"finance", "Finance Head":"finance",
+  "Vice President":"finance", "Accounts":"finance",
+  "MIS & Business Analytics":"analytics",
+  "Business Excellence & PMO":"staff", "Assurance, Risk & Compliance":"staff",
+  "Legal & Compliance":"staff", "Company Secretary":"staff",
+  "Chief Executive Officer / Managing Director":"admin", "Managing Director":"admin"
+};
+
+/* A screen reached from inside a parent follows its parent. */
+var UNDER = { matrix:"clients", org:"people", whatsapp:"mail",
+              mis:"reports", tenday:"reports", rates:"reports", access:"reports" };
+
+function myLevel(){
+  if (!me) return "exec";
+  if (me.app_role === "ADMIN") return "admin";
+  var byChair = CHAIR_LEVEL[me.chair_title || ""];
+  if (byChair) return byChair;
+  /* No chair, or a chair nobody has classified yet: fall back on the
+     department, and failing that on the smallest list there is. A
+     person the tool cannot place should see less, not more. */
+  var d = me.department || "";
+  if (d === "Human Resources") return "hr";
+  if (d === "Finance & Accounts" || d === "Finance") return "finance";
+  if (d === "MIS") return "analytics";
+  return "exec";
+}
+
 function allowed(key){
-  if (key === "config") {
-    return !!me && (me.app_role === "ADMIN" ||
-      me.department === "Human Resources" || me.department === "Finance & Accounts");
-  }
-  return !ADMIN_TABS[key] || (me && me.app_role === "ADMIN");
+  if (!me) return false;
+  var lvl = myLevel();
+  if (lvl === "admin") return true;
+  var list = SCREENS[lvl] || SCREENS.exec;
+  var k = UNDER[key] || key;
+  return list.indexOf(k) > -1;
 }
 function badgeHtml(key, cls){
   var n = badges[key];
