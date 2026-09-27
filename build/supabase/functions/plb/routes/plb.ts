@@ -277,4 +277,166 @@ r.post("/dispute/withdraw", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// =====================================================================
+// The monthly cycle: a manager sets KPIs and targets, people file numbers
+// on the cadence they were given, and the numbers climb.
+//
+// Not one guard in here decides anything. perf_may_set() decides who may
+// set a KPI -- the reporting manager, HR, Business Excellence or an
+// administrator, and never the person themselves -- and perf_file()
+// decides who may file. Both are SECURITY DEFINER, so a caller who skips
+// this service is refused in exactly the same words.
+// =====================================================================
+
+const monthOf = (s?: string) => {
+  const d = s ? new Date(s) : new Date();
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+    .toISOString().slice(0, 10);
+};
+
+// The cycle for a period, and whether its two windows are open. A period
+// with no cycle is not an error: it is a month nobody has opened yet, and
+// the screen should say so rather than show an empty grid.
+r.get("/perf/cycle", async (req: any, res: any) => {
+  const period = monthOf(req.query.get("period") || undefined);
+  const kind = req.query.get("kind") === "QUARTER" ? "QUARTER" : "MONTH";
+  const c = await one(
+    `select id, period_start, period_kind, assign_opens, assign_closes,
+            entry_closes, state,
+            current_date <= assign_closes as assign_open,
+            current_date <= entry_closes  as entry_open
+       from perf_cycle where period_start = $1 and period_kind = $2`,
+    [period, kind],
+  );
+  return res.json({
+    period, kind, cycle: c,
+    mayOpen: req.person.app_role === "ADMIN" ||
+             ["Human Resources", "Business Excellence"].includes(req.person.department || ""),
+    note: c ? null : "No cycle has been opened for " + period + " yet.",
+  });
+});
+
+r.post("/perf/cycle/open", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select perf_cycle_open($1,$2,$3) as o`,
+    [req.person.id, monthOf(b.period), b.kind === "QUARTER" ? "QUARTER" : "MONTH"]);
+  return out(res, o.o);
+});
+
+// The whole tree for one person: their measures, their own splits under
+// each, and the people who roll into it under that. Defaults to the caller,
+// so "my performance" needs no argument.
+r.get("/perf/tree", async (req: any, res: any) => {
+  const who = req.query.get("person") || req.person.id;
+  const cycle = req.query.get("cycle");
+  if (!cycle) return res.status(400).json({ error: "missing_cycle" });
+  const o = await one(`select perf_tree($1,$2) as o`, [who, cycle]);
+  return res.json(o.o);
+});
+
+// What is due from me today. The cadence decides, and the working-day
+// calendar behind it is the same one the dispute window runs on.
+r.get("/perf/due", async (req: any, res: any) => {
+  const on = req.query.get("on") || null;
+  const o = await one(`select perf_due($1, coalesce($2::date, current_date)) as o`,
+    [req.person.id, on]);
+  return res.json({ due: o.o, on: on });
+});
+
+r.post("/perf/file", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select perf_file($1,$2,$3::date,$4::numeric,$5) as o`,
+    [req.person.id, b.assignmentId, b.asOf, b.value, b.note || null]);
+  return out(res, o.o);
+});
+
+// ------------------------------------------------------------ setting
+
+// Who I may set KPIs for. A manager's own reports, and for HR or an
+// administrator everybody -- asked of the database rather than decided
+// here, so the list and the gate cannot disagree.
+r.get("/perf/team", async (req: any, res: any) => {
+  const people = await many(
+    `select p.id as "personId", p.full_name as name, p.employee_no as "employeeNo",
+            p.department,
+            (select ch.title from chair_holder h join chair ch on ch.id = h.chair_id
+              where h.person_id = p.id and h.to_date is null
+              order by h.is_primary desc, ch.title limit 1) as chair
+       from person p
+      where p.superseded_by is null and p.employment_status = 'ACTIVE'
+        and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+        and perf_may_set($1, p.id)
+      order by p.full_name`,
+    [req.person.id],
+  );
+  return res.json({ people });
+});
+
+// What a chair is measured on, so a manager starts from the registry
+// rather than from a blank box. My own measures come back too, because a
+// KPI given to somebody has to climb into one of mine.
+r.get("/perf/measures", async (req: any, res: any) => {
+  const chair = req.query.get("chair");
+  const cycle = req.query.get("cycle");
+  const catalogue = await many(
+    `select k.id, k.name, k.unit, k.cadence::text as cadence,
+            k.accrual::text as accrual, k.mandatory,
+            perf_accrual_kind(k.id, k.unit) as kind
+       from kpi_definition k
+      where k.active and k.position < 100
+        and ($1::uuid is null or k.chair_id = $1::uuid)
+      order by k.position, k.name`,
+    [chair],
+  );
+  const mine = cycle
+    ? await many(
+      `select a.id as "assignmentId", a.name, a.unit, a.split_label as split
+         from perf_assignment a
+        where a.person_id = $1 and a.cycle_id = $2::uuid
+        order by a.name, a.split_label`,
+      [req.person.id, cycle],
+    )
+    : [];
+  return res.json({ catalogue, mine });
+});
+
+r.post("/perf/assign", async (req: any, res: any) => {
+  const o = await one(`select perf_assign($1, $2::jsonb) as o`,
+    [req.person.id, JSON.stringify(req.body || {})]);
+  return out(res, o.o);
+});
+
+// The same measures onto many people at once. Every one still goes through
+// perf_assign inside the database, so nobody is given a KPI by a route that
+// skips the checks, and the answer says which were refused and why.
+r.post("/perf/assign/bulk", async (req: any, res: any) => {
+  const o = await one(`select perf_assign_bulk($1, $2::jsonb) as o`,
+    [req.person.id, JSON.stringify(req.body || {})]);
+  return out(res, o.o);
+});
+
+r.post("/perf/carry", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select perf_carry_forward($1,$2,$3,$4) as o`,
+    [req.person.id, b.cycleId, b.personId, b.keepTargets === true]);
+  return out(res, o.o);
+});
+
+// The six months behind a measure, so a target is set against what happened.
+r.get("/perf/history", async (req: any, res: any) => {
+  const o = await one(`select perf_history($1,$2,$3,$4) as o`,
+    [req.query.get("person") || req.person.id,
+     req.query.get("name"), req.query.get("kpi"),
+     Number(req.query.get("months") || 6)]);
+  return res.json({ history: o.o });
+});
+
+r.get("/perf/score", async (req: any, res: any) => {
+  const cycle = req.query.get("cycle");
+  if (!cycle) return res.status(400).json({ error: "missing_cycle" });
+  const o = await one(`select perf_kpi_score($1,$2) as o`,
+    [req.query.get("person") || req.person.id, cycle]);
+  return res.json(o.o);
+});
+
 export default r;
