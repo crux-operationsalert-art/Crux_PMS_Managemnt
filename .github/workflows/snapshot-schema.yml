@@ -64,7 +64,11 @@ jobs:
           jq -e 'type == "object"' snap.json > /dev/null \
             || { echo "::error::Not an object."; head -c 500 snap.json; exit 1; }
           n=$(jq -r 'keys | length' snap.json)
-          [ "$n" -ge 15 ] || { echo "::error::Only $n files came back; expected at least 15."; exit 1; }
+          [ "$n" -ge 19 ] || { echo "::error::Only $n files came back; expected at least 19."; exit 1; }
+          jq -e '.["09_staging.sql"] | test("create schema if not exists stg;")' snap.json > /dev/null \
+            || { echo "::error::No stg schema; two of the migration views will not build."; exit 1; }
+          jq -e '.["10_tables.sql"] | test("generated always as")' snap.json > /dev/null \
+            || { echo "::error::plb_month_score.monthly_score came back as a default again."; exit 1; }
           jq -e '.["10_tables.sql"] | test("create table if not exists public.person ")' snap.json > /dev/null \
             || { echo "::error::No person table in the tables file."; exit 1; }
           jq -e '.["40_functions_1.sql"] | length > 20000' snap.json > /dev/null \

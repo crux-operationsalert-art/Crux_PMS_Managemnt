@@ -55,8 +55,18 @@ begin
     with cols as (
       select c.relname as tbl, a.attnum,
              quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
-             case when a.attnotnull then ' not null' else '' end ||
-             coalesce(' default ' || pg_get_expr(ad.adbin, ad.adrelid), '') as col
+             -- pg_attrdef holds a generated column's expression in the same
+             -- place it holds a default, and writing one out as the other
+             -- produces a table Postgres refuses: "cannot use column
+             -- reference in DEFAULT expression". There is exactly one such
+             -- column, plb_month_score.monthly_score, and it is the whole
+             -- reason this case exists.
+             case
+               when a.attgenerated = 's'
+                 then ' generated always as (' || pg_get_expr(ad.adbin, ad.adrelid) || ') stored'
+               else coalesce(' default ' || pg_get_expr(ad.adbin, ad.adrelid), '')
+             end ||
+             case when a.attnotnull then ' not null' else '' end as col
         from pg_class c
         join pg_namespace n on n.oid = c.relnamespace
         join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
@@ -138,8 +148,10 @@ end $fn$;
 
 -- The sequences are generated separately and before the tables, because a
 -- column default that calls nextval on a sequence that does not exist yet is
--- a table that will not load. They are all owned by a column, so the
--- ownership is restated too, or dropping the table would leave them behind.
+-- a table that will not load. Which column owns which sequence is a separate
+-- part, and a separate file, because ALTER SEQUENCE ... OWNED BY names a
+-- table and so cannot be said until the tables are there. Without it a
+-- dropped table leaves its sequence behind.
 --
 -- Row level security gets its own file for a reason worth writing down: it
 -- is on for 150 of the 155 tables and 121 of those carry no policy at all.
@@ -157,19 +169,21 @@ as $fn$
   select case p_part
 
     when 'sequences' then coalesce((
-      select string_agg(s, E'\n' order by s) from (
-        select 'create sequence if not exists public.' || quote_ident(c.relname) || ';' as s
-          from pg_class c join pg_namespace n on n.oid = c.relnamespace
-         where n.nspname = 'public' and c.relkind = 'S'
-        union all
-        select 'alter sequence public.' || quote_ident(c.relname) || ' owned by public.' ||
-               quote_ident(t.relname) || '.' || quote_ident(a.attname) || ';'
-          from pg_class c
-          join pg_namespace n on n.oid = c.relnamespace
-          join pg_depend d on d.objid = c.oid and d.deptype = 'a' and d.classid = 'pg_class'::regclass
-          join pg_class t on t.oid = d.refobjid
-          join pg_attribute a on a.attrelid = t.oid and a.attnum = d.refobjsubid
-         where n.nspname = 'public' and c.relkind = 'S') q), '')
+      select string_agg('create sequence if not exists public.' || quote_ident(c.relname) || ';',
+                        E'\n' order by c.relname)
+        from pg_class c join pg_namespace n on n.oid = c.relnamespace
+       where n.nspname = 'public' and c.relkind = 'S'), '')
+
+    when 'sequence_owners' then coalesce((
+      select string_agg('alter sequence public.' || quote_ident(c.relname) || ' owned by public.' ||
+                        quote_ident(t.relname) || '.' || quote_ident(a.attname) || ';',
+                        E'\n' order by c.relname)
+        from pg_class c
+        join pg_namespace n on n.oid = c.relnamespace
+        join pg_depend d on d.objid = c.oid and d.deptype = 'a' and d.classid = 'pg_class'::regclass
+        join pg_class t on t.oid = d.refobjid
+        join pg_attribute a on a.attrelid = t.oid and a.attnum = d.refobjsubid
+       where n.nspname = 'public' and c.relkind = 'S'), '')
 
     when 'rls' then coalesce((
       select string_agg(s, E'\n' order by o, s) from (
@@ -264,6 +278,39 @@ as $fn$
   from cron.job
 $fn$;
 
+-- stg is where the legacy spreadsheets landed. It is not part of the running
+-- tool, it carries no constraints and nothing in the application reads it --
+-- but migration_coverage_shape and migration_unaccounted do, and a rebuild
+-- without it is a rebuild two views short. That is exactly the kind of thing
+-- a hand-written baseline forgets and a generated one cannot.
+create or replace function public.schema_snapshot_stg()
+returns text
+language sql
+stable
+security definer
+set search_path to 'public'
+as $fn$
+  with cols as (
+    select c.relname as tbl, a.attnum,
+           quote_ident(a.attname) || ' ' || format_type(a.atttypid, a.atttypmod) ||
+           case
+             when a.attgenerated = 's'
+               then ' generated always as (' || pg_get_expr(ad.adbin, ad.adrelid) || ') stored'
+             else coalesce(' default ' || pg_get_expr(ad.adbin, ad.adrelid), '')
+           end ||
+           case when a.attnotnull then ' not null' else '' end as col
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
+      left join pg_attrdef ad on ad.adrelid = c.oid and ad.adnum = a.attnum
+     where n.nspname = 'stg' and c.relkind = 'r')
+  select 'create schema if not exists stg;' || E'\n\n' ||
+         coalesce(string_agg(t, E'\n\n' order by tbl), '')
+    from (select tbl, 'create table if not exists stg.' || quote_ident(tbl) || ' (' || E'\n  ' ||
+                 string_agg(col, E',\n  ' order by attnum) || E'\n);' as t
+            from cols group by tbl) q
+$fn$;
+
 -- ------------------------------------------------------- the whole picture
 create or replace function public.schema_snapshot()
 returns jsonb
@@ -274,8 +321,10 @@ set search_path to 'public'
 as $fn$
   with b(f, title, note, body) as (values
     ('05_types.sql',        'types',            'Every enum the schema uses. Nothing here has a table behind it, so this file loads first and alone.', public.schema_snapshot_part('types')),
-    ('08_sequences.sql',    'sequences',        'The three sequences that column defaults call. They are generated before the tables because a default that calls nextval on a sequence that does not exist is a table that will not load.', public.schema_snapshot_part2('sequences')),
+    ('08_sequences.sql',    'sequences',        'Created before the tables, because a column default that calls nextval on a sequence that does not exist is a table that will not load. Which column owns which sequence is in 11_sequence_owners.sql, because that cannot be said until the tables are there.', public.schema_snapshot_part2('sequences')),
+    ('09_staging.sql',      'the staging schema', 'stg is where the legacy spreadsheets landed. It is not part of the running tool and carries no constraints, but two of the migration audit views read it, so a database without it is a database two views short.', public.schema_snapshot_stg()),
     ('10_tables.sql',       'tables',           'Columns and defaults only. Keys, checks, foreign keys and indexes each have their own file, so no table in here depends on another and load order is free.', public.schema_snapshot_part('tables')),
+    ('11_sequence_owners.sql', 'sequence ownership', 'The other half of 08. Without it a dropped table leaves its sequence behind.', public.schema_snapshot_part2('sequence_owners')),
     ('20_keys.sql',         'primary keys and unique constraints', 'Added before the foreign keys, so every unique a foreign key needs is already in place.', public.schema_snapshot_part('keys')),
     ('21_checks.sql',       'check constraints', 'These come after the functions: person_mobile_shape calls person_mobile(), and a CHECK is resolved when the ALTER TABLE runs.', public.schema_snapshot_part('checks')),
     ('22_foreign_keys.sql', 'foreign keys',      'Last of the constraints, so the order the tables loaded in never mattered.', public.schema_snapshot_part('fkeys')),

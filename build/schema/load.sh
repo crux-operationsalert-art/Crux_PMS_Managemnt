@@ -13,7 +13,9 @@
 #   08  sequences                before the tables, because a column default
 #                                that calls nextval on a sequence that does
 #                                not exist is a table that will not load
+#   09  staging                  the stg schema two audit views read
 #   10  tables                   columns and defaults only
+#   11  sequence ownership       after the tables, because OWNED BY names one
 #   20  keys                     before the foreign keys need them
 #   40  functions                before the checks, because a CHECK can call
 #                                one (person_mobile_shape does)
@@ -53,11 +55,28 @@ run() {
 }
 
 echo "Rebuilding from $here"
-for f in 00_extensions.sql 05_types.sql 08_sequences.sql 10_tables.sql \
-         20_keys.sql \
+for f in 00_extensions.sql 05_types.sql 08_sequences.sql 09_staging.sql \
+         10_tables.sql 11_sequence_owners.sql 20_keys.sql \
          40_functions_1.sql 40_functions_2.sql 40_functions_3.sql 40_functions_4.sql \
-         21_checks.sql 22_foreign_keys.sql 30_indexes.sql \
-         50_views.sql 60_triggers.sql 70_rls.sql 75_grants.sql 80_comments.sql; do
+         21_checks.sql 22_foreign_keys.sql 30_indexes.sql; do
+  run "$f"
+done
+
+# The views are the one file whose own order can matter, because a view may
+# read another view and they are written out by name. Rather than invent a
+# dependency sort, load the file again while it is still making progress.
+# Three passes is one more than the deepest stack the schema has.
+for pass in 1 2 3; do
+  before=$(psql "$DB" -tAc "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','seam') and c.relkind='v'")
+  psql "$DB" -q -c 'set check_function_bodies = off' -f "$here/50_views.sql" >/dev/null 2>&1 || true
+  after=$(psql "$DB" -tAc "select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','seam') and c.relkind='v'")
+  [ "$before" = "$after" ] && break
+done
+want=$(grep -c '^create or replace view ' "$here/50_views.sql")
+printf '  %-24s %8s of %s views\n' 50_views.sql "$after" "$want"
+[ "$after" = "$want" ] || { echo "not every view was created" >&2; exit 1; }
+
+for f in 60_triggers.sql 70_rls.sql 75_grants.sql 80_comments.sql; do
   run "$f"
 done
 

@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
-# Run migrations 190-199 and their behaviour tests against a throwaway local
-# Postgres, so they are proved before they are applied to the project.
-#
-# Why this exists: "CREATE OR REPLACE FUNCTION succeeded" is not a test.
-# plpgsql checks syntax when a function is created and nothing at all about
-# the functions its body calls. Everything here RUNS the code.
+# Rebuild the database from build/schema alone, then run the behaviour tests
+# against it.
 #
 #   ./build/test/run.sh
 #
-# Needs postgresql-16 on the path. Nothing touches Supabase.
+# This is the proof behind the claim in build/migration/README.md. The claim
+# is that the repository can rebuild the database. A claim like that is worth
+# nothing asserted, so this asserts nothing: it takes a blank Postgres, loads
+# the baseline and nothing else -- no build/schema.sql, no fixture standing in
+# for what the baseline was missing, no migration applied on top -- and then
+# runs the same assertions the live project passes.
+#
+# It also counts what it built and says so, because "the load did not error"
+# and "the database is there" are different sentences.
+#
+# Needs postgresql-16 on the path. Nothing here touches Supabase.
 set -euo pipefail
 
 PGBIN=${PGBIN:-/usr/lib/postgresql/16/bin}
@@ -18,7 +24,8 @@ PORT=${PORT:-55432}
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
 
 as() { if [ "$(id -un)" = "$RUNAS" ]; then bash -c "$1"; else su "$RUNAS" -c "$1"; fi; }
-psq() { psql "host=$BASE port=$PORT user=$RUNAS dbname=crux" "$@"; }
+DSN="host=$BASE port=$PORT user=$RUNAS dbname=crux"
+psq() { psql "$DSN" "$@"; }
 
 id -u "$RUNAS" >/dev/null 2>&1 || useradd -m "$RUNAS"
 
@@ -31,49 +38,74 @@ fi
 as "$PGBIN/dropdb   -h $BASE -p $PORT -U $RUNAS --if-exists crux"
 as "$PGBIN/createdb -h $BASE -p $PORT -U $RUNAS crux"
 
-# The base schema, with the two expression-based UNIQUE constraints rewritten
-# as indexes -- they are not valid table constraints and never were, which is
-# one more sign that build/schema.sql is a design document rather than the
-# DDL that built the project.
-python3 - "$REPO" <<'PY'
-import io, sys
-r = sys.argv[1]
-a = io.open(r + "/build/schema.sql", encoding="utf-8").read()
-a = a.replace(",\n  constraint client_contact_uniq unique (client_id, kind, lower(email))\n", "\n")
-a = a.replace(",\n  constraint client_zone_uniq unique (client_id, lower(name))\n", "\n")
-a += "\ncreate unique index client_contact_uniq on client_contact (client_id, kind, lower(email));\n"
-a += "create unique index client_zone_uniq on client_zone (client_id, lower(name));\n"
-io.open("/tmp/crux_schema_test.sql", "w", encoding="utf-8").write(a)
-PY
-
-echo "== base schema"
-psq -q -c "create extension if not exists pgcrypto;" >/dev/null
-psq -q -f /tmp/crux_schema_test.sql 2>&1 | grep -c ERROR || true
-
-echo "== what Supabase provides and a local cluster does not"
-psq -q <<'SQL' >/dev/null
-do $$ begin create role anon;          exception when duplicate_object then null; end $$;
-do $$ begin create role authenticated; exception when duplicate_object then null; end $$;
-create schema if not exists cron;
-create or replace function cron.schedule(jobname text, sched text, cmd text)
-returns bigint language sql as $$ select 1::bigint $$;
+# The three roles Supabase creates for every project. The grants file and
+# several policies name them, and a plain cluster has none of them.
+echo "== the roles Supabase provides and a local cluster does not"
+psq -q <<'SQL'
+do $$ begin create role anon         nologin; exception when duplicate_object then null; end $$;
+do $$ begin create role authenticated nologin; exception when duplicate_object then null; end $$;
+do $$ begin create role service_role  nologin; exception when duplicate_object then null; end $$;
 SQL
 
-echo "== the live shape, reconstructed (see the header of the fixture)"
-psq -v ON_ERROR_STOP=1 -q -f "$REPO/build/test/fixture_live_shape.sql"
+echo "== rebuilding from build/schema, and from nothing else"
+PATH="$PGBIN:$PATH" "$REPO/build/schema/load.sh" "$DSN"
 
-echo "== migrations"
-for f in 190_the_monthly_kpi_cycle 191_assigning_a_kpi_for_a_month \
-         192_filing_a_number 193_how_a_number_climbs 194_setting_and_filing \
-         195_what_a_manager_sees 196_the_matrix_that_goes_out \
-         197_the_reminder_on_the_cadence 198_the_matrix_nudge \
-         199_a_split_without_an_id_is_still_a_split \
-         200_adds_is_a_default_nobody_set \
-         201_the_tenth_of_the_month 202_my_tab; do
-  psq -v ON_ERROR_STOP=1 -q -f "$REPO/build/migration/$f.sql" >/dev/null
-  echo "   applied $f"
-done
+echo
+echo "== what got built"
+psq -tA <<'SQL'
+select '   tables    ' || count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relkind='r';
+select '   functions ' || count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='public' and p.prokind in ('f','p');
+select '   views     ' || count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname in ('public','seam') and c.relkind='v';
+select '   indexes   ' || count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
+  where n.nspname='public' and c.relkind='i';
+select '   triggers  ' || count(*) from pg_trigger t join pg_class c on c.oid=t.tgrelid
+  join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and not t.tgisinternal;
+select '   policies  ' || count(*) from pg_policies where schemaname='public';
+SQL
 
+# A function whose body calls a function that does not exist is created
+# without complaint -- that is how person_merge_plan came to call
+# person_merge_side, which was never there. Nothing in a load can catch it,
+# so it is checked here, once, against everything that loaded.
+echo
+echo "== every function the bodies call is present"
+missing=$(psq -tA <<'SQL'
+with called as (
+  select distinct m[1] as name
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral regexp_matches(p.prosrc, '([a-z][a-z0-9_]{3,})\s*\(', 'g') m
+   where n.nspname = 'public' and p.prokind in ('f','p'))
+select string_agg(c.name, ', ' order by c.name)
+  from called c
+ where not exists (select 1 from pg_proc p2 join pg_namespace n2 on n2.oid = p2.pronamespace
+                    where p2.proname = c.name and n2.nspname in ('public','pg_catalog','cron','extensions'))
+   and not exists (select 1 from pg_type t where t.typname = c.name)
+   and c.name not in (
+     -- plpgsql keywords and SQL constructs the pattern also matches
+     'select','insert','update','delete','values','where','when','case','coalesce',
+     'exists','array','exception','raise','return','returns','declare','begin','loop',
+     'using','order','group','having','union','distinct','filter','over','partition',
+     'interval','extract','position','overlay','substring','trim','cast','row','rows',
+     'grouping','lateral','with','recursive','then','else','from','into','perform',
+     'execute','format','concat','nullif','greatest','least','jsonb','json','text',
+     'numeric','decimal','character','timestamp','time','date','boolean','integer',
+     'bigint','smallint','uuid','interval','xmlelement','collate','offset','limit',
+     'fetch','only','natural','inner','outer','left','right','full','cross','join',
+     'on','and','or','not','null','true','false','end','elsif','elseif','if','while',
+     'for','foreach','continue','exit','assert','get','diagnostics','found','new','old')
+SQL
+)
+if [ -n "$missing" ]; then
+  echo "   MISSING: $missing"
+else
+  echo "   none missing"
+fi
+
+echo
 echo "== behaviour"
 out=$(psq -q -f "$REPO/build/test/test_190_198.sql" 2>&1 | sed 's/^psql:[^ ]* //')
 echo "$out" | grep -E 'PASS|FAIL|ERROR|---' || true
@@ -81,4 +113,4 @@ pass=$(echo "$out" | grep -c 'PASS' || true)
 fail=$(echo "$out" | grep -cE 'FAIL|ERROR' || true)
 echo
 echo "== $pass passed, $fail failed"
-[ "$fail" = "0" ]
+[ "$fail" = "0" ] && [ -z "$missing" ]

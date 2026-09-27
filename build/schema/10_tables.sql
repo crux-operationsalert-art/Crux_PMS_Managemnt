@@ -1327,7 +1327,7 @@ create table if not exists public.plb_month_score (
   month date not null,
   kpi_points numeric(4,2),
   attr_points numeric(4,2),
-  monthly_score numeric(5,3) default ((0.75 * kpi_points) + (0.25 * attr_points)),
+  monthly_score numeric(5,3) generated always as (((0.75 * kpi_points) + (0.25 * attr_points))) stored,
   self_kpi numeric(4,2),
   self_attr numeric(4,2),
   self_at timestamp with time zone,
