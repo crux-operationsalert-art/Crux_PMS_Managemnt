@@ -34,6 +34,15 @@ across a team — because getting it wrong at any one of them is how 93% and
 | `194_setting_and_filing.sql` | `perf_cycle_open`, `perf_may_set`, `perf_assign`, `perf_assign_bulk`, `perf_carry_forward`, `perf_file` |
 | `195_what_a_manager_sees.sql` | `perf_node`, `perf_tree`, `perf_history`, `perf_kpi_score` |
 | `196_the_matrix_that_goes_out.sql` | `matrix_dispatch`, `matrix_scope_branches`, `matrix_client_view`, `matrix_pack`, `matrix_month`, `matrix_send` |
+| `197_the_reminder_on_the_cadence.sql` | a corrected `perf_due` on the working-day clock, `perf_roll_forward`, `perf_reminder_sweep`, the `PERF_REMINDERS` job |
+| `198_the_matrix_nudge.sql` | `matrix_nudge_sweep`, the `MATRIX_NUDGE` job. Depends on 196 |
+| `199_a_split_without_an_id_is_still_a_split.sql` | replaces two unique indexes on `perf_assignment` that contradicted the table's own CHECK |
+
+**All ten now run, and 87 assertions pass against them** — `./build/test/run.sh`
+builds a throwaway Postgres 16, applies 190–199 and exercises them. That run
+found five defects that reading had not, including one that would have made
+`perf_file` return a 500 and one that would have refused a legitimate split.
+`build/test/README.md` lists them.
 
 Apply them in that order. 194 and 195 are already split into chunks small
 enough for the gate in the file itself; 196 is three sections separated by
