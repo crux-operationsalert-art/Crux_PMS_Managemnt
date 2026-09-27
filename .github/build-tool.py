@@ -568,6 +568,7 @@ PATCHES.append((
       '  if (lvl === "admin") return true;', 1)],
 ))
 
+print("%d patches to consider." % len(PATCHES))
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
