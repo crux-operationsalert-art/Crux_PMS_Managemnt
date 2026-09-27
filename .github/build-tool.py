@@ -165,6 +165,110 @@ PATCHES.append((
       '  }', 1)],
 ))
 
+# ----------------------------------- 5. EVERY CHAIR SAW EVERY SCREEN
+# The v2 design gives each chair its own navigation and one of eight scope
+# levels. The tool shipped one flat list of 21 screens to everybody, so an
+# administrator looking at Crux as a Field Executive found Penalty ledger,
+# Data setup and Settings on a screen the design gives seven entries.
+#
+# allowed() only ever asked two questions -- is this one of three admin
+# tabs, and is Settings allowed -- so every other screen was open to
+# everyone who could sign in.
+#
+# READ THIS BEFORE TRUSTING IT. Hiding a screen is not a permission check.
+# It stops somebody wandering into a screen that is not theirs; it does not
+# stop somebody typing the URL, and it is not what keeps anybody's data
+# safe. The real check belongs in the services, per endpoint, and that work
+# is listed in build/SECURITY_scope.md. This closes what the owner actually
+# saw and makes the navigation match the design; it does not close the
+# underlying hole, and saying otherwise would be worse than the hole.
+PATCHES.append((
+    "each chair sees its own screens",
+    "CHAIR_LEVEL",
+    [('function allowed(key){\n'
+      '  if (key === "config") {\n'
+      '    return !!me && (me.app_role === "ADMIN" ||\n'
+      '      me.department === "Human Resources" || me.department === "Finance & Accounts");\n'
+      '  }\n'
+      '  return !ADMIN_TABS[key] || (me && me.app_role === "ADMIN");\n'
+      '}',
+      '/* --------------------------------------------------------------- access\n'
+      '   The v2 design gives every chair its own navigation and one of eight\n'
+      '   scope levels. This is that table, keyed on the chair title the\n'
+      '   session already returns.\n'
+      '\n'
+      '   It decides what appears in the navigation and what currentTab() will\n'
+      '   open. It is NOT the permission check. Every service decides for\n'
+      '   itself and refuses in its own words; hiding a screen stops somebody\n'
+      '   wandering into it and does nothing about somebody typing the URL. */\n'
+      'var SCREENS = {\n'
+      '  exec:    ["today","ogl","cases","pms","plb","visits","ideas","profile"],\n'
+      '  team:    ["today","ogl","cases","pms","plb","people","visits","ideas","profile"],\n'
+      '  branch:  ["today","ogl","cases","pms","plb","clients","people","hiring","joining",\n'
+      '            "visits","ideas","reports","history","profile"],\n'
+      '  partner: ["today","ogl","cases","pms","plb","clients","people","hiring","joining",\n'
+      '            "visits","ideas","penalties","reports","history","profile"],\n'
+      '  hr:      ["today","cases","pms","plb","people","hr","hiring","joining","visits",\n'
+      '            "ideas","penalties","reports","history","mail","auto","config","profile"],\n'
+      '  finance: ["today","cases","pms","plb","clients","people","hiring","visits","ideas",\n'
+      '            "penalties","reports","history","auto","config","profile"],\n'
+      '  analytics:["today","cases","pms","plb","people","ideas","data","coverage","reports",\n'
+      '            "history","profile"],\n'
+      '  staff:   ["today","cases","pms","plb","people","clients","visits","ideas","reports",\n'
+      '            "history","profile"]\n'
+      '};\n'
+      '\n'
+      '/* Branch, region and national carry the same list in the design; what\n'
+      '   differs between them is how far they SEE, which is the service\'s\n'
+      '   question, not this one. */\n'
+      'var CHAIR_LEVEL = {\n'
+      '  "Executive":"exec", "Field Executives / Verifiers":"exec",\n'
+      '  "Back Office / Processing Executives":"exec",\n'
+      '  "Branch Collection Executive":"exec", "Central Collections Executives":"exec",\n'
+      '  "Team Leader / Supervisor":"team", "Partner Team Leader / Supervisor":"team",\n'
+      '  "Branch Manager":"branch", "Zonal Manager":"branch", "Regional Manager":"branch",\n'
+      '  "Assistant Vice President":"branch", "Head \\u2014 Operations":"branch",\n'
+      '  "Operations Head":"branch", "Sales Manager":"branch",\n'
+      '  "Location Partner / Franchisee Partner":"partner",\n'
+      '  "Head \\u2014 HR Operations":"hr", "HR Executive":"hr",\n'
+      '  "Head \\u2014 Human Resources":"hr", "HR Operations":"hr",\n'
+      '  "Head \\u2014 Finance Operations":"finance", "Finance Head":"finance",\n'
+      '  "Vice President":"finance", "Accounts":"finance",\n'
+      '  "MIS & Business Analytics":"analytics",\n'
+      '  "Business Excellence & PMO":"staff", "Assurance, Risk & Compliance":"staff",\n'
+      '  "Legal & Compliance":"staff", "Company Secretary":"staff",\n'
+      '  "Chief Executive Officer / Managing Director":"admin", "Managing Director":"admin"\n'
+      '};\n'
+      '\n'
+      '/* A screen reached from inside a parent follows its parent. */\n'
+      'var UNDER = { matrix:"clients", org:"people", whatsapp:"mail",\n'
+      '              mis:"reports", tenday:"reports", rates:"reports", access:"reports" };\n'
+      '\n'
+      'function myLevel(){\n'
+      '  if (!me) return "exec";\n'
+      '  if (me.app_role === "ADMIN") return "admin";\n'
+      '  var byChair = CHAIR_LEVEL[me.chair_title || ""];\n'
+      '  if (byChair) return byChair;\n'
+      '  /* No chair, or a chair nobody has classified yet: fall back on the\n'
+      '     department, and failing that on the smallest list there is. A\n'
+      '     person the tool cannot place should see less, not more. */\n'
+      '  var d = me.department || "";\n'
+      '  if (d === "Human Resources") return "hr";\n'
+      '  if (d === "Finance & Accounts" || d === "Finance") return "finance";\n'
+      '  if (d === "MIS") return "analytics";\n'
+      '  return "exec";\n'
+      '}\n'
+      '\n'
+      'function allowed(key){\n'
+      '  if (!me) return false;\n'
+      '  var lvl = myLevel();\n'
+      '  if (lvl === "admin") return true;\n'
+      '  var list = SCREENS[lvl] || SCREENS.exec;\n'
+      '  var k = UNDER[key] || key;\n'
+      '  return list.indexOf(k) > -1;\n'
+      '}', 1)],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
