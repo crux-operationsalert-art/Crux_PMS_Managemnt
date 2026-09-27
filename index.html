@@ -576,7 +576,19 @@ async function call(base, path, opts){
   var ct = r.headers.get("content-type")||"";
   var b = ct.indexOf("json")>=0 ? await r.json() : { _text: await r.text() };
   b._status = r.status;
-  if (r.status === 401) { signOut(); }
+  /* Our own session check saying "not signed in" is a reason to sign out.
+     A gateway refusing a single service is not: it says nothing about the
+     session, and treating it as if it did is how one misconfigured
+     function locked everybody out of the whole tool. */
+  if (r.status === 401) {
+    if (b && (b.error === "not_signed_in" || b.error === "sign_in_required")) {
+      signOut();
+    } else if (b && !b.error) {
+      b.error = "service_unreachable";
+      b.reason = "That part of the tool refused the request before it arrived. "
+        + "It is nothing to do with your sign-in, and nothing else is affected.";
+    }
+  }
   return b;
 }
 var ORG  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/org";
