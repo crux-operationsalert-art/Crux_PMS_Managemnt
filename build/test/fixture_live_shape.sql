@@ -42,11 +42,14 @@ alter table job_run     add column if not exists state text;
 alter table holiday     add column if not exists confirmed boolean not null default false;
 alter table person      add column if not exists employee_type text;
 
+-- The real labels, read off the live project. They are not the ones a
+-- reader would guess: the accrual enum is ADDS/REPLACES, not SUM/LEVEL, and
+-- the cadence enum has no day-of-month at all -- which is migration 201.
 do $$ begin
-  create type kpi_cadence as enum ('DAILY','WEEKLY','DAY_OF_MONTH','MONTH_END');
+  create type kpi_cadence as enum ('DAILY','WEEKLY','MONTHLY','QUARTERLY');
 exception when duplicate_object then null; end $$;
 do $$ begin
-  create type kpi_accrual as enum ('SUM','LEVEL');
+  create type kpi_accrual as enum ('ADDS','REPLACES');
 exception when duplicate_object then null; end $$;
 
 alter table kpi_definition add column if not exists cadence kpi_cadence;

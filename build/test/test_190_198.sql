@@ -34,7 +34,8 @@ delete from branch where client_id in (select id from client where code = 'SBI')
 delete from client_contact where client_id in (select id from client where code = 'SBI');
 delete from client where code = 'SBI';
 delete from kpi_definition where name in
-  ('Case Target','Quality score','Branch case target');
+  ('Case Target','Quality score','Branch case target',
+   'Pct marked adds','Count marked replaces');
 delete from chair_holder where person_id in
   (select id from person where work_email like '%@crux.test');
 delete from chair where code in ('BM','FE');
@@ -107,9 +108,12 @@ begin
   -- the catalogue: one measure that accumulates, one that is a level
   insert into kpi_definition (chair_id, name, unit, active, mandatory, position,
                               cadence, accrual)
-  values (ch_fe, 'Case Target', 'cases', true, true, 1, 'DAILY', 'SUM'),
-         (ch_fe, 'Quality score', '%', true, false, 2, 'WEEKLY', 'LEVEL'),
-         (ch_bm, 'Branch case target', 'cases', true, true, 1, 'DAILY', 'SUM');
+  values (ch_fe, 'Case Target', 'cases', true, true, 1, 'DAILY', 'ADDS'),
+         (ch_fe, 'Quality score', '%', true, false, 2, 'WEEKLY', 'ADDS'),
+         (ch_bm, 'Branch case target', 'cases', true, true, 1, 'DAILY', 'ADDS'),
+         -- the two shapes the live registry actually contains, for 200
+         (ch_fe, 'Pct marked adds', '% of target', true, false, 3, 'MONTHLY', 'ADDS'),
+         (ch_fe, 'Count marked replaces', 'cases', true, false, 4, 'MONTHLY', 'REPLACES');
 
   create temp table who (nm text primary key, id uuid);
   insert into who values ('hr',hr),('boss',boss),('rep',rep),('other',other),
@@ -299,6 +303,17 @@ begin
 
   perform t_ok('the kind is read off the catalogue, not guessed',
                perf_accrual_kind((select kpi_id from perf_assignment where id=a_qual), '%') = 'LEVEL');
+  -- 200: a percentage that claims to accumulate is a default nobody set,
+  -- and believing it is how 93% and 88% became 181%.
+  perform t_ok('a percentage marked ADDS is still a level',
+               (select perf_accrual_kind(id, unit) from kpi_definition
+                 where name = 'Pct marked adds') = 'LEVEL');
+  perform t_ok('an explicit REPLACES wins even on a counted unit',
+               (select perf_accrual_kind(id, unit) from kpi_definition
+                 where name = 'Count marked replaces') = 'LEVEL');
+  perform t_ok('and a plain count still accumulates',
+               (select perf_accrual_kind(id, unit) from kpi_definition
+                 where name = 'Case Target') = 'SUM');
   perform t_ok('a unit with a percent sign is a level even with no catalogue',
                perf_accrual_kind(null, '%') = 'LEVEL');
   perform t_ok('anything else accumulates',
