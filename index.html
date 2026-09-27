@@ -551,7 +551,10 @@ button.exp:hover{border-color:var(--blue);color:var(--blue);background:var(--whi
 <script>
 var CRUX = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/crux";
 var API  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/api";
-var token = localStorage.getItem("cruxToken") || "";
+function aaGet(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
+function aaSet(k, v){ try { localStorage.setItem(k, v); } catch (e) { /* memory only */ } }
+function aaDrop(k){ try { localStorage.removeItem(k); } catch (e) { /* nothing to do */ } }
+var token = aaGet("cruxToken") || "";
 var me = null, scope = null;
 
 function el(id){ return document.getElementById(id); }
@@ -602,7 +605,7 @@ async function boot(){
       callback: async function(resp){
         var out = await crux("/api/google", { method:"POST", body:{ credential: resp.credential } });
         if (out.error) { el("loginMsg").innerHTML = msg("bad", out.reason || out.error); return; }
-        token = out.token; localStorage.setItem("cruxToken", token); start(out.person);
+        token = out.token; aaSet("cruxToken", token); start(out.person);
       }
     });
     google.accounts.id.renderButton(el("gbtn"), { theme:"outline", size:"large", width:340 });
@@ -619,7 +622,7 @@ el("go").onclick = async function(){
     var out = await crux("/api/login", { method:"POST",
       body:{ email: el("em").value.trim(), password: el("pw").value } });
     if (out.error) { el("loginMsg").innerHTML = msg("bad", out.reason || out.error); return; }
-    token = out.token; localStorage.setItem("cruxToken", token); el("pw").value = "";
+    token = out.token; aaSet("cruxToken", token); el("pw").value = "";
     start(out.person);
   } catch(e){ el("loginMsg").innerHTML = msg("bad", String(e)); }
   finally { b.disabled = false; }
@@ -627,7 +630,7 @@ el("go").onclick = async function(){
 el("pw").addEventListener("keydown", function(e){ if (e.key==="Enter") el("go").click(); });
 
 function signOut(){
-  token=""; localStorage.removeItem("cruxToken"); me=null;
+  token=""; aaDrop("cruxToken"); aaDrop("cruxAdminToken"); me=null;
   el("app").classList.add("hide"); el("signin").classList.remove("hide");
   document.body.classList.remove("sheet-open"); badges={};
 }
