@@ -470,11 +470,70 @@ PATCHES.append((
      ('ops("/pack/', 'packApi("/pack/', 5)],
 ))
 
+# ------------------------------------------- 9. MY PROFILE, AS DRAWN
+# The design's My profile is three things and its own subtitle says which:
+# "Your details, your tasks, and anything you need from another department."
+# The build had the first two. The third had no control, no route and no
+# row -- even though `raisable` and `request_task` have been in the schema
+# since the beginning, shaped for exactly this, and both empty.
+#
+# This replaces the screen rather than adding beside it, because a second
+# profile screen is how the page ended up with two vPeople.
+SCREEN_MINE = io.open("build/app/screen-mytab.js", encoding="utf-8").read()
+
+PATCHES.append((
+    "my profile, as the design draws it",
+    "function myRender(",
+    [# the whole of the old vProfile, replaced. A span rather than a literal:
+     # the function is 7,400 characters and quoting it here to delete it would
+     # be 7,400 more chances to get one of them wrong.
+     (("async function vProfile(){",
+       "\n/* ------------------------------------------------ hiring & pending chairs"),
+      SCREEN_MINE.rstrip() + "\n", 1),
+     # the styles the design's layout needs
+     ('.hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}',
+      '.hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}\n'
+      '/* ------------------------------------------------------------------ mine\n'
+      '   Two columns, and the left one is the only terracotta thing on the\n'
+      '   page -- because it is the only part of it that is somebody else\'s\n'
+      '   clock.                                                            */\n'
+      '.mygrid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(0,1.6fr);\n'
+      '  gap:16px;align-items:start}\n'
+      '.mycol{min-width:0}\n'
+      '.card.mytasks{border-color:var(--terra)}\n'
+      '.card.mytasks>h2{background:var(--terra-bg);color:var(--terra-ink);\n'
+      '  border-bottom-color:var(--terra-line)}\n'
+      '.mytask{padding:13px 15px;border-bottom:1px solid var(--line3)}\n'
+      '.mytask .myt{font-size:14px;font-weight:600;line-height:1.35;color:var(--ink)}\n'
+      '.mytask .mute{font-size:12px;margin-top:4px}\n'
+      '.mytask .btn{margin-top:9px}\n'
+      '.mytask.late{background:var(--terra-bg)}\n'
+      '.mytask.quiet .myt{font-weight:400}\n'
+      '.mylate{font-size:12px;margin-top:4px;color:var(--terra-ink)}\n'
+      '@media (max-width:860px){ .mygrid{grid-template-columns:1fr} }', 1)],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
         continue
     for old, new, want in rules:
+        # A rule may name a SPAN -- ("from", "up to but not including") --
+        # when what it replaces is a whole function. Quoting a 7,400-character
+        # function literally, only to delete it, is 7,400 more chances to get
+        # one character wrong; both ends are still asserted to occur exactly
+        # once, so a page that has moved still fails the build.
+        if isinstance(old, tuple):
+            a_, b_ = old
+            if app.count(a_) != want or app.count(b_) != want:
+                sys.exit("::error::%s: span markers %r / %r occur %d / %d times, "
+                         "expected %d each. The application has moved; re-check "
+                         "the matching migration before publishing."
+                         % (name, a_[:40], b_[:40], app.count(a_), app.count(b_), want))
+            i_ = app.index(a_)
+            j_ = app.index(b_, i_)
+            app = app[:i_] + new + app[j_:]
+            continue
         found = app.count(old)
         if found != want:
             sys.exit("::error::%s: expected %d of %r, found %d. The application has "

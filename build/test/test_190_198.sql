@@ -573,6 +573,131 @@ begin
                (select count(*) from outbox where template_key='MATRIX_NUDGE') = n, n::text);
 end $$;
 
+-- ============================================ 202: anything you need from
+-- another department
+do $$
+declare hr uuid; boss uuid; rep uuid; o jsonb; task uuid; d jsonb;
+begin
+  select id into hr from who where nm='hr'; select id into boss from who where nm='boss';
+  select id into rep from who where nm='rep';
+  delete from request_task; delete from raisable; delete from notification;
+
+  o := request_raise(boss, jsonb_build_object('department','Human Resources'));
+  perform t_ok('a request with nothing in it is refused',
+               o->>'error' = 'incomplete', o::text);
+
+  o := request_raise(boss, jsonb_build_object(
+         'department','Technology', 'type','Equipment', 'body','A second monitor'));
+  perform t_ok('a department with nobody in it is refused in words',
+               o->>'error' = 'nobody_there', o::text);
+
+  o := request_raise(hr, jsonb_build_object(
+         'department','Human Resources', 'body','Something from myself'));
+  perform t_ok('and being the only one there is a different refusal',
+               o->>'error' = 'only_you', o::text);
+
+  o := request_raise(boss, jsonb_build_object(
+         'department','Human Resources', 'type','Document',
+         'body','A copy of my appointment letter'));
+  perform t_ok('a real request is raised', (o->>'ok')::boolean, o::text);
+  perform t_ok('and it names who it went to', o->>'responder' = 'Hema Rao', o::text);
+  perform t_ok('and when it is due', (o->>'dueAt')::timestamptz > now(), o::text);
+  perform t_ok('and the reference is a REQ', o->>'ref' like 'REQ%', o->>'ref');
+  task := (o->>'taskId')::uuid;
+
+  perform t_ok('the responder was told',
+               exists (select 1 from notification n join person p on p.id = n.person_id
+                        where p.full_name = 'Hema Rao' and n.kind = 'REQUEST_RAISED'));
+
+  o := request_action(boss, task);
+  perform t_ok('the person who raised it cannot action it',
+               o->>'error' = 'not_yours', o::text);
+
+  o := request_action(hr, task, 'Attached.');
+  perform t_ok('the responder can', (o->>'ok')::boolean, o::text);
+  perform t_ok('and it was inside the time', (o->>'late')::boolean = false, o::text);
+  perform t_ok('the raiser was told back',
+               exists (select 1 from notification n where n.kind = 'REQUEST_ACTIONED'));
+
+  o := request_action(hr, task);
+  perform t_ok('actioning it again says so rather than doing it twice',
+               o->>'note' like 'That one was already actioned%', o::text);
+end $$;
+
+-- ------------------------------------------------------------ the strikes
+do $$
+declare hr uuid; boss uuid; rep uuid; o jsonb; task uuid; n int;
+begin
+  select id into hr from who where nm='hr'; select id into boss from who where nm='boss';
+  select id into rep from who where nm='rep';
+  delete from request_task; delete from raisable; delete from notification;
+
+  -- Reva reports to Bharat, so a strike against Reva reaches Bharat
+  o := request_raise(hr, jsonb_build_object(
+         'department','Operations', 'body','The Kothrud rate card'));
+  task := (o->>'taskId')::uuid;
+  update request_task set responder_id = rep where id = task;
+  update request_task set due_at = now() - interval '2 hours' where id = task;
+
+  o := request_strike_sweep();
+  perform t_ok('an overdue request takes a strike', (o->>'strikes')::int = 1, o::text);
+  perform t_ok('and the responder is told',
+               exists (select 1 from notification n
+                        where n.person_id = rep and n.kind = 'REQUEST_STRIKE'));
+  perform t_ok('but the manager is not, on the first',
+               not exists (select 1 from notification n
+                            where n.person_id = boss and n.kind = 'REQUEST_STRIKE'));
+
+  perform request_strike_sweep();
+  perform t_ok('on the second the manager is told',
+               exists (select 1 from notification n
+                        where n.person_id = boss and n.kind = 'REQUEST_STRIKE'));
+
+  perform request_strike_sweep();
+  perform request_strike_sweep();
+  select strike_count into n from request_task where id = task;
+  perform t_ok('and it stops at three', n = 3, n::text);
+
+  o := request_action(rep, task);
+  perform t_ok('actioning it late says it was late', (o->>'late')::boolean, o::text);
+end $$;
+
+-- ------------------------------------------------------------- the screen
+do $$
+declare rep uuid; boss uuid; d jsonb; docs jsonb;
+begin
+  select id into rep from who where nm='rep'; select id into boss from who where nm='boss';
+
+  d := my_desk(rep);
+  perform t_ok('the desk names the person', d#>>'{person,name}' = 'Reva Pawar', d::text);
+  perform t_ok('employment has six lines',
+               jsonb_array_length(d->'employment') = 6, d->>'employment');
+  perform t_ok('and names the chair',
+               d::text like '%Field Executive%', d->>'employment');
+  perform t_ok('contact has the four the design asks for',
+               jsonb_array_length(d->'contact') = 4, d->>'contact');
+  perform t_ok('including an address, which the person table had nowhere for',
+               d->>'contact' like '%Address%', d->>'contact');
+
+  perform t_ok('all four documents are listed',
+               jsonb_array_length(d->'documents') = 4, d->>'documents');
+  perform t_ok('and one nobody has asked for has no state rather than a blank',
+               (d#>'{documents,0,state}') = 'null'::jsonb, d->>'documents');
+
+  insert into person_document (person_id, kind, state) values (rep, 'ID_PROOF', 'VERIFIED')
+  on conflict (person_id, kind) do update set state = 'VERIFIED';
+  d := my_desk(rep);
+  perform t_ok('and one that has been produced carries its state',
+               d#>>'{documents,0,state}' = 'VERIFIED', d->>'documents');
+
+  perform t_ok('what I asked for is on my desk',
+               jsonb_array_length(d->'raised') >= 0, d->>'raised');
+  perform t_ok('and what is waiting on me is separate from it',
+               d ? 'onMe', d::text);
+  perform t_ok('and what I owe today comes from the same perf_due',
+               d ? 'dueToday', d::text);
+end $$;
+
 -- ===================================================================== done
 do $$
 declare n int;

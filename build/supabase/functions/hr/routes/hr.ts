@@ -14,7 +14,7 @@
 // code belongs in an e-mail and never in a log, so person_add() creates
 // the person and this file mints the code and hands it to the outbox.
 // =====================================================================
-import { Router, one, enqueue, issueActivation } from "../shim.ts";
+import { Router, one, many, enqueue, issueActivation } from "../shim.ts";
 const r = Router();
 
 // Creating a person makes an account. HR's, or an administrator's — and
@@ -179,6 +179,51 @@ r.post("/act/as", async (req: any, res: any) => {
   );
   if (o.o?.error) return out(res, o.o);
   return res.json({ token, person: o.o, note: o.o.note });
+});
+
+// ------------------------------------------------------------- my desk
+// My profile, as the design draws it: "Your details, your tasks, and
+// anything you need from another department."
+//
+// One read for the whole page, because a screen that needs four round trips
+// to draw itself has four chances to arrive half-finished. Everything in it
+// comes from my_desk(), which is SECURITY DEFINER and answers only about the
+// caller -- there is no person argument to pass, so there is nothing to
+// tamper with.
+//
+// The departments list is the one thing decided here rather than there, and
+// it is not a decision: it is whichever departments actually have somebody
+// active in them. The design hardcodes five; a hardcoded list is how you end
+// up offering a department nobody works in.
+r.get("/desk", async (req: any, res: any) => {
+  const [d, depts] = await Promise.all([
+    one(`select my_desk($1) as d`, [req.person.id]),
+    many(`select department as name, count(*)::int as people
+            from person
+           where employment_status = 'ACTIVE' and superseded_by is null
+             and coalesce(btrim(department),'') <> ''
+           group by department order by department`),
+  ]);
+  return res.json({ ...(d?.d ?? {}), departments: depts });
+});
+
+// Raising it. Who answers, when it is due and whether there is anybody there
+// to answer at all are all decided by request_raise(), so a caller that skips
+// this service gets the same answers.
+r.post("/desk/request", async (req: any, res: any) => {
+  const o = await one(`select request_raise($1, $2::jsonb) as o`,
+    [req.person.id, JSON.stringify(req.body || {})]);
+  return out(res, o.o);
+});
+
+// Actioning it. Only the responder may, which request_action() enforces --
+// clearing somebody else's task would clear the record without clearing the
+// work.
+r.post("/desk/request/action", async (req: any, res: any) => {
+  const b = req.body || {};
+  const o = await one(`select request_action($1,$2,$3) as o`,
+    [req.person.id, b.taskId, b.note || null]);
+  return out(res, o.o);
 });
 
 export default r;

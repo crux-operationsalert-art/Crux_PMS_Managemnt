@@ -69,7 +69,7 @@ for f in 190_the_monthly_kpi_cycle 191_assigning_a_kpi_for_a_month \
          197_the_reminder_on_the_cadence 198_the_matrix_nudge \
          199_a_split_without_an_id_is_still_a_split \
          200_adds_is_a_default_nobody_set \
-         201_the_tenth_of_the_month; do
+         201_the_tenth_of_the_month 202_my_tab; do
   psq -v ON_ERROR_STOP=1 -q -f "$REPO/build/migration/$f.sql" >/dev/null
   echo "   applied $f"
 done

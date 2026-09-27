@@ -116,3 +116,82 @@ begin
   end loop;
   return d;
 end $$;
+
+-- pms_cfg and the working-hours clock, verbatim from migration 92. The same
+-- reason as person_centre above: 92 is a file that carries its SQL, but it
+-- does not apply cleanly against a database built from schema.sql alone, so
+-- a clean local rebuild does not get these and request_raise falls over on
+-- the line that works out when a request is due.
+create or replace function pms_cfg(p_key text, p_default numeric)
+returns numeric language sql stable set search_path to 'public' as $$
+  select coalesce((select value::numeric from app_setting where key = p_key), p_default);
+$$;
+
+create or replace function working_hours_after(
+  p_from timestamptz, p_hours numeric, p_centre text)
+returns timestamptz language plpgsql stable set search_path to 'public' as $$
+declare
+  cur     timestamptz := p_from;
+  left_   numeric     := p_hours;
+  open_h  int := coalesce((select split_part(value, ':', 1)::int from app_setting where key = 'day_start'), 10);
+  close_h int := coalesce((select split_part(value, ':', 1)::int from app_setting where key = 'day_end'), 19);
+  sat_h   numeric := pms_cfg('sat_hours', 4);
+  sat_on  boolean := coalesce((select value ilike 'y%' from app_setting where key = 'sat'), true);
+  day_cap numeric;
+  avail   numeric;
+begin
+  while left_ > 0 loop
+    if extract(dow from cur) = 0
+       or (extract(dow from cur) = 6 and not sat_on)
+       or holiday_applies(cur::date, p_centre) then
+      cur := date_trunc('day', cur) + interval '1 day' + (open_h || ' hours')::interval;
+      continue;
+    end if;
+    day_cap := case when extract(dow from cur) = 6 then sat_h else close_h - open_h end;
+    if cur::time < (open_h || ':00')::time then
+      cur := date_trunc('day', cur) + (open_h || ' hours')::interval;
+    end if;
+    avail := least(day_cap, extract(epoch from ((date_trunc('day', cur) + ((open_h + day_cap) || ' hours')::interval) - cur)) / 3600.0);
+    if avail <= 0 then
+      cur := date_trunc('day', cur) + interval '1 day' + (open_h || ' hours')::interval;
+      continue;
+    end if;
+    if left_ <= avail then
+      return cur + (left_ || ' hours')::interval;
+    end if;
+    left_ := left_ - avail;
+    cur := date_trunc('day', cur) + interval '1 day' + (open_h || ' hours')::interval;
+  end loop;
+  return cur;
+end $$;
+
+-- The two-argument form now delegates, with no centre: national holidays only.
+create or replace function working_hours_after(p_from timestamptz, p_hours numeric)
+returns timestamptz language sql stable set search_path to 'public' as $$
+  select working_hours_after(p_from, p_hours, null::text);
+$$;
+
+insert into app_setting (key, value, plain_language, group_name) values
+  ('day_start','10:00','The working day starts at 10.','Working week'),
+  ('day_end','19:00','The working day ends at 19:00.','Working week'),
+  ('sat_hours','4','Hours counted on a Saturday.','Working week')
+on conflict (key) do nothing;
+
+-- next_ref, read off the live project with pg_get_functiondef because it is
+-- in no migration file at all -- one more thing that exists only inside
+-- Supabase. ref_counter is created here for the same reason.
+create table if not exists ref_counter (
+  prefix  text primary key,
+  last_no bigint not null default 0
+);
+
+create or replace function next_ref(p_prefix text, p_width integer default 5)
+returns text language plpgsql set search_path to 'public' as $fn$
+declare v bigint;
+begin
+  insert into ref_counter (prefix, last_no) values (p_prefix, 0)
+    on conflict (prefix) do nothing;
+  update ref_counter set last_no = last_no + 1
+   where prefix = p_prefix returning last_no into v;
+  return p_prefix || '-' || lpad(v::text, p_width, '0');
+end $fn$;
