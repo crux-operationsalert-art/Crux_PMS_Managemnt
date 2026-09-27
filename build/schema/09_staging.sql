@@ -5,7 +5,7 @@
 -- database with a migration, then regenerate. build/schema/REGENERATE.md
 -- says how, and build/migration/README.md says why this exists.
 --
--- stg is where the legacy spreadsheets landed. It is not part of the running tool and carries no constraints, but two of the migration audit views read it, so a database without it is a database two views short.
+-- stg is where the legacy spreadsheets landed. No part of the running tool reads it, but two of the migration audit views do -- tables, constraints, indexes and the five text normalisers they call.
 -- =====================================================================
 
 create schema if not exists stg;
