@@ -92,6 +92,29 @@ the unmeasured chairs have an obvious counterpart that is measured —
 `Finance Head` — which is why this is partly a mapping problem and not only an
 authoring one.
 
+**F6 — What enforcement actually changed, counted.** Every active person,
+every gated route, asked of `access_may_open()` after the change. Before it,
+all 104 reached all eleven:
+
+| route group | reaches it now | levels |
+|---|---|---|
+| `coverage` (Places, coverage & owners) | 4 of 104 | admin |
+| `hr` | 6 of 104 | admin, hr |
+| `auto` (Automations) | 8 of 104 | admin, finance, hr |
+| `joining` | 28 of 104 | admin, branch, hr, partner |
+| `access`, `mis`, `rates`, `reports`, `tenday` | 30 of 104 | admin, branch, finance, hr, partner |
+| `ideas`, `visits` | 104 of 104 | everybody, as before |
+
+Seventy-four people lost the rate master alone. No screen anybody could
+*reach* has been taken away: the gate is the navigation's own table, so the
+change is only to what a typed URL does.
+
+**F7 — A permission for a group that cannot open the screen.** `places.ts`
+carries `mayAssign`, which lets Operations assign coverage. No Operations
+chair carries `coverage` in `SCREENS`, so Operations cannot open the screen
+that permission is for. Either the permission is vestigial or the policy is
+missing a row; both are one line, and neither is mine to choose.
+
 **F5 — Every one of those chairs already says what it is answerable for.**
 `chair_measure` holds 501 statements across 152 chairs, 3 to 6 for each of the
 twelve. That is the source the measure sets are written from; nothing is
@@ -142,6 +165,8 @@ calls, so a change to the policy moves both at once.
 | D4 | Do not merge the duplicate chairs | Changes the org chart; the owner's call |
 | D5 | Measures written from each chair's own `chair_measure` statements | The chair has already said what it is answerable for |
 | D6 | Reuse a counterpart chair's wording where one exists | Two names for one number is worse than one |
+| D7 | The baseline carries the five `access_*` tables' ROWS | Without them a rebuilt database answers false for everybody; that is configuration, not data (207, 208) |
+| D8 | The snapshot regenerates when a migration lands, not only when the workflow changes | Regenerating by hand is the step a person forgets |
 
 ## Risks
 
@@ -197,3 +222,34 @@ calls, so a change to the policy moves both at once.
 * `api` cannot be redeployed, so its routes keep the guards they have. They
   scope their reads already; what they do not have is the level gate. If `api`
   is ever split or shrunk, `requireScreen` should go on it too.
+
+---
+
+## What the verification found, after the work looked finished
+
+Rebuilding from `build/schema` is what caught all of these. None would have
+been visible from the live project, because the live project already had them
+right.
+
+| | |
+|---|---|
+| The baseline held the access tables' shape and none of their rows | A rebuilt database answered false for everybody and every screen. Fixed by 207 |
+| 207 built its VALUES rows with `jsonb_each_text`, which orders keys by LENGTH | `access_level` came out as (note, label, level) under the headings (level, label, note). Fixed by 208, which reads each value by name in column order and asserts five literal rows |
+| 207's own guard checked the key order of one table whose two columns happen to agree with length order | A check that passes by coincidence is not a check |
+| `80_comments.sql` commented on functions the baseline does not create | The rebuild stopped on `schema_snapshot_policy() does not exist`. Fixed by 209 |
+| `run.sh` died silently on a failing test | `psql` exits non-zero when an assertion RAISEs, and `set -e` killed the script before it printed which one |
+| `test_190_198` could not run twice | Its seed deleted people that `notification` and `request_task` still named |
+| `test_scope` left branches with no escalation contacts behind | Which made the other file's nudge count two people instead of one — a failure with nothing wrong with it |
+| The workflow guard added with 207 carried a literal `\x27` instead of an apostrophe | It could never match, so the snapshot failed on it rather than committing. Rewritten as a `grep` against the written file |
+
+## Final state
+
+```
+./build/test/run.sh
+  tables 160  functions 318  views 21  indexes 334  triggers 11  policies 52
+  every function the bodies call is present
+  the navigation and the database agree on all 262 of them
+  151 passed, 0 failed
+```
+
+Built from `build/schema` and nothing else.
