@@ -8,6 +8,43 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.ops_alert_raise(p_kind text, p_title text, p_dedupe_key text, p_severity text DEFAULT 'WARN'::text, p_detail text DEFAULT NULL::text, p_action_hint text DEFAULT NULL::text, p_retry_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_entity_type text DEFAULT NULL::text, p_entity_id uuid DEFAULT NULL::uuid, p_for_role text DEFAULT 'ADMIN'::text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_id uuid;
+begin
+  insert into ops_alert (kind, severity, title, detail, action_hint, for_role,
+                         entity_type, entity_id, dedupe_key, retry_at)
+  values (p_kind, p_severity, p_title, p_detail, p_action_hint, p_for_role,
+          p_entity_type, p_entity_id, p_dedupe_key, p_retry_at)
+  on conflict (dedupe_key) where resolved_at is null
+  do update set last_seen_at = now(),
+                occurrences  = ops_alert.occurrences + 1,
+                detail       = coalesce(excluded.detail, ops_alert.detail),
+                retry_at     = coalesce(excluded.retry_at, ops_alert.retry_at),
+                severity     = excluded.severity
+  returning id into v_id;
+  return v_id;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ops_alert_resolve(p_dedupe_key text, p_note text DEFAULT NULL::text)
+ RETURNS integer
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  with done as (
+    update ops_alert set resolved_at = now(), resolved_note = p_note
+     where dedupe_key = p_dedupe_key and resolved_at is null
+    returning 1)
+  select count(*)::int from done
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.org_chair(p_code text)
  RETURNS jsonb
  LANGUAGE sql
@@ -3303,34 +3340,6 @@ begin
 
   floored := cy.on_probation and final < floor_score;
   if floored then final := floor_score; end if;
-  return next;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_cycle_state(p_cycle uuid)
- RETURNS TABLE(attr numeric, kpi numeric, cut numeric, held numeric)
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare rec record;
-begin
-  attr := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'ATTRIBUTE'), 0);
-  kpi  := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'KPI'), 0);
-  cut  := 0;
-  held := coalesce((select sum(abs(a.points)) from pms_adjustment a
-                     where a.cycle_id = p_cycle and not a.applied), 0);
-
-  for rec in select a.points as pts, a.half as hf from pms_adjustment a
-              where a.cycle_id = p_cycle and a.applied
-              order by a.at, a.id loop
-    if rec.hf = 'ATTRIBUTE' then
-      attr := greatest(0, least(10, attr + rec.pts));
-    else
-      if rec.pts < 0 then cut := cut - rec.pts; end if;
-      kpi := greatest(0, least(10, kpi + rec.pts));
-    end if;
-  end loop;
   return next;
 end $function$
 ;

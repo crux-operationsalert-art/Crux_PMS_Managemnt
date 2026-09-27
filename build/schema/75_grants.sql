@@ -9,6 +9,16 @@
 -- =====================================================================
 
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public."case" to service_role;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_chair_level to anon;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_chair_level to service_role;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_department_level to anon;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_department_level to service_role;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_level to anon;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_level to service_role;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_level_screen to anon;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_level_screen to service_role;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_screen_parent to anon;
+grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.access_screen_parent to service_role;
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.ai_call to service_role;
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.ai_key to service_role;
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.app_page to service_role;
@@ -208,6 +218,11 @@ grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.wa
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.wa_budget to service_role;
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.wa_outbox to anon;
 grant DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE on public.wa_outbox to service_role;
+grant REFERENCES, SELECT, TRIGGER on public.access_chair_level to authenticated;
+grant REFERENCES, SELECT, TRIGGER on public.access_department_level to authenticated;
+grant REFERENCES, SELECT, TRIGGER on public.access_level to authenticated;
+grant REFERENCES, SELECT, TRIGGER on public.access_level_screen to authenticated;
+grant REFERENCES, SELECT, TRIGGER on public.access_screen_parent to authenticated;
 grant REFERENCES, SELECT, TRIGGER on public.ai_call to authenticated;
 grant REFERENCES, SELECT, TRIGGER on public.ai_key to authenticated;
 grant REFERENCES, SELECT, TRIGGER on public.app_setting to authenticated;
@@ -332,6 +347,15 @@ grant SELECT, UPDATE, USAGE on sequence public.cutover_check_id_seq to service_r
 grant SELECT, UPDATE, USAGE on sequence public.login_attempt_id_seq to anon;
 grant SELECT, UPDATE, USAGE on sequence public.login_attempt_id_seq to authenticated;
 grant SELECT, UPDATE, USAGE on sequence public.login_attempt_id_seq to service_role;
+grant execute on function public.access_level_of(p_person uuid) to anon;
+grant execute on function public.access_level_of(p_person uuid) to authenticated;
+grant execute on function public.access_level_of(p_person uuid) to service_role;
+grant execute on function public.access_may_open(p_person uuid, p_screen text) to anon;
+grant execute on function public.access_may_open(p_person uuid, p_screen text) to authenticated;
+grant execute on function public.access_may_open(p_person uuid, p_screen text) to service_role;
+grant execute on function public.access_screens(p_person uuid) to anon;
+grant execute on function public.access_screens(p_person uuid) to authenticated;
+grant execute on function public.access_screens(p_person uuid) to service_role;
 grant execute on function public.add_business_minutes(p_from timestamp with time zone, p_minutes integer, p_cal uuid) to anon;
 grant execute on function public.add_business_minutes(p_from timestamp with time zone, p_minutes integer, p_cal uuid) to authenticated;
 grant execute on function public.add_business_minutes(p_from timestamp with time zone, p_minutes integer, p_cal uuid) to service_role;

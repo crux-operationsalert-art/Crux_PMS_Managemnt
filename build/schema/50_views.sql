@@ -382,7 +382,9 @@ create or replace view seam.tenday_snapshot as
     b.day10 * 4 AS sheet_x4,
     b.day10::numeric * 3.5 AS sheet_x35,
     b.day10::numeric * 3.25 AS sheet_x325,
-    b.source_ref AS src
+    b.source_ref AS src,
+    b.client_id,
+    b.geo_node_id
    FROM business_record b
      LEFT JOIN geo_node g ON g.id = b.geo_node_id
   WHERE b.day10 IS NOT NULL;

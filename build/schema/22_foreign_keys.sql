@@ -8,6 +8,9 @@
 -- Last of the constraints, so the order the tables loaded in never mattered.
 -- =====================================================================
 
+alter table public.access_chair_level add constraint access_chair_level_level_fkey FOREIGN KEY (level) REFERENCES access_level(level);
+alter table public.access_department_level add constraint access_department_level_level_fkey FOREIGN KEY (level) REFERENCES access_level(level);
+alter table public.access_level_screen add constraint access_level_screen_level_fkey FOREIGN KEY (level) REFERENCES access_level(level) ON DELETE CASCADE;
 alter table public.ai_call add constraint ai_call_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES person(id);
 alter table public.ai_call add constraint ai_call_ai_key_id_fkey FOREIGN KEY (ai_key_id) REFERENCES ai_key(id);
 alter table public.app_setting add constraint app_setting_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES person(id);

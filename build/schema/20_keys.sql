@@ -8,6 +8,11 @@
 -- Added before the foreign keys, so every unique a foreign key needs is already in place.
 -- =====================================================================
 
+alter table public.access_chair_level add constraint access_chair_level_pkey PRIMARY KEY (chair_title);
+alter table public.access_department_level add constraint access_department_level_pkey PRIMARY KEY (department);
+alter table public.access_level add constraint access_level_pkey PRIMARY KEY (level);
+alter table public.access_level_screen add constraint access_level_screen_pkey PRIMARY KEY (level, screen);
+alter table public.access_screen_parent add constraint access_screen_parent_pkey PRIMARY KEY (screen);
 alter table public.ai_call add constraint ai_call_pkey PRIMARY KEY (id);
 alter table public.ai_key add constraint ai_key_pkey PRIMARY KEY (id);
 alter table public.app_page add constraint app_page_pkey PRIMARY KEY (slug);

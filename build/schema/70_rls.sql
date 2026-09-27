@@ -9,6 +9,11 @@
 -- =====================================================================
 
 alter table public."case" enable row level security;
+alter table public.access_chair_level enable row level security;
+alter table public.access_department_level enable row level security;
+alter table public.access_level enable row level security;
+alter table public.access_level_screen enable row level security;
+alter table public.access_screen_parent enable row level security;
 alter table public.ai_call enable row level security;
 alter table public.ai_key enable row level security;
 alter table public.app_page enable row level security;

@@ -44,6 +44,9 @@ comment on column public.reason_taxonomy.pause_eligible is 'Whether an RFI citin
 comment on column public.sla_instance.tat_business_minutes is 'A snapshot. A later rule change never moves a live clock.';
 comment on column public.sla_rule.op_node_id is 'The operating zone this rule is narrowed to, or null for every zone.';
 comment on column public.strike_event.location_id is 'The location as at the breach, not as at now. A person who moves branch does not move their history with them.';
+comment on function public.access_level_of(p_person uuid) is 'The scope level this person is at. Administrator, then primary chair, then department, then exec.';
+comment on function public.access_may_open(p_person uuid, p_screen text) is 'May this person open this screen. The one question the navigation and every service both ask, so that they cannot answer it differently.';
+comment on function public.access_screens(p_person uuid) is 'Every screen key this person may open, children included. What auth_whoami hands the browser and what the ops service gates on.';
 comment on function public.auth_gate() is 'Refuses any sign-in that is not a Crux Workspace address already present and active on the people master. The three refusal messages are different on purpose: the person needs to know which one applies to them.';
 comment on function public.automation_load(p_rows jsonb) is 'Loads build/data/automations.json into automation. Takes the rows as jsonb so it does not care how they arrived.';
 comment on function public.case_auto_close_window() is 'Sets auto_close_at from the auto_close_days setting when an escalation is resolved, so the number an administrator sees is the number in force.';
@@ -70,6 +73,11 @@ comment on function public.sample_purge() is 'Removes every tagged placeholder a
 comment on function public.ul_code(p text) is 'A code out of a spreadsheet. Strips the .0 a number column picks up, so branch 108 does not arrive as 108.0 and fail to match anything.';
 comment on function public.ul_date(p text) is 'Reads a date the way a person writes one. The ONE definition every upload uses, for both validating and applying -- a validator that asked a different question refused 850 rows the applier could read.';
 comment on function public.ul_date_ok(p text) is 'Can this be read as a date? The boolean form of ul_date, so a validator and an applier can never disagree about what counts as a date.';
+comment on table public.access_chair_level is 'The chair decides the level, because the chair is what the design says drives everything. A title that is not here falls through to the department, and then to the smallest list there is.';
+comment on table public.access_department_level is 'Used only when the person holds no chair, or holds one nobody has classified. A person the tool cannot place should see less, not more.';
+comment on table public.access_level is 'The eight scope levels the design gives every chair, plus admin. Read by the ops service and by the navigation, through access_screens().';
+comment on table public.access_level_screen is 'One row per screen a level may open. admin holds no rows and needs none: access_may_open() answers true for it before it reads this table.';
+comment on table public.access_screen_parent is 'A screen the design reaches from inside a parent rather than from the top row follows its parent. The rate master is under Reports, which is why every level that carries Reports can read it.';
 comment on table public.app_page is 'The front end, served from here rather than baked into the edge function. A change to a screen is an UPDATE, not a redeploy.';
 comment on table public.app_setting is 'Every tunable number, and the only copy. pms_* keys are read by the appraisal engine; a value that appears in application code instead of here is a defect.';
 comment on table public.assignment_completion is 'Insert only. A dispute creates the next cycle''s row; the disputed one stays exactly as submitted.';

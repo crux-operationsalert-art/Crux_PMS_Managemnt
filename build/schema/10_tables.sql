@@ -8,6 +8,32 @@
 -- Columns and defaults only. Keys, checks, foreign keys and indexes each have their own file, so no table in here depends on another and load order is free.
 -- =====================================================================
 
+create table if not exists public.access_chair_level (
+  chair_title text not null,
+  level text not null
+);
+
+create table if not exists public.access_department_level (
+  department text not null,
+  level text not null
+);
+
+create table if not exists public.access_level (
+  level text not null,
+  label text not null,
+  note text
+);
+
+create table if not exists public.access_level_screen (
+  level text not null,
+  screen text not null
+);
+
+create table if not exists public.access_screen_parent (
+  screen text not null,
+  parent text not null
+);
+
 create table if not exists public.ai_call (
   id uuid default gen_random_uuid() not null,
   ai_key_id uuid not null,
