@@ -19,7 +19,7 @@
 // place rather than being restated here and drifting.
 // =====================================================================
 import { Router, one } from "../shim.ts";
-import { requireChair } from "../scope.ts";
+import { requireChair, requireScreen } from "../scope.ts";
 const r = Router();
 
 // Looking is a chair's right; changing the grouping is the administrator's.
@@ -43,7 +43,7 @@ function out(res: any, o: any) {
 }
 
 // ------------------------------------------------------------------ read
-r.get("/", requireChair, async (req: any, res: any) => {
+r.get("/", requireChair, requireScreen("coverage"), async (req: any, res: any) => {
   const d = await one(`select op_places() as d`);
   res.json({
     ...(d?.d ?? {}),
@@ -53,18 +53,18 @@ r.get("/", requireChair, async (req: any, res: any) => {
   });
 });
 
-r.get("/options", requireChair, async (_req: any, res: any) => {
+r.get("/options", requireChair, requireScreen("coverage"), async (_req: any, res: any) => {
   const d = await one(`select op_options() as d`);
   res.json(d?.d ?? {});
 });
 
-r.get("/place/:id", requireChair, async (req: any, res: any) => {
+r.get("/place/:id", requireChair, requireScreen("coverage"), async (req: any, res: any) => {
   const d = await one(`select op_place($1) as d`, [req.params.id]);
   if (!d?.d?.id) return res.status(404).json({ error: "no_such_place" });
   res.json(d.d);
 });
 
-r.get("/branches", requireChair, async (req: any, res: any) => {
+r.get("/branches", requireChair, requireScreen("coverage"), async (req: any, res: any) => {
   const d = await one(`select op_branches($1,$2,$3,$4) as d`, [
     req.query.get("node"), req.query.get("client") || null,
     req.query.get("q") || null, Number(req.query.get("limit") || 200),
@@ -75,7 +75,7 @@ r.get("/branches", requireChair, async (req: any, res: any) => {
 // ------------------------------------------------------------- the tree
 // Add, rename, or MOVE. The move is the reason this screen exists: op_save
 // used to accept a parent on an edit and drop it.
-r.post("/node", requireChair, async (req: any, res: any, next: any) => {
+r.post("/node", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { id, name, parentId, active } = req.body || {};
   try {
     out(res, (await one(`select op_save($1,$2,$3,$4,$5) as r`,
@@ -84,7 +84,7 @@ r.post("/node", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/node/retire", requireChair, async (req: any, res: any, next: any) => {
+r.post("/node/retire", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   try {
     out(res, (await one(`select op_retire($1,$2,$3) as r`,
       [req.person.id, req.body?.id ?? null, req.body?.active === true]))?.r);
@@ -94,7 +94,7 @@ r.post("/node/retire", requireChair, async (req: any, res: any, next: any) => {
 // ---------------------------------------------------------------- cities
 // A city answers to an operating zone. Sent as the node's id, never as typed
 // text, so geo_node.op_zone can only ever name something that exists.
-r.post("/city", requireChair, async (req: any, res: any, next: any) => {
+r.post("/city", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   try {
     out(res, (await one(`select op_city_align($1,$2,$3) as r`,
       [req.person.id, req.body?.cityId ?? null, req.body?.placeId ?? null]))?.r);
@@ -102,7 +102,7 @@ r.post("/city", requireChair, async (req: any, res: any, next: any) => {
 });
 
 // --------------------------------------------------------------- aliases
-r.post("/alias", requireChair, async (req: any, res: any, next: any) => {
+r.post("/alias", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { writtenAs, means, note } = req.body || {};
   try {
     out(res, (await one(`select op_alias_save($1,$2,$3,$4) as r`,
@@ -110,7 +110,7 @@ r.post("/alias", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/alias/remove", requireChair, async (req: any, res: any, next: any) => {
+r.post("/alias/remove", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   try {
     out(res, (await one(`select op_alias_remove($1,$2) as r`,
       [req.person.id, req.body?.writtenAs ?? null]))?.r);
@@ -120,7 +120,7 @@ r.post("/alias/remove", requireChair, async (req: any, res: any, next: any) => {
 // --------------------------------------------------------- who runs it
 // The place-role: who runs this location, or this client at it. One row, not
 // one per branch -- assigning Mumbai used to mean 1,665 rows.
-r.post("/role", requireChair, async (req: any, res: any, next: any) => {
+r.post("/role", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { nodeId, personId, role, clientId, from } = req.body || {};
   try {
     out(res, (await one(`select op_role_set($1,$2,$3,$4,$5,$6::date) as r`,
@@ -129,7 +129,7 @@ r.post("/role", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/role/end", requireChair, async (req: any, res: any, next: any) => {
+r.post("/role/end", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   try {
     out(res, (await one(`select op_role_end($1,$2,$3::date) as r`,
       [req.person.id, req.body?.ruleId ?? null, req.body?.to || null]))?.r);
@@ -138,7 +138,7 @@ r.post("/role/end", requireChair, async (req: any, res: any, next: any) => {
 
 // The chair, which is the job -- a different thing from who runs the place
 // today, and the owner was explicit that both are needed.
-r.post("/chair", requireChair, async (req: any, res: any, next: any) => {
+r.post("/chair", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { personId, chairId, place, primary } = req.body || {};
   try {
     out(res, (await one(`select op_chair_seat($1,$2,$3,$4,$5) as r`,
@@ -147,7 +147,7 @@ r.post("/chair", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/chair/end", requireChair, async (req: any, res: any, next: any) => {
+r.post("/chair/end", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   try {
     out(res, (await one(`select op_chair_unseat($1,$2) as r`,
       [req.person.id, req.body?.holderId ?? null]))?.r);
@@ -157,7 +157,7 @@ r.post("/chair/end", requireChair, async (req: any, res: any, next: any) => {
 // ------------------------------------------------------------ coverage
 // The whole place at once, or a chosen few. clientIds null means every client
 // with a branch there.
-r.post("/assign", requireChair, async (req: any, res: any, next: any) => {
+r.post("/assign", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { nodeId, personId, clientIds, product, from } = req.body || {};
   try {
     if (!mayAssign(req)) {
@@ -171,7 +171,7 @@ r.post("/assign", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/coverage/end", requireChair, async (req: any, res: any, next: any) => {
+r.post("/coverage/end", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   try {
     if (!mayAssign(req)) {
       return res.status(403).json({ error: "not_permitted",
@@ -185,7 +185,7 @@ r.post("/coverage/end", requireChair, async (req: any, res: any, next: any) => {
 // -------------------------------------------------- clients and branches
 // A client is AT a place because its branches are. Adding one moves its
 // unplaced branches there; removing one takes them off. Nothing is deleted.
-r.post("/client", requireChair, async (req: any, res: any, next: any) => {
+r.post("/client", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { clientId, nodeId, attach } = req.body || {};
   try {
     out(res, (await one(`select op_client_place($1,$2,$3,$4) as r`,
@@ -193,7 +193,7 @@ r.post("/client", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/branch", requireChair, async (req: any, res: any, next: any) => {
+r.post("/branch", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { id, clientId, code, name, nodeId, address, active } = req.body || {};
   try {
     out(res, (await one(`select op_branch_save($1,$2,$3,$4,$5,$6,$7,$8) as r`,
@@ -207,7 +207,7 @@ r.post("/branch", requireChair, async (req: any, res: any, next: any) => {
 // Never an update: the version in force is end-dated the day before the new
 // one starts and both stay readable, so a closed month still reads the rate
 // that was valid then.
-r.post("/rate", requireChair, async (req: any, res: any, next: any) => {
+r.post("/rate", requireChair, requireScreen("coverage"), async (req: any, res: any, next: any) => {
   const { clientId, nodeId, value, from, to, reason } = req.body || {};
   try {
     if (!mayPrice(req)) {

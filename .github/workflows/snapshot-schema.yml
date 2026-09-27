@@ -71,6 +71,8 @@ jobs:
             || { echo "::error::stg came back without the normalisers those two views call."; exit 1; }
           jq -e '.["10_tables.sql"] | test("generated always as")' snap.json > /dev/null \
             || { echo "::error::plb_month_score.monthly_score came back as a default again."; exit 1; }
+          jq -e '.["10_tables.sql"] | test("create table if not exists public.access_level_screen")' snap.json > /dev/null \
+            || { echo "::error::No access_level_screen; the scope policy is not in the baseline."; exit 1; }
           jq -e '.["10_tables.sql"] | test("create table if not exists public.person ")' snap.json > /dev/null \
             || { echo "::error::No person table in the tables file."; exit 1; }
           jq -e '.["40_functions_1.sql"] | length > 20000' snap.json > /dev/null \

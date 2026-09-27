@@ -9,7 +9,7 @@
 // the stage a claim is at is always answerable.
 
 import { Router, many, one, tx } from "../shim.ts";
-import { requireChair } from "../scope.ts";
+import { requireChair, requireScreen } from "../scope.ts";
 const r = Router();
 
 const CLAIM_FLOW = ["DRAFT", "OPS_APPROVAL", "HR_APPROVAL", "ACCOUNTS", "PAID"];
@@ -25,7 +25,7 @@ function mayAdvance(req: any, stage: string) {
   return false;
 }
 
-r.get("/", requireChair, async (req: any, res: any) => {
+r.get("/", requireChair, requireScreen("visits"), async (req: any, res: any) => {
   const mine = !req.scope.isAdmin;
   const [visits, claims, branches] = await Promise.all([
     many(`select v.id, v.visited_on, v.purpose, v.answers,
@@ -71,7 +71,7 @@ r.get("/", requireChair, async (req: any, res: any) => {
 
 // A visit writes back into the branch record: it is the thing that moves the
 // last-seen date and updates the contact it met.
-r.post("/visit", requireChair, async (req: any, res: any, next: any) => {
+r.post("/visit", requireChair, requireScreen("visits"), async (req: any, res: any, next: any) => {
   const { branchId, visitedOn, purpose, met, metMobile, metEmail, note } = req.body || {};
   try {
     if (!branchId || !purpose) {
@@ -112,7 +112,7 @@ r.post("/visit", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/claim", requireChair, async (req: any, res: any, next: any) => {
+r.post("/claim", requireChair, requireScreen("visits"), async (req: any, res: any, next: any) => {
   const { visitId, amount } = req.body || {};
   try {
     if (!amount || Number(amount) <= 0) {
@@ -137,7 +137,7 @@ r.post("/claim", requireChair, async (req: any, res: any, next: any) => {
 // One step at a time, in the order the flow declares. Paying needs a reference
 // and disputing needs a reason -- the database enforces both, so this only has
 // to ask for them.
-r.post("/claim/:id/advance", requireChair, async (req: any, res: any, next: any) => {
+r.post("/claim/:id/advance", requireChair, requireScreen("visits"), async (req: any, res: any, next: any) => {
   const { to, paidRef, disputeReason } = req.body || {};
   try {
     const out = await tx(req.person.id, async (t: any) => {
@@ -179,7 +179,7 @@ r.post("/claim/:id/advance", requireChair, async (req: any, res: any, next: any)
 });
 
 // --------------------------------------------------------------- ideathon
-r.get("/ideas", requireChair, async (_req: any, res: any) => {
+r.get("/ideas", requireChair, requireScreen("ideas"), async (_req: any, res: any) => {
   const ideas = await many(
     `select i.id, i.ref, i.title, i.body, i.stage::text as stage, i.owner_dept,
             i.charter, i.decision_reason, i.decided_at, i.created_at,
@@ -192,7 +192,7 @@ r.get("/ideas", requireChair, async (_req: any, res: any) => {
     stages: ["SUBMITTED","IN_REVIEW","ACCEPTED","INITIATED","ON_HOLD","REJECTED","DELIVERED"] });
 });
 
-r.post("/idea", requireChair, async (req: any, res: any, next: any) => {
+r.post("/idea", requireChair, requireScreen("ideas"), async (req: any, res: any, next: any) => {
   const { title, body, ownerDept } = req.body || {};
   try {
     if (!title || !String(title).trim()) {
@@ -213,7 +213,7 @@ r.post("/idea", requireChair, async (req: any, res: any, next: any) => {
 });
 
 // Business Excellence drives the Ideathon, so it and the administrator decide.
-r.post("/idea/:id/decide", requireChair, async (req: any, res: any, next: any) => {
+r.post("/idea/:id/decide", requireChair, requireScreen("ideas"), async (req: any, res: any, next: any) => {
   const { stage, reason, charter } = req.body || {};
   try {
     const mayDecide = req.person.app_role === "ADMIN" ||

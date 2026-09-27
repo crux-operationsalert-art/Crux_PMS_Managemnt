@@ -13,10 +13,10 @@
 // and one key that is in no configuration at all has run over a thousand
 // times.
 import { Router, many, one } from "../shim.ts";
-import { requireChair } from "../scope.ts";
+import { requireChair, requireScreen } from "../scope.ts";
 const r = Router();
 
-r.get("/", requireChair, async (_req: any, res: any) => {
+r.get("/", requireChair, requireScreen("auto"), async (_req: any, res: any) => {
   const [designed, jobs, recent, orphans, tally] = await Promise.all([
     many(
       `select key, title, grp, owner, state, fires_on,

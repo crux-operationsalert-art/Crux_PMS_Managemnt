@@ -9,7 +9,7 @@
 // so a version carries its own code derived from the family.
 
 import { Router, many, one, tx } from "../shim.ts";
-import { requireChair } from "../scope.ts";
+import { requireChair, requireScreen } from "../scope.ts";
 const r = Router();
 
 function mayEdit(req: any) {
@@ -19,7 +19,7 @@ function mayEdit(req: any) {
 
 // The family a version belongs to: RATE-00007#3 belongs to RATE-00007.
 
-r.get("/", requireChair, async (req: any, res: any) => {
+r.get("/", requireChair, requireScreen("rates"), async (req: any, res: any) => {
   const [rows, clients] = await Promise.all([
     many(
       `with v as (
@@ -50,7 +50,7 @@ r.get("/", requireChair, async (req: any, res: any) => {
   });
 });
 
-r.get("/:family/history", requireChair, async (req: any, res: any) => {
+r.get("/:family/history", requireChair, requireScreen("rates"), async (req: any, res: any) => {
   const rows = await many(
     `select r.code, r.value, r.currency, r.scope::text as scope, r.status,
             r.effective_from, r.effective_to, r.reason,
@@ -66,7 +66,7 @@ r.get("/:family/history", requireChair, async (req: any, res: any) => {
 
 // Adding a rate, or a new version of one. Never an update: the version in
 // force is end-dated the day before the new one starts, and both stay.
-r.post("/", requireChair, async (req: any, res: any, next: any) => {
+r.post("/", requireChair, requireScreen("rates"), async (req: any, res: any, next: any) => {
   const { family, clientId, scope, value, effectiveFrom, reason } = req.body || {};
   try {
     if (!mayEdit(req)) {

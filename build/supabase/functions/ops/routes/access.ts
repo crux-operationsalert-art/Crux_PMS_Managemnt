@@ -11,12 +11,26 @@
 // stays where it is.
 
 import { Router, many, one, tx } from "../shim.ts";
-import { requireChair } from "../scope.ts";
+import { idList, requireChair, requireScreen } from "../scope.ts";
 const r = Router();
 
 const adminOnly = (req: any) => req.person.app_role === "ADMIN";
 
-r.get("/", requireChair, async (req: any, res: any) => {
+// Who may look at the whole company rather than their own branch of it.
+// The administrator, and HR, whose job this is. Everybody else sees the
+// chairs under their own -- which is what the Reports screen has always said
+// this report is ("People and chairs — Your subtree") and what it has never
+// actually done.
+const seesEveryone = (req: any) =>
+  req.scope.isAdmin || req.scope.level === "hr";
+
+// The subtree, plus the caller: a chair with nobody under it should still see
+// itself rather than an empty page it cannot explain.
+const subtreeOf = (req: any) =>
+  seesEveryone(req) ? null : idList(req.scope.subtreeIds);
+
+r.get("/", requireChair, requireScreen("access"), async (req: any, res: any) => {
+  const chairIds = subtreeOf(req);
   const people = await many(
     `select p.id, p.full_name, p.employee_no, p.department,
             ch.title as chair,
@@ -29,13 +43,42 @@ r.get("/", requireChair, async (req: any, res: any) => {
        left join chair_holder h on h.person_id = p.id and h.to_date is null and h.is_primary
        left join chair ch on ch.id = h.chair_id
       where p.employment_status = 'ACTIVE' and p.superseded_by is null
-      order by p.full_name limit 1000`);
-  res.json({ people, mayGrant: adminOnly(req) });
+        and ($1::uuid[] is null
+             or p.id = $2
+             or exists (select 1 from chair_holder h2
+                         where h2.person_id = p.id and h2.to_date is null
+                           and h2.chair_id = any($1::uuid[])))
+      order by p.full_name limit 1000`,
+    [chairIds, req.person.id]);
+  res.json({
+    people, mayGrant: adminOnly(req),
+    scopedTo: chairIds === null
+      ? "Everybody, because this is yours to see."
+      : "The chairs under yours, and your own.",
+  });
 });
 
 // /person/:id, not /:id -- a bare parameter at the root would have swallowed
 // /joining and matched it as a person id.
-r.get("/person/:personId", requireChair, async (req: any, res: any) => {
+r.get("/person/:personId", requireChair, requireScreen("access"), async (req: any, res: any) => {
+  // Asking by id is how somebody gets a person the list would not have shown
+  // them, so the same rule is applied again rather than trusted to the list.
+  const chairIds = subtreeOf(req);
+  if (chairIds !== null && req.params.personId !== req.person.id) {
+    const inside = await one(
+      `select 1 as ok from chair_holder h
+        where h.person_id = $1 and h.to_date is null and h.chair_id = any($2::uuid[])
+        limit 1`,
+      [req.params.personId, chairIds]);
+    if (!inside) {
+      return res.status(403).json({
+        error: "out_of_subtree",
+        reason: "That person is not in a chair under yours. HR and the " +
+          "administrator can look across the whole company; a chair sees the " +
+          "chairs below it.",
+      });
+    }
+  }
   const [who, inherited, explicit] = await Promise.all([
     one(`select p.id, p.full_name, p.employee_no, p.department, ch.title as chair,
                 m.full_name as manager
@@ -71,7 +114,7 @@ r.get("/person/:personId", requireChair, async (req: any, res: any) => {
   });
 });
 
-r.post("/grant", requireChair, async (req: any, res: any, next: any) => {
+r.post("/grant", requireChair, requireScreen("access"), async (req: any, res: any, next: any) => {
   const { personId, reason, expiresAt } = req.body || {};
   try {
     if (!adminOnly(req)) {
@@ -95,7 +138,7 @@ r.post("/grant", requireChair, async (req: any, res: any, next: any) => {
   } catch (e) { next(e); }
 });
 
-r.post("/revoke", requireChair, async (req: any, res: any, next: any) => {
+r.post("/revoke", requireChair, requireScreen("access"), async (req: any, res: any, next: any) => {
   const { grantId } = req.body || {};
   try {
     if (!adminOnly(req)) {
@@ -117,7 +160,7 @@ r.post("/revoke", requireChair, async (req: any, res: any, next: any) => {
 });
 
 // ------------------------------------------------------------------- HR
-r.get("/hr/overview", requireChair, async (req: any, res: any) => {
+r.get("/hr/overview", requireChair, requireScreen("hr"), async (req: any, res: any) => {
   const isHr = req.person.app_role === "ADMIN" ||
                (req.person.department || "") === "Human Resources";
   const [head, depts, types, notes, vacant] = await Promise.all([
@@ -150,7 +193,7 @@ r.get("/hr/overview", requireChair, async (req: any, res: any) => {
 // --------------------------------------------------------------- joining
 // A joiner is a person_request that HR has approved and the administrator has
 // not yet seated, plus anybody seated who has never activated their account.
-r.get("/joining", requireChair, async (_req: any, res: any) => {
+r.get("/joining", requireChair, requireScreen("joining"), async (_req: any, res: any) => {
   const [inflight, unactivated] = await Promise.all([
     many(`select pr.id, pr.full_name, pr.work_email, pr.state, pr.requested_at,
                  pr.due_at, ch.title as chair, rb.full_name as raised_by,

@@ -513,6 +513,57 @@ PATCHES.append((
       '@media (max-width:860px){ .mygrid{grid-template-columns:1fr} }', 1)],
 ))
 
+# ------------------------------------- 10. THE NAVIGATION ASKS THE SERVER
+# The page carries its own copy of the access table -- SCREENS, CHAIR_LEVEL,
+# UNDER -- and says so, immediately above it:
+#
+#     "It decides what appears in the navigation and what currentTab() will
+#      open. It is NOT the permission check. Every service decides for itself
+#      and refuses in its own words."
+#
+# Migration 204 made the second sentence true: the table now lives in the
+# database, the ops service gates every route on it, and auth_whoami returns
+# the caller's level and the screens it carries. Two copies of one policy
+# drift, and the copy nobody edits becomes the one that is wrong, so the page
+# prefers the server's answer and keeps its own only as a fallback for a
+# session minted before 204.
+#
+# Deliberately NOT deleting the local table: a page that could not draw a
+# navigation at all if one field were missing from one response would be a
+# worse failure than a stale one.
+#
+# This one has NO matching migration, and that is not an oversight. The table
+# it edits is not in app_page at all -- patch 5 above puts it there at publish
+# time, and a migration written against app_page fails its own assertion,
+# which is how this was found. So the anchors below only exist after patch 5
+# has run, and the order of this list is what makes that true.
+#
+# build/test/check_access_matches_nav.py reads the BUILT page and compares
+# every (level, screen) pair against access_level_screen, so the two copies
+# cannot drift without a test saying so.
+PATCHES.append((
+    "navigation asks the server",
+    "me.screens",
+    [('function myLevel(){\n  if (!me) return "exec";\n  if (me.app_role === "ADMIN") return "admin";',
+      'function myLevel(){\n'
+      '  if (!me) return "exec";\n'
+      '  /* What the database said when this session was minted. The page\n'
+      '     works it out below only if the session predates migration 204. */\n'
+      '  if (me.scope_level) return me.scope_level;\n'
+      '  if (me.app_role === "ADMIN") return "admin";', 1),
+     ('function allowed(key){\n  if (!me) return false;\n  var lvl = myLevel();\n  if (lvl === "admin") return true;',
+      'function allowed(key){\n'
+      '  if (!me) return false;\n'
+      '  /* The server\'s list, which is the same rows the ops service refuses\n'
+      '     on. If it is here, it is the answer -- working it out again from a\n'
+      '     second copy could only disagree. */\n'
+      '  if (me.screens && me.screens.length) {\n'
+      '    return me.screens.indexOf(key) > -1;\n'
+      '  }\n'
+      '  var lvl = myLevel();\n'
+      '  if (lvl === "admin") return true;', 1)],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)

@@ -109,10 +109,21 @@ fi
 
 echo
 echo "== behaviour"
-out=$(psq -q -f "$REPO/build/test/test_190_198.sql" 2>&1 | sed 's/^psql:[^ ]* //')
+out=""
+for t in test_190_198 test_scope; do
+  out="$out
+$(psq -q -f "$REPO/build/test/$t.sql" 2>&1 | sed 's/^psql:[^ ]* //')"
+done
 echo "$out" | grep -E 'PASS|FAIL|ERROR|---' || true
 pass=$(echo "$out" | grep -c 'PASS' || true)
 fail=$(echo "$out" | grep -cE 'FAIL|ERROR' || true)
+
+# The navigation and the database are two readers of one access policy. They
+# are meant to agree, and nothing but this makes them.
+echo
+echo "== the navigation and the database, on every screen"
+if "$REPO/build/test/check_access_matches_nav.py" "$DSN"; then :; else fail=$((fail + 1)); fi
+
 echo
 echo "== $pass passed, $fail failed"
 [ "$fail" = "0" ] && [ -z "$missing" ]
