@@ -36,6 +36,22 @@ including a bare `select 1` — so nothing below has touched the project.
 Everything here is finished and tested as far as it can be without the
 database. Applying it is four steps and should take a couple of minutes.
 
+## The root cause behind the lockout — apply this FIRST
+
+**`plb` and `hr` are deployed with `verify_jwt: true`.** They are the only two
+app-facing functions where it is on; `crux`, `api`, `org`, `ops`, `cfg`, `kpi`
+and `wa` are all off. Supabase's gateway therefore rejects both with 401
+*before the function runs*, and the page cannot satisfy it — the project key
+goes in as a query parameter precisely because an `Authorization` header would
+trip the CORS preflight every other function relies on.
+
+Combined with `call()` signing out on any 401, that ejected anyone whose URL
+was on `#plb` the instant they signed in, and made every HR screen do the same.
+
+**Redeploy both with `verify_jwt: false`.** The page-side guard is live and
+stops the ejection, but until this is done the Performance & bonus screen and
+all three HR cards will show "that part of the tool refused the request".
+
 ## Apply in this order
 
 1. **`build/migration/187_act_as_a_person_or_a_chair.sql`**
