@@ -1,11 +1,11 @@
 -- =====================================================================
--- Crux baseline · 30 · indexes
--- GENERATED. 110 indexes that no constraint owns; the rest are created
--- by the primary keys and uniques in 20_keys.sql.
+-- Crux baseline | 30_indexes.sql | indexes
 --
--- Several of these are the real uniqueness rules of the system: the
--- partial unique indexes are where "only one open X" and "only one live
--- Y" actually live, and they are not expressible as table constraints.
+-- GENERATED from the live project. Do not hand-edit: change the
+-- database with a migration, then regenerate. build/schema/REGENERATE.md
+-- says how, and build/migration/README.md says why this exists.
+--
+-- The indexes no constraint owns. Several are the real uniqueness rules of the system: "only one open X", "only one live Y" live in the partial unique indexes here, and cannot be written as table constraints.
 -- =====================================================================
 
 CREATE INDEX ae_assignment_idx ON public.assignment_event USING btree (assignment_id, occurred_at);
@@ -118,3 +118,4 @@ CREATE INDEX wa_bridge_event_idx ON public.wa_bridge_event USING btree (bridge_i
 CREATE INDEX wa_bridge_live_idx ON public.wa_bridge USING btree (state, last_seen_at);
 CREATE INDEX wa_outbox_due_idx ON public.wa_outbox USING btree (state, not_before) WHERE (state = 'QUEUED'::outbox_state);
 CREATE UNIQUE INDEX wa_outbox_idempotency_uniq ON public.wa_outbox USING btree (idempotency_key);
+

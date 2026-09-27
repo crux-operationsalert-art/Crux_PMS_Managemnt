@@ -1,9 +1,11 @@
 -- =====================================================================
--- Crux baseline · 21 · CHECK constraints
--- GENERATED. 101 constraints.
+-- Crux baseline | 21_checks.sql | check constraints
 --
--- These come after the functions file, not before it: person_mobile_shape
--- calls person_mobile(), and a CHECK is resolved at ALTER TABLE time.
+-- GENERATED from the live project. Do not hand-edit: change the
+-- database with a migration, then regenerate. build/schema/REGENERATE.md
+-- says how, and build/migration/README.md says why this exists.
+--
+-- These come after the functions: person_mobile_shape calls person_mobile(), and a CHECK is resolved when the ALTER TABLE runs.
 -- =====================================================================
 
 alter table public.ai_key add constraint ai_key_scope_check CHECK ((scope = ANY (ARRAY['everything'::text, 'short'::text, 'long'::text, 'fallback'::text])));
@@ -107,3 +109,4 @@ alter table public.upload_batch add constraint upload_batch_state_check CHECK ((
 alter table public.value_correction add constraint value_correction_reason_real CHECK ((length(btrim(reason)) >= 8));
 alter table public.wa_bridge add constraint wa_bridge_device_kind_check CHECK ((device_kind = ANY (ARRAY['laptop'::text, 'phone'::text, 'server'::text])));
 alter table public.wa_bridge add constraint wa_bridge_state_check CHECK ((state = ANY (ARRAY['NEW'::text, 'NEEDS_QR'::text, 'READY'::text, 'STALE'::text, 'DISABLED'::text])));
+

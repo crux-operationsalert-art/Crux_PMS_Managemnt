@@ -1,9 +1,13 @@
 -- =====================================================================
--- Crux baseline · 20 · primary keys and unique constraints
--- GENERATED. Separate from the tables so load order never matters, and
--- separate from the foreign keys so the uniques a foreign key needs are
--- all in place before any of them is added.
+-- Crux baseline | 20_keys.sql | primary keys and unique constraints
+--
+-- GENERATED from the live project. Do not hand-edit: change the
+-- database with a migration, then regenerate. build/schema/REGENERATE.md
+-- says how, and build/migration/README.md says why this exists.
+--
+-- Added before the foreign keys, so every unique a foreign key needs is already in place.
 -- =====================================================================
+
 alter table public.ai_call add constraint ai_call_pkey PRIMARY KEY (id);
 alter table public.ai_key add constraint ai_key_pkey PRIMARY KEY (id);
 alter table public.app_page add constraint app_page_pkey PRIMARY KEY (slug);
@@ -159,7 +163,6 @@ alter table public.wa_bridge add constraint wa_bridge_pkey PRIMARY KEY (id);
 alter table public.wa_bridge_event add constraint wa_bridge_event_pkey PRIMARY KEY (id);
 alter table public.wa_budget add constraint wa_budget_pkey PRIMARY KEY (day);
 alter table public.wa_outbox add constraint wa_outbox_pkey PRIMARY KEY (id);
-
 alter table public.ai_key add constraint ai_key_chain_order_key UNIQUE (chain_order);
 alter table public.assignment add constraint assignment_ref_key UNIQUE (ref);
 alter table public.assignment_completion add constraint assignment_completion_assignment_id_breach_cycle_no_key UNIQUE (assignment_id, breach_cycle_no);
@@ -223,3 +226,4 @@ alter table public.upload_row add constraint upload_row_uniq UNIQUE (batch_id, r
 alter table public.verification_case add constraint verification_case_force1_case_id_key UNIQUE (force1_case_id);
 alter table public.verification_type add constraint verification_type_code_key UNIQUE (code);
 alter table public.wa_bridge add constraint wa_bridge_token_hash_key UNIQUE (token_hash);
+

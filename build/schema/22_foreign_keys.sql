@@ -1,6 +1,11 @@
 -- =====================================================================
--- Crux baseline · 22 · foreign keys
--- GENERATED. 311 constraints, added last so table load order is free.
+-- Crux baseline | 22_foreign_keys.sql | foreign keys
+--
+-- GENERATED from the live project. Do not hand-edit: change the
+-- database with a migration, then regenerate. build/schema/REGENERATE.md
+-- says how, and build/migration/README.md says why this exists.
+--
+-- Last of the constraints, so the order the tables loaded in never mattered.
 -- =====================================================================
 
 alter table public.ai_call add constraint ai_call_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES person(id);
@@ -314,3 +319,4 @@ alter table public.visit add constraint visit_person_id_fkey FOREIGN KEY (person
 alter table public.wa_bridge add constraint wa_bridge_created_by_fkey FOREIGN KEY (created_by) REFERENCES person(id);
 alter table public.wa_bridge_event add constraint wa_bridge_event_bridge_id_fkey FOREIGN KEY (bridge_id) REFERENCES wa_bridge(id) ON DELETE CASCADE;
 alter table public.wa_outbox add constraint wa_outbox_bridge_id_fkey FOREIGN KEY (bridge_id) REFERENCES wa_bridge(id);
+
