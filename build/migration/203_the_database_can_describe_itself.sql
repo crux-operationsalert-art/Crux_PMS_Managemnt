@@ -278,11 +278,12 @@ as $fn$
   from cron.job
 $fn$;
 
--- stg is where the legacy spreadsheets landed. It is not part of the running
--- tool, it carries no constraints and nothing in the application reads it --
--- but migration_coverage_shape and migration_unaccounted do, and a rebuild
--- without it is a rebuild two views short. That is exactly the kind of thing
--- a hand-written baseline forgets and a generated one cannot.
+-- stg is where the legacy spreadsheets landed. Nothing in the application
+-- reads it -- but migration_coverage_shape and migration_unaccounted do, and
+-- a rebuild without it is a rebuild two views short. It turned out to hold
+-- 26 tables, 20 constraints, 20 indexes and five text normalisers that those
+-- two views call by name. That is exactly the kind of thing a hand-written
+-- baseline forgets and a generated one cannot.
 create or replace function public.schema_snapshot_stg()
 returns text
 language sql
@@ -303,12 +304,35 @@ as $fn$
       join pg_namespace n on n.oid = c.relnamespace
       join pg_attribute a on a.attrelid = c.oid and a.attnum > 0 and not a.attisdropped
       left join pg_attrdef ad on ad.adrelid = c.oid and ad.adnum = a.attnum
-     where n.nspname = 'stg' and c.relkind = 'r')
+     where n.nspname = 'stg' and c.relkind = 'r'),
+  tabs as (
+    select coalesce(string_agg(t, E'\n\n' order by tbl), '') as s
+      from (select tbl, 'create table if not exists stg.' || quote_ident(tbl) || ' (' || E'\n  ' ||
+                   string_agg(col, E',\n  ' order by attnum) || E'\n);' as t
+              from cols group by tbl) q),
+  cons as (
+    select coalesce(string_agg('alter table stg.' || quote_ident(t.relname) ||
+             ' add constraint ' || quote_ident(c.conname) || ' ' || pg_get_constraintdef(c.oid) || ';',
+             E'\n' order by t.relname, c.conname), '') as s
+      from pg_constraint c
+      join pg_class t on t.oid = c.conrelid
+      join pg_namespace n on n.oid = t.relnamespace
+     where n.nspname = 'stg'),
+  idx as (
+    select coalesce(string_agg(pg_get_indexdef(i.oid) || ';', E'\n' order by i.relname), '') as s
+      from pg_class i
+      join pg_namespace n on n.oid = i.relnamespace
+     where n.nspname = 'stg' and i.relkind = 'i'
+       and not exists (select 1 from pg_constraint c where c.conindid = i.oid)),
+  fns as (
+    select coalesce(string_agg(pg_get_functiondef(p.oid) || ';', E'\n\n' order by p.proname), '') as s
+      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'stg')
   select 'create schema if not exists stg;' || E'\n\n' ||
-         coalesce(string_agg(t, E'\n\n' order by tbl), '')
-    from (select tbl, 'create table if not exists stg.' || quote_ident(tbl) || ' (' || E'\n  ' ||
-                 string_agg(col, E',\n  ' order by attnum) || E'\n);' as t
-            from cols group by tbl) q
+         (select s from tabs) ||
+         case when (select s from cons) = '' then '' else E'\n\n' || (select s from cons) end ||
+         case when (select s from idx)  = '' then '' else E'\n\n' || (select s from idx)  end ||
+         case when (select s from fns)  = '' then '' else E'\n\n' || (select s from fns)  end
 $fn$;
 
 -- ------------------------------------------------------- the whole picture
@@ -322,7 +346,7 @@ as $fn$
   with b(f, title, note, body) as (values
     ('05_types.sql',        'types',            'Every enum the schema uses. Nothing here has a table behind it, so this file loads first and alone.', public.schema_snapshot_part('types')),
     ('08_sequences.sql',    'sequences',        'Created before the tables, because a column default that calls nextval on a sequence that does not exist is a table that will not load. Which column owns which sequence is in 11_sequence_owners.sql, because that cannot be said until the tables are there.', public.schema_snapshot_part2('sequences')),
-    ('09_staging.sql',      'the staging schema', 'stg is where the legacy spreadsheets landed. It is not part of the running tool and carries no constraints, but two of the migration audit views read it, so a database without it is a database two views short.', public.schema_snapshot_stg()),
+    ('09_staging.sql',      'the staging schema', 'stg is where the legacy spreadsheets landed. No part of the running tool reads it, but two of the migration audit views do -- tables, constraints, indexes and the five text normalisers they call.', public.schema_snapshot_stg()),
     ('10_tables.sql',       'tables',           'Columns and defaults only. Keys, checks, foreign keys and indexes each have their own file, so no table in here depends on another and load order is free.', public.schema_snapshot_part('tables')),
     ('11_sequence_owners.sql', 'sequence ownership', 'The other half of 08. Without it a dropped table leaves its sequence behind.', public.schema_snapshot_part2('sequence_owners')),
     ('20_keys.sql',         'primary keys and unique constraints', 'Added before the foreign keys, so every unique a foreign key needs is already in place.', public.schema_snapshot_part('keys')),

@@ -11,7 +11,7 @@ migration, then regenerate, and the change arrives here on its own.
 | `00_extensions.sql` | hand-written. Extensions and schemas, written so a plain Postgres loads it. |
 | `05_types.sql` | the enums |
 | `08_sequences.sql` | the sequences |
-| `09_staging.sql` | the `stg` schema the legacy spreadsheets landed in |
+| `09_staging.sql` | the `stg` schema the legacy spreadsheets landed in, and the five normalisers two views call |
 | `10_tables.sql` | columns and defaults, nothing else |
 | `11_sequence_owners.sql` | which column owns which sequence |
 | `20_keys.sql` | primary keys and uniques |
