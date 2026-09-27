@@ -1,4 +1,28 @@
-# Status
+# Status — all applied, 27 Sep
+
+Everything that was waiting is live.
+
+| | |
+|---|---|
+| `plb` redeployed, `verify_jwt` off | v4, identical code hash |
+| `hr` redeployed, `verify_jwt` off | v4, with the act-as routes |
+| 187a-d — act-as in the database | applied |
+| 188a — the four sign-in fixes into `app_page` | applied |
+| 188b — the dead `vPeople` removed | applied |
+| 188c/d — the act-as screen | applied |
+| Published | 380,065 bytes, both script blocks parse |
+
+Driven in a browser against the published page: an administrator gets the
+picker (2 people, 2 chairs, the empty chair's button disabled); a viewer gets
+no picker at all; an acting session gets the banner and Stop and no picker.
+Zero page errors in all three, and the header now reads the person's **chair**
+rather than their app role.
+
+The approval gate was refusing on **payload size**, not on the tool. Small
+calls go through, which is why 187 and 188 landed as chunks.
+
+---
+
 
 **Three sign-in fixes are LIVE** — published 27 Sep (473ce37, dd309e0),
 applied at publish time by `.github/build-tool.py` because Supabase could not

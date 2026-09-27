@@ -20,7 +20,7 @@
    the view is indistinguishable from the real thing and the trail is not.
 
    Two hours, and a banner that does not go away.                        */
-var AA = { on:false, o:null, open:false, q:"", tab:"people", busy:false, says:"" };
+var AA = { o:null, open:false, q:"", tab:"people", busy:false };
 
 /* aaGet, aaSet and aaDrop are the guarded localStorage helpers defined up
    beside `var token`, where the first read happens. They are used here
@@ -28,8 +28,6 @@ var AA = { on:false, o:null, open:false, q:"", tab:"people", busy:false, says:""
    losing the administrator's own token to an exception would strand them
    inside somebody else's session with no way back. */
 
-/* The bar sits under the header on every screen, so there is never a page
-   where you have forgotten whose desk you are looking at. */
 function aaBar(){
   if (!me) return "";
   var acting = me.acting;
@@ -65,7 +63,7 @@ function aaPanel(){
     body = chairs.length
       ? '<div class="scroll"><table><tr><th>Chair</th><th>Who is in it</th><th></th></tr>' +
         chairs.map(function(c){
-          var who = (c.holders || []).map(function(h){ return h.name; }).join(", ");
+          var who = (c.holders || []).map(function(x){ return x.name; }).join(", ");
           return '<tr><td>' + esc(c.chair) +
             (c.inScheme ? ' <span class="pill warn">in the PLB scheme</span>' : '') +
             '</td><td class="mute">' + esc(who || "nobody") + '</td>' +
@@ -121,7 +119,7 @@ function aaPaint(){
 
 function aaWire(){
   if (el("aaopen")) el("aaopen").onclick = async function(){
-    AA.open = true; AA.says = "";
+    AA.open = true;
     aaPaint();
     if (!AA.o) { AA.o = await hrapi("/hr/act/targets"); aaPaint(); }
   };
@@ -142,9 +140,9 @@ function aaWire(){
   if (el("aastop")) el("aastop").onclick = aaStop;
 }
 
-/* The admin's own token is put somewhere else BEFORE the borrowed one is
-   installed. If the order were the other way round and the write failed,
-   the way back would be gone. */
+/* The administrator's own token is put somewhere else BEFORE the borrowed
+   one is installed. If the order were the other way round and the write
+   failed, the way back would be gone. */
 async function aaGo(body){
   if (AA.busy) return;
   AA.busy = true;
@@ -152,7 +150,6 @@ async function aaGo(body){
   var out = await hrapi("/hr/act/as", { method:"POST", body: body });
   AA.busy = false;
   if (out.error) {
-    AA.o = AA.o || {};
     var box = el("aamsg");
     if (box) box.innerHTML = msg("bad", out.reason || out.error);
     return;
@@ -168,7 +165,6 @@ async function aaGo(body){
 async function aaStop(){
   var mine = aaGet("cruxAdminToken");
   if (!mine) { signOut(); return; }
-  /* hand the borrowed session back rather than letting it idle out */
   try { await crux("/api/logout", { method:"POST" }); } catch (e) { /* it expires anyway */ }
   token = mine;
   aaSet("cruxToken", token);
