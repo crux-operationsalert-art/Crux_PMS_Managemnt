@@ -151,3 +151,22 @@ select 'views', md5(string_agg(d, E'\n' order by d collate "C")) from (
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
    where n.nspname in ('public','seam') and c.relkind = 'v') q;
 ```
+
+## Two migrations the harness deliberately does not run
+
+`build/test/run.sh` loads `build/schema` and nothing else, so no migration runs
+in it at all. Two of them could not, even if it did, and the reason is worth
+knowing before somebody "fixes" it:
+
+* **204** seeds the access table from the published tool's own `SCREENS`. The
+  harness checks that seed a better way — `check_access_matches_nav.py` reads
+  `index.html` and compares all 262 (level, screen) pairs against the rows.
+* **206** ends by asserting that *no seated chair is without a measure set*.
+  That is an assertion about the live registry. The fixture in `test_scope.sql`
+  deliberately seats three chairs and leaves them empty, because a detector
+  nobody has watched fail is not a detector — so running 206 here would fail on
+  the very state the test exists to create.
+
+What the harness asserts instead is that the detector works: `kpi_registry_gap`
+names a seated chair with no measures, stops naming it the moment it has one,
+and the unique index refuses the same measure twice on one chair.

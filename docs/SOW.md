@@ -167,8 +167,30 @@ calls, so a change to the policy moves both at once.
 | | |
 |---|---|
 | Findings F1–F5 | established against the live project |
-| #13 | in progress |
-| #18 | not started |
+| **#13** | **done.** Migrations 204 and 205 applied; `ops` v7 deployed and verified byte-identical to this repository; build-tool patch 10 written |
+| **#18** | **done.** Migration 206 applied: 14 of 14 seated chairs carry a measure set, 0 people without, registry 65 → 115 active measures |
+
+### What was actually delivered
+
+| | |
+|---|---|
+| `build/migration/204_one_table_says_who_may_open_what.sql` | the access table, `access_level_of`, `access_screens`, `access_may_open`, and the two auth functions returning them |
+| `build/migration/205_the_ten_day_view_carries_its_keys.sql` | `seam.tenday_snapshot` carries `client_id` and `geo_node_id` |
+| `build/migration/206_a_measure_set_for_every_seated_chair.sql` | 50 measures across 12 chairs, a unique index so none can be authored twice, `kpi_registry_gap` and `kpi_registry_completeness()` |
+| `build/supabase/functions/ops/**` (v7) | `requireScreen` on all 40 routes; MIS, ten-day and Reports cut to coverage; the people list to the subtree |
+| `.github/build-tool.py` patch 10 | the navigation prefers the server's list |
+| `build/test/test_scope.sql` | 29 assertions |
+| `build/test/check_access_matches_nav.py` | 262 (level, screen) pairs, page against database |
+
+### Acceptance, against V1–V5
+
+| | |
+|---|---|
+| V1 every ops route refuses out of scope, in words | done — `requireScreen`, 40 routes, 11 distinct screens |
+| V2 `person_may_open()` agrees with the page's `allowed()` | done — 262 pairs, checked by script, not by eye |
+| V3 MIS returns only rows inside the caller's coverage | done — and the pair test proves the failure mode it avoids |
+| V4 every seated chair has at least three measures | done — 3 to 6 each, asserted by the migration itself |
+| V5 `build/test/run.sh` still passes | verified after the baseline regenerated |
 
 ## Known limitations, carried forward
 

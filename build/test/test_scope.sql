@@ -30,6 +30,8 @@ end $$;
 delete from business_record where source_ref = 'scope-test';
 delete from coverage_rule where person_id in
   (select id from person where work_email like '%@scope.test');
+delete from kpi_definition where chair_id in
+  (select id from chair where code in ('SCOPE_BM','SCOPE_EXEC','SCOPE_MIS'));
 delete from chair_holder where person_id in
   (select id from person where work_email like '%@scope.test');
 delete from person where work_email like '%@scope.test';
@@ -237,6 +239,59 @@ begin
      and exists (select 1 from business_record b
                   where b.id::text = t.id and b.source_ref = 'scope-test');
   perform t_ok('and still returns every row it did before', n = 4, n::text);
+end $$;
+
+-- ================================ a seated chair with nothing to measure
+-- Migration 206 filled the twelve that were empty. This is the detector that
+-- says so the next time one appears -- and a detector nobody has watched fail
+-- is not a detector, so the fixture deliberately leaves a seated chair empty
+-- and then fills it.
+do $$
+declare ch uuid; n int; v text;
+begin
+  select id into ch from chair where code = 'SCOPE_BM';
+
+  select string_agg(code, ',' order by code) into v from kpi_registry_gap;
+  perform t_ok('a seated chair with no measures is named by kpi_registry_gap',
+    v like '%SCOPE_BM%', coalesce(v, '(nothing)'));
+
+  select (kpi_registry_completeness() ->> 'peopleWithout')::int into n;
+  perform t_ok('and the people in it are counted', n >= 1, n::text);
+
+  insert into kpi_definition (chair_id, name, unit, "position", cadence, accrual, active)
+  values (ch, 'Branch revenue achievement', '% of target', 1, 'MONTHLY',
+          (case when perf_accrual_kind(null, '% of target') = 'LEVEL'
+                then 'REPLACES' else 'ADDS' end)::kpi_accrual, true);
+
+  select string_agg(code, ',' order by code) into v from kpi_registry_gap;
+  perform t_ok('and it drops out of the gap the moment it has one',
+    coalesce(v, '') not like '%SCOPE_BM%', coalesce(v, '(nothing)'));
+
+  -- The accrual the scorer computes and the accrual stored on the row are the
+  -- same answer, which is what migration 200 paid for.
+  select count(*) into n from kpi_definition k
+   where k.active and k.chair_id = ch
+     and (case when perf_accrual_kind(null, k.unit) = 'LEVEL' then 'REPLACES' else 'ADDS' end)
+         <> k.accrual::text;
+  perform t_ok('a percentage measure is stored as REPLACES, not as the column default',
+    n = 0, n::text);
+
+  -- One live measure of a given name per chair
+  begin
+    insert into kpi_definition (chair_id, name, unit, "position", cadence, accrual, active)
+    values (ch, 'branch REVENUE achievement', '% of target', 2, 'MONTHLY', 'REPLACES', true);
+    perform t_ok('the same measure cannot be authored twice on one chair', false,
+      'the duplicate was accepted');
+  exception when unique_violation then
+    perform t_ok('the same measure cannot be authored twice on one chair', true);
+  end;
+
+  -- but retiring it and authoring the next one is allowed
+  update kpi_definition set active = false where chair_id = ch;
+  insert into kpi_definition (chair_id, name, unit, "position", cadence, accrual, active)
+  values (ch, 'Branch revenue achievement', '% of plan', 1, 'MONTHLY', 'REPLACES', true);
+  perform t_ok('a measure can be replaced by retiring it and authoring the next',
+    (select count(*) from kpi_definition where chair_id = ch) = 2);
 end $$;
 
 do $$ begin
