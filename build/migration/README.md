@@ -71,6 +71,7 @@ answer to *why*.
 | | |
 |---|---|
 | `build/schema/` | the generated baseline — what the database **is** |
+| `build/schema.sql` | superseded. A design document, kept because a dozen files point at it |
 | `build/migration/*.sql` | the numbered history — **why** it is that |
 | `build/migration/masters/` | reference data the migrations load |
 | `build/migration/org/` | the operating structure, and the scripts that made it |

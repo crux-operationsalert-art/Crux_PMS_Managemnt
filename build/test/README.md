@@ -54,47 +54,41 @@ neither a target nor a filing said only "nothing filed yet", which sends a
 manager to chase a number for a measure they never set a target on. It now
 names every reason that applies.
 
-## What the run also proved about this repository
+## What the run also proved about this repository, and what was done about it
 
-**`build/migration` cannot rebuild the database.** Fifty-one of its 106 files
-carry no executable SQL. From 134 onwards they are notes recording what was
-applied through the MCP tool, headed `-- Applied as: <migration name>`, and
-the SQL itself was never written back. `build/schema.sql` is a design
-document rather than DDL — it has two `UNIQUE` table constraints over
-expressions, which Postgres does not accept and never did.
+**`build/migration` could not rebuild the database.** Forty-five of its 111
+`.sql` files carry no executable SQL. From 134 onwards they are notes
+recording what was applied through the MCP tool, headed
+`-- Applied as: <migration name>`, and the SQL itself was never written back.
+`build/schema.sql` is a design document rather than DDL — it has two `UNIQUE`
+table constraints over expressions, which Postgres does not accept and never
+did.
 
-So the schema from 134 on exists in exactly one place, which is the live
-project, and it cannot be reviewed, diffed, or rebuilt anywhere else. The
-concrete cost of that showed up in this very work: `perf_cycle_open` calls
-`plb_wd_after`, which migration 168 announces in a comment and defines
-nowhere, so its signature had to be guessed and `build/test/fixture_live_shape.sql`
-carries a stand-in rather than the real thing.
+Counting `build/schema.sql`, both patch files and every migration file
+together, the repository could create 120 of the live project's 155 tables
+and 110 of its 311 function names. Two hundred and one functions, better than
+half a megabyte of them, were in no file here at all. The concrete cost
+showed up in this very work: `perf_cycle_open` calls `plb_wd_after`, which
+migration 168 announces in a comment and defines nowhere, so its signature
+had to be guessed.
 
-**The fix is one query**, and it should be run the next time the project is
-reachable:
+**That is now fixed, and this script is the proof.** `build/schema/` holds a
+generated baseline of the live schema, written back by
+`.github/workflows/snapshot-schema.yml` and never retyped by hand.
+`run.sh` builds a blank Postgres, loads that directory and nothing else — no
+`build/schema.sql`, no fixture standing in for what was missing, no migration
+applied on top — and runs the assertions against the result. It counts what
+it built, and the counts match the live project object for object: 155
+tables, 314 functions, 20 views, 328 indexes, 11 triggers, 52 policies.
 
-```sql
-select string_agg(pg_get_functiondef(p.oid), E';\n\n' order by p.proname)
-  from pg_proc p join pg_namespace n on n.oid = p.pronamespace
- where n.nspname = 'public' and p.prokind = 'f';
-```
+`fixture_live_shape.sql` was the stand-in for all of that and is gone. So is
+the two-cluster arrangement it needed. `build/schema/REGENERATE.md` says how
+to make the baseline again; `build/migration/README.md` says why it exists.
 
-Write the result to `build/schema-live.sql`, beside a `pg_dump --schema-only`
-of the tables, and the repository can describe the database again.
+## What run.sh also checks
 
-## What the fixture is, and what it is not
-
-`fixture_live_shape.sql` brings a local cluster up to the shape the live
-database is actually in. Everything in it is reconstructed from something
-that is running in production — `audit_entry.entity_ref` and
-`outbox.template_key` because four deployed Edge Functions insert them,
-`job_run.state` because migration 115's nightly sweep writes it,
-`kpi_definition.cadence` and `accrual` because they were read off the live
-table.
-
-`plb_wd_after` is the exception and is labelled as such in the file. There is
-no running code to reconstruct it from. The stand-in matches the behaviour
-migration 168 describes and is good enough to prove that `perf_cycle_open`
-computes two sensible window dates. **It is not evidence about the real
-signature**, and 194 should be applied with that in mind: if it fails on an
-ambiguous or undefined function, that call is why.
+plpgsql validates the syntax of a function body at `CREATE` and does not
+check that the functions the body calls exist. That is how `person_merge_plan`
+came to call `person_merge_side`, which was never there. Nothing in a load
+can catch it, so `run.sh` checks it once, against everything that loaded,
+after the rebuild.

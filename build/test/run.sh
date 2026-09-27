@@ -70,33 +70,35 @@ SQL
 # without complaint -- that is how person_merge_plan came to call
 # person_merge_side, which was never there. Nothing in a load can catch it,
 # so it is checked here, once, against everything that loaded.
+#
+# The bodies are read as text, which means the comments, the string literals
+# and the temp tables in them have to come out first or the answer is mostly
+# prose. Only names carrying an underscore are looked at: every function this
+# project has written has one, and the ordinary English words that sit in
+# front of a bracket do not.
 echo
 echo "== every function the bodies call is present"
 missing=$(psq -tA <<'SQL'
-with called as (
+with src as (
+  select regexp_replace(
+           regexp_replace(
+             regexp_replace(
+               regexp_replace(p.prosrc, '--[^\n]*', ' ', 'g'),
+               '/\*.*?\*/', ' ', 'g'),
+             '''[^'']*''', ' ', 'g'),
+           'create\s+(temp\s+|temporary\s+)?table(\s+if\s+not\s+exists)?\s+[a-z0-9_]+', ' ', 'gi') as body
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname in ('public','stg') and p.prokind in ('f','p')),
+called as (
   select distinct m[1] as name
-    from pg_proc p
-    join pg_namespace n on n.oid = p.pronamespace
-    cross join lateral regexp_matches(p.prosrc, '([a-z][a-z0-9_]{3,})\s*\(', 'g') m
-   where n.nspname = 'public' and p.prokind in ('f','p'))
+    from src cross join lateral
+         regexp_matches(body, '(?:^|[^a-zA-Z0-9_.$])([a-z][a-z0-9_]*_[a-z0-9_]+)\s*\(', 'g') m)
 select string_agg(c.name, ', ' order by c.name)
   from called c
- where not exists (select 1 from pg_proc p2 join pg_namespace n2 on n2.oid = p2.pronamespace
-                    where p2.proname = c.name and n2.nspname in ('public','pg_catalog','cron','extensions'))
+ where not exists (select 1 from pg_proc p2 where p2.proname = c.name)
    and not exists (select 1 from pg_type t where t.typname = c.name)
-   and c.name not in (
-     -- plpgsql keywords and SQL constructs the pattern also matches
-     'select','insert','update','delete','values','where','when','case','coalesce',
-     'exists','array','exception','raise','return','returns','declare','begin','loop',
-     'using','order','group','having','union','distinct','filter','over','partition',
-     'interval','extract','position','overlay','substring','trim','cast','row','rows',
-     'grouping','lateral','with','recursive','then','else','from','into','perform',
-     'execute','format','concat','nullif','greatest','least','jsonb','json','text',
-     'numeric','decimal','character','timestamp','time','date','boolean','integer',
-     'bigint','smallint','uuid','interval','xmlelement','collate','offset','limit',
-     'fetch','only','natural','inner','outer','left','right','full','cross','join',
-     'on','and','or','not','null','true','false','end','elsif','elseif','if','while',
-     'for','foreach','continue','exit','assert','get','diagnostics','found','new','old')
+   -- pg_net is not installed on a plain cluster and never will be here
+   and c.name not in ('http_post','get_diagnostics','make_interval','array_agg');
 SQL
 )
 if [ -n "$missing" ]; then

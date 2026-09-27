@@ -1,3 +1,17 @@
+-- SUPERSEDED, and kept only because a dozen documents in this repository
+-- point at it.
+--
+-- This file is a design document. It was never the DDL that built the
+-- project: it carries 85 of the live project's 155 tables, 6 of its 314
+-- functions and 5 of its 20 views, and two of its UNIQUE constraints are
+-- expressions, which is not a thing a table constraint can be.
+--
+-- What the database actually is now lives in build/schema/, generated from
+-- the live project's own catalogues by .github/workflows/snapshot-schema.yml.
+-- build/schema/load.sh rebuilds a database from it and build/test/run.sh
+-- proves that it does. Read build/migration/README.md for how this came
+-- about. Do not build anything from the file below.
+--
 -- =====================================================================
 -- CRUX ESCALATION MATRIX — replacement schema (PostgreSQL 15+)
 -- Generated 3 Sep 2026 from the audit of the live Google Sheets datastore.
