@@ -369,6 +369,70 @@ PATCHES.append((
       '/* --------------------------------------------------------------- today */', 1)],
 ))
 
+# ----------------------------- 7. THE MATRIX NOBODY COULD SEE GOING OUT
+# The tool held the escalation matrix and chased the branches missing a
+# level. It had nowhere at all for the monthly act: the pack that goes to
+# the client, who it went to, when, and what it said at the moment it left.
+# A branch manager could keep five levels filled for a year and never once
+# be told whether the client had been sent them.
+#
+# Two entrances, because it is one question asked in two places: a line on
+# the dashboard that says whether this month has gone out, and the section
+# on the Escalation matrix screen that it goes out from.
+SCREEN_MATRIX = io.open("build/app/screen-matrix-month.js", encoding="utf-8").read()
+
+PATCHES.append((
+    "the matrix that goes out",
+    "function mxMonthLoad(",
+    [# the styles it needs that the page does not already have
+     ('.hrabad{color:var(--terra-ink);font-size:12px;line-height:1.45}',
+      '.hrabad{color:var(--terra-ink);font-size:12px;line-height:1.45}\n'
+      '/* ---------------------------------------------------------- matrix\n'
+      '   The monthly pack. A letter somebody is about to send should look\n'
+      '   like a letter before they send it.                              */\n'
+      '.mxline{margin:10px 15px;padding:8px 12px;font-size:13px;border-left:3px solid var(--line)}\n'
+      '.mxline.due{background:var(--gold-bg);border-left-color:var(--gold);color:var(--gold-ink)}\n'
+      '.mxline.done{background:var(--green-bg);border-left-color:var(--green);color:var(--body)}\n'
+      '.mxlist{margin:6px 15px 10px 32px;padding:0;font-size:13px;color:var(--body)}\n'
+      '.mxlist li{margin:2px 0}\n'
+      '.mxpack{padding:4px 0 10px}\n'
+      '.mxsays{margin:0 15px 6px;font-size:13px;color:var(--body)}\n'
+      '.mxrecs{display:flex;flex-wrap:wrap;gap:8px 18px;padding:2px 15px 8px}\n'
+      '.mxrec{display:inline-flex;align-items:center;gap:6px;font-size:13px;\n'
+      '  white-space:nowrap;color:var(--body)}\n'
+      '.mxrec input[type=checkbox]{width:15px;height:15px;min-height:0;padding:0;\n'
+      '  margin:0;flex:0 0 15px;accent-color:var(--blue)}\n'
+      '.mxbranches{padding:0 15px 6px}\n'
+      '.mxb{border-top:1px solid var(--line3);padding:6px 0}\n'
+      '.mxb summary{cursor:pointer;font-size:13px;color:var(--ink)}\n'
+      '.mxlv{width:100%;margin:6px 0 2px;font-size:12.5px}\n'
+      '.mxlv td{padding:3px 8px 3px 0;border:none;vertical-align:top}\n'
+      '.mxl{width:28px;color:var(--mute);font-variant-numeric:tabular-nums}\n'
+      '#mxperiod{width:auto;min-width:170px}', 1),
+     # the dashboard line
+     ('\'<div class="card"><h2>Your appraisal cycle</h2>\' + pmsSummary(pms) + \'</div>\' +',
+      '\'<div id="mxcard"></div>\' +\n'
+      '    \'<div class="card"><h2>Your appraisal cycle</h2>\' + pmsSummary(pms) + \'</div>\' +', 1),
+     ('(cases.empty ? \'<div class="card"><h2>Escalations</h2>\' + msg("warn", cases.empty) + \'</div>\' : "");\n'
+      '}',
+      '(cases.empty ? \'<div class="card"><h2>Escalations</h2>\' + msg("warn", cases.empty) + \'</div>\' : "");\n'
+      '  mxCardLoad();\n'
+      '}', 1),
+     # and the section on the matrix screen itself
+     ('\'<p class="mute">Five levels per branch. Completeness is computed, never stored.</p>\' +',
+      '\'<p class="mute">Five levels per branch. Completeness is computed, never stored.</p>\' +\n'
+      '    \'<div id="mxmonth"><p class="mute">Loading this month\\u2019s pack\\u2026</p></div>\' +', 1),
+     (': \'<div class="empty">Every branch in your coverage has all five levels.</div>\') + \'</div>\';\n'
+      '}',
+      ': \'<div class="empty">Every branch in your coverage has all five levels.</div>\') + \'</div>\';\n'
+      '  mxMonthLoad();\n'
+      '}', 1),
+     # the screen itself, ahead of the performance screens
+     ('/* ---------------------------------------------------------- performance */',
+      SCREEN_MATRIX.rstrip() + '\n\n'
+      '/* ---------------------------------------------------------- performance */', 1)],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)

@@ -15,6 +15,7 @@ import mis from "./routes/mis.ts";
 import access from "./routes/access.ts";
 import auto from "./routes/auto.ts";
 import places from "./routes/places.ts";
+import pack from "./routes/pack.ts";
 
 const MOUNTS: [string, any][] = [
   ["/api/field", field],
@@ -23,6 +24,7 @@ const MOUNTS: [string, any][] = [
   ["/api/access", access],
   ["/api/auto", auto],
   ["/api/places", places],
+  ["/api/pack", pack],
 ];
 
 const sha = async (s: string) => {
