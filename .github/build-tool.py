@@ -120,6 +120,51 @@ PATCHES.append((
       '      + "Use the Google button above."); return; }', 1)],
 ))
 
+# ------------------------------------- 4. ONE 401 SIGNED EVERYBODY OUT
+# call() ended with:
+#
+#     if (r.status === 401) { signOut(); }
+#
+# Any 401, from any service, destroyed the session and threw the person
+# back to the sign-in screen. That is right for our own session check and
+# wrong for everything else.
+#
+# `plb` and `hr` were deployed with Supabase's gateway JWT verification
+# left ON -- they are the only two app-facing functions where it is; crux,
+# api, org, ops, cfg, kpi and wa are all off. The gateway therefore rejects
+# those two with 401 BEFORE the function runs, and the page cannot satisfy
+# it: the project key is appended as a query parameter precisely because
+# adding an Authorization header would trip the CORS preflight every other
+# function depends on.
+#
+# So signing in with the URL left on #plb went: sign-in succeeds, session
+# created, route() draws the PLB screen, plb() returns a gateway 401,
+# signOut() fires, and you are back on the login page before anything
+# rendered. Server-side it looks like a clean successful login, which is
+# exactly what login_attempt showed.
+#
+# The real fix is to redeploy those two functions with verify_jwt off. This
+# makes the page survive until then, and stops any one misconfigured
+# service from ever locking somebody out of all the others.
+PATCHES.append((
+    "a foreign 401 no longer signs out",
+    "service_unreachable",
+    [('  if (r.status === 401) { signOut(); }',
+      '  /* Our own session check saying "not signed in" is a reason to sign out.\n'
+      '     A gateway refusing a single service is not: it says nothing about the\n'
+      '     session, and treating it as if it did is how one misconfigured\n'
+      '     function locked everybody out of the whole tool. */\n'
+      '  if (r.status === 401) {\n'
+      '    if (b && (b.error === "not_signed_in" || b.error === "sign_in_required")) {\n'
+      '      signOut();\n'
+      '    } else if (b && !b.error) {\n'
+      '      b.error = "service_unreachable";\n'
+      '      b.reason = "That part of the tool refused the request before it arrived. "\n'
+      '        + "It is nothing to do with your sign-in, and nothing else is affected.";\n'
+      '    }\n'
+      '  }', 1)],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
