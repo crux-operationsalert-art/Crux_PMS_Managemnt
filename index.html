@@ -885,6 +885,9 @@ var UNDER = { matrix:"clients", org:"people", whatsapp:"mail",
 
 function myLevel(){
   if (!me) return "exec";
+  /* What the database said when this session was minted. The page
+     works it out below only if the session predates migration 204. */
+  if (me.scope_level) return me.scope_level;
   if (me.app_role === "ADMIN") return "admin";
   var byChair = CHAIR_LEVEL[me.chair_title || ""];
   if (byChair) return byChair;
@@ -900,6 +903,12 @@ function myLevel(){
 
 function allowed(key){
   if (!me) return false;
+  /* The server's list, which is the same rows the ops service refuses
+     on. If it is here, it is the answer -- working it out again from a
+     second copy could only disagree. */
+  if (me.screens && me.screens.length) {
+    return me.screens.indexOf(key) > -1;
+  }
   var lvl = myLevel();
   if (lvl === "admin") return true;
   var list = SCREENS[lvl] || SCREENS.exec;
