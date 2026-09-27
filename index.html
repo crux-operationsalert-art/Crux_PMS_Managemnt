@@ -693,6 +693,8 @@ var OPS  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/ops";
 var ops  = function(p,o){ return call(OPS,  p, o); };
 var PLB  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/plb";
 var plb  = function(p,o){ return call(PLB,  p, o); };
+var PACK = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/pack";
+var packApi = function(p,o){ return call(PACK, p, o); };
 var HRF  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/hr";
 var hrapi = function(p,o){ return call(HRF, p, o); };
 var crux = function(p,o){ return call(CRUX, p, o); };
@@ -3974,7 +3976,7 @@ function mxMissing(r){
 async function mxCardLoad(){
   var box = el("mxcard");
   if (!box) return;
-  var m = await ops("/pack/month").catch(function(){ return null; });
+  var m = await packApi("/pack/month").catch(function(){ return null; });
   /* A chair with no client view gets no card at all, and neither does a
      dashboard whose service is not deployed yet. An empty box is better
      than a card that explains itself on somebody's first screen. */
@@ -4000,7 +4002,7 @@ async function mxCardLoad(){
 async function mxMonthLoad(){
   if (!el("mxmonth")) return;
   if (!MX.period) MX.period = mxMonth();
-  MX.month = await ops("/pack/month?period=" + MX.period);
+  MX.month = await packApi("/pack/month?period=" + MX.period);
   if (mxMissing(MX.month)) {
     el("mxmonth").innerHTML = msg("warn",
       "The monthly pack is published but the service behind it is not deployed " +
@@ -4136,7 +4138,7 @@ function mxWire(){
       var id = b.getAttribute("data-mxopen");
       if (MX.open === id) { MX.open = null; MX.pack = null; mxRender(); return; }
       MX.open = id; MX.pack = null; MX.says = ""; mxRender();
-      var p = await ops("/pack/client/" + id + "?period=" + MX.period);
+      var p = await packApi("/pack/client/" + id + "?period=" + MX.period);
       if (MX.open !== id) return;
       MX.pack = p;
       /* The primary contact and its copies are the people this letter is
@@ -4158,14 +4160,14 @@ function mxWire(){
     if (MX.busy) return;
     MX.busy = true; el("mxsend").disabled = true;
     var to = Object.keys(MX.to).filter(function(k){ return MX.to[k]; });
-    var o = await ops("/pack/send", { method:"POST", body:{
+    var o = await packApi("/pack/send", { method:"POST", body:{
       clientId: MX.open, period: MX.period, to: to } });
     MX.busy = false;
     MX.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note);
     MX.pack = null;
     await mxMonthLoad();
     if (MX.open) {
-      MX.pack = await ops("/pack/client/" + MX.open + "?period=" + MX.period);
+      MX.pack = await packApi("/pack/client/" + MX.open + "?period=" + MX.period);
       mxRender();
     }
   };
