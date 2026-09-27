@@ -9,4 +9,4 @@
 # message; this records what was asked for. If the two disagree, the
 # republish did not happen.
 
-71517ea6deba74aa8cdfd3356d344116  369077 characters  Loose ends, at the top of the HR page: how many active people the bonus scheme can actually score, which chairs carry no measure set, who runs a place with nothing measuring them, and who has no employee number. It reads 12 of 105 today, and that number had never been stated anywhere.
+6dff1ba5a3f08091980a737e9bdd0f41  378502 characters  The four sign-in fixes move from build-tool.py into the source where they belong, the dead vPeople goes, and an administrator can look at Crux as any person or any chair -- a real session for them, with auth_session.acting_actor_id and one ACTED_AS audit row naming both people. plb and hr are redeployed with verify_jwt off, which is what was ejecting people on #plb.
