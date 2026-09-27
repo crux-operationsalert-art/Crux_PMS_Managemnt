@@ -145,4 +145,40 @@ r.get("/loose-ends", async (req: any, res: any) => {
   return res.json(o.o);
 });
 
+// ------------------------------------------------------ acting as
+// This lives here rather than in `crux` for one reason: it needs a signed-in
+// caller, and crux's auth endpoints are the ones that run BEFORE anybody is
+// signed in. An administrator asking to look at the tool as somebody else is
+// an authenticated request like any other.
+//
+// The guard is auth_act_as() itself, which refuses anybody who is not an
+// ADMIN. mayAdd() lets HR through, and that is deliberate rather than an
+// oversight: the database is the gate that counts, and it says ADMIN.
+
+r.get("/act/targets", async (req: any, res: any) => {
+  const o = await one(`select auth_act_targets($1) as o`, [req.person.id]);
+  return out(res, o.o);
+});
+
+// The token is minted here and never stored: what goes to the database is
+// its SHA-256, exactly as crux does it for a password or a Google sign-in,
+// so a leaked row cannot be replayed as a session.
+r.post("/act/as", async (req: any, res: any) => {
+  const b = req.body || {};
+  const raw = crypto.getRandomValues(new Uint8Array(32));
+  const token = btoa(String.fromCharCode(...raw))
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const hash = Array.from(new Uint8Array(digest))
+    .map((x) => x.toString(16).padStart(2, "0")).join("");
+
+  const o = await one(
+    `select auth_act_as($1,$2,$3,$4,$5) as o`,
+    [req.person.id, b.personId || null, b.chairId || null, hash,
+     req.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null],
+  );
+  if (o.o?.error) return out(res, o.o);
+  return res.json({ token, person: o.o, note: o.o.note });
+});
+
 export default r;
