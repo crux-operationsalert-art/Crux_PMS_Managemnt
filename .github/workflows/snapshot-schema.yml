@@ -22,6 +22,12 @@ on:
     branches: [main]
     paths:
       - .github/workflows/snapshot-schema.yml
+      # build/migration/README.md says the rule is: write the migration, apply
+      # it from the file, then regenerate the baseline. Regenerating by hand is
+      # the step somebody forgets, so a migration landing here is the trigger.
+      # If the migration has not been applied yet, the snapshot simply matches
+      # what is there and commits nothing.
+      - build/migration/*.sql
 
 permissions:
   contents: write
