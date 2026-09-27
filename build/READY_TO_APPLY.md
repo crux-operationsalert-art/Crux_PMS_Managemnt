@@ -1,8 +1,31 @@
 # Status
 
-**The sign-in fix is LIVE** — published 27 Sep as commit 473ce37, applied at
-publish time by `.github/build-tool.py` because Supabase could not be reached.
-Hard-refresh the page (Ctrl/Cmd + Shift + R) to get past the cached copy.
+**Three sign-in fixes are LIVE** — published 27 Sep (473ce37, dd309e0),
+applied at publish time by `.github/build-tool.py` because Supabase could not
+be reached. Hard-refresh (Ctrl/Cmd + Shift + R) to get past the cached copy.
+
+1. **The Google button was losing a race.** `boot()` tested for the GSI
+   library exactly once, and the library is loaded `async defer`, so on a
+   cold cache the else branch ran and wrote *"Google sign-in is still
+   loading, or is not configured yet."* as a **final** answer with no retry.
+   That is the sentence on the screen recording. It now waits up to eight
+   seconds. Reproduced by serving the library 2.5s late: live page no button,
+   patched page button renders.
+2. **The password box could never work** — 635 active people, zero password
+   hashes — and Chrome had autofilled WORK E-MAIL with the company name,
+   "Crux Risk Management Pvt Ltd", which was being sent and refused. It now
+   refuses a non-address before the round trip and says why nobody can sign
+   in that way.
+3. **The unguarded `localStorage` read** (below), which killed the whole
+   script when a browser refuses site data.
+
+**If Google still fails after this**, the last frame of the recording shows
+the account chooser opening and then a blank `accounts.google.com/gsi/transform`
+popup. That is Google refusing the handshake, and the usual cause is the
+origin not being listed on the OAuth client. Check that
+`https://crux-operationsalert-art.github.io` is an **Authorized JavaScript
+origin** on client `1064617222271-tj4d14h5ngegc4la0b0i5f3u472q4ps0`. Only
+someone with the Google Cloud console can see or change that.
 
 Everything else below is still written, verified and not applied.
 
