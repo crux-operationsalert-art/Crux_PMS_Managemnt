@@ -541,6 +541,10 @@ PATCHES.append((
 # build/test/check_access_matches_nav.py reads the BUILT page and compares
 # every (level, screen) pair against access_level_screen, so the two copies
 # cannot drift without a test saying so.
+#
+# Order matters and is load-bearing: patch 5 above is what puts SCREENS,
+# CHAIR_LEVEL and UNDER into the page at all -- app_page has none of them --
+# so the anchors below only exist once it has run.
 PATCHES.append((
     "navigation asks the server",
     "me.screens",
