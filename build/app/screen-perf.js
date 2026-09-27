@@ -43,10 +43,26 @@ function pfBar(pct){
   return '<div class="pfbar"><i class="' + tone + '" style="width:' + w + '%"></i></div>';
 }
 
+/* A screen is published from one place and its service is deployed from
+   another, and the two do not always land in the same minute. When the
+   routes are not there yet the gateway answers no_route, and this screen
+   says that rather than inventing a reason of its own -- "the period has
+   not been opened" would send somebody looking for HR about a deploy. */
+function pfMissing(r){
+  return !!r && (r.error === "no_route" || r._status === 404);
+}
+
 /* --------------------------------------------------------------- the shell */
 async function vPerf(){
   if (!PF.period) PF.period = pfMonth();
   var c = await plb("/plb/perf/cycle?period=" + PF.period);
+  if (pfMissing(c)) {
+    el("view").innerHTML = '<h1>Performance</h1>' +
+      msg("warn", "This screen is published but the service behind it is not " +
+        "deployed yet, so there is nothing to show. Nothing is wrong with your " +
+        "account and nothing has been lost. Appraisal and Bonus, above, still work.");
+    return;
+  }
   PF.cycle = c.cycle || null;
   PF.mayOpen = !!c.mayOpen;
   if (!PF.team) {

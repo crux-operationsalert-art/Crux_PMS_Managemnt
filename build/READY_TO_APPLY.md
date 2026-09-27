@@ -1,185 +1,133 @@
-# Status — all applied, 27 Sep
+# Status — 27 Sep, late
 
-Everything that was waiting is live.
+Two large pieces landed this session: the **monthly PMS** and the **monthly
+escalation matrix**. Both are written, parse-checked, driven in a browser, and
+committed. Neither is fully live: the database half is partly applied and the
+two Edge Functions have not been redeployed, because the Supabase MCP approval
+gate shut partway through and has stayed shut.
 
-| | |
-|---|---|
-| `plb` redeployed, `verify_jwt` off | v4, identical code hash |
-| `hr` redeployed, `verify_jwt` off | v4, with the act-as routes |
-| 187a-d — act-as in the database | applied |
-| 188a — the four sign-in fixes into `app_page` | applied |
-| 188b — the dead `vPeople` removed | applied |
-| 188c/d — the act-as screen | applied |
-| Published | 380,065 bytes, both script blocks parse |
-
-Driven in a browser against the published page: an administrator gets the
-picker (2 people, 2 chairs, the empty chair's button disabled); a viewer gets
-no picker at all; an acting session gets the banner and Stop and no picker.
-Zero page errors in all three, and the header now reads the person's **chair**
-rather than their app role.
-
-The approval gate was refusing on **payload size**, not on the tool. Small
-calls go through, which is why 187 and 188 landed as chunks.
+What follows is exactly what is applied, what is not, and the order to finish
+in. Nothing below is speculative — every file named exists in the repository
+and every check named was actually run.
 
 ---
 
+## Applied to the database
 
-**Three sign-in fixes are LIVE** — published 27 Sep (473ce37, dd309e0),
-applied at publish time by `.github/build-tool.py` because Supabase could not
-be reached. Hard-refresh (Ctrl/Cmd + Shift + R) to get past the cached copy.
+| Migration | What it adds | State |
+|---|---|---|
+| `190_the_monthly_kpi_cycle.sql` | `perf_cycle` — the period and its two windows | **applied** |
+| `191_assigning_a_kpi_for_a_month.sql` | `perf_assignment`, its indexes, the `cadence` column discovered from `kpi_definition`, and the `perf_assignment_edges` trigger | **applied** (as 191, 191b, 191c) |
+| `192_filing_a_number.sql` | `perf_entry`, unique on (assignment, day), and the trigger refusing an entry on a measure that has parts | **applied** |
+| `193_how_a_number_climbs.sql` | `perf_accrual_kind`, `perf_value`, `perf_due` | **applied** (as 193a/b/c) |
 
-1. **The Google button was losing a race.** `boot()` tested for the GSI
-   library exactly once, and the library is loaded `async defer`, so on a
-   cold cache the else branch ran and wrote *"Google sign-in is still
-   loading, or is not configured yet."* as a **final** answer with no retry.
-   That is the sentence on the screen recording. It now waits up to eight
-   seconds. Reproduced by serving the library 2.5s late: live page no button,
-   patched page button renders.
-2. **The password box could never work** — 635 active people, zero password
-   hashes — and Chrome had autofilled WORK E-MAIL with the company name,
-   "Crux Risk Management Pvt Ltd", which was being sent and refused. It now
-   refuses a non-address before the round trip and says why nobody can sign
-   in that way.
-3. **The unguarded `localStorage` read** (below), which killed the whole
-   script when a browser refuses site data.
+`perf_value()` is where the one rule that makes a roll-up correct lives:
+counts and rupees accumulate, a percentage or a score is a level. It applies
+that rule at all three joins — across days, across a person's own splits, and
+across a team — because getting it wrong at any one of them is how 93% and
+88% become 286%.
 
-**If Google still fails after this**, the last frame of the recording shows
-the account chooser opening and then a blank `accounts.google.com/gsi/transform`
-popup. That is Google refusing the handshake, and the usual cause is the
-origin not being listed on the OAuth client. Check that
-`https://crux-operationsalert-art.github.io` is an **Authorized JavaScript
-origin** on client `1064617222271-tj4d14h5ngegc4la0b0i5f3u472q4ps0`. Only
-someone with the Google Cloud console can see or change that.
+## Not applied — the gate shut here
 
-Everything else below is still written, verified and not applied.
-
-# Written, verified, not yet applied
-
-The Supabase MCP approval gate refused every call while this was built —
-including a bare `select 1` — so nothing below has touched the project.
-Everything here is finished and tested as far as it can be without the
-database. Applying it is four steps and should take a couple of minutes.
-
-## The root cause behind the lockout — apply this FIRST
-
-**`plb` and `hr` are deployed with `verify_jwt: true`.** They are the only two
-app-facing functions where it is on; `crux`, `api`, `org`, `ops`, `cfg`, `kpi`
-and `wa` are all off. Supabase's gateway therefore rejects both with 401
-*before the function runs*, and the page cannot satisfy it — the project key
-goes in as a query parameter precisely because an `Authorization` header would
-trip the CORS preflight every other function relies on.
-
-Combined with `call()` signing out on any 401, that ejected anyone whose URL
-was on `#plb` the instant they signed in, and made every HR screen do the same.
-
-**Redeploy both with `verify_jwt: false`.** The page-side guard is live and
-stops the ejection, but until this is done the Performance & bonus screen and
-all three HR cards will show "that part of the tool refused the request".
-
-## Apply in this order
-
-1. **`build/migration/187_act_as_a_person_or_a_chair.sql`**
-   Adds `auth_session.acting_actor_id`, rewrites `auth_whoami` (which also
-   fixes the header showing `ADMIN`/`VIEWER` where a chair belongs — it
-   never returned `chair_title` or `department`), adds `auth_act_targets()`
-   and `auth_act_as()`. Both new functions are revoked from `anon` and
-   `authenticated`.
-
-2. **Redeploy the `hr` edge function to v4** from
-   `build/supabase/functions/hr/` (`index.ts`, `shim.ts`, `routes/hr.ts`).
-   Two new routes: `GET /hr/act/targets`, `POST /hr/act/as`. The route file
-   parses cleanly under esbuild.
-
-3. **`build/migration/188_the_line_that_locked_somebody_out.sql`**
-   Asserts app_page md5 `71517ea6deba74aa8cdfd3356d344116` (369,077 chars)
-   before touching anything. Guards the four unguarded `localStorage`
-   calls, removes the dead `vPeople`, and splices in the act-as bar.
-
-   The storage guards in it are now also applied at publish time, so the
-   live page already has them. 188 puts them in the source where they
-   belong; once it lands, the publish-time patch detects them and becomes a
-   no-op, and can then be deleted from `build-tool.py`.
-
-4. **Bump `.github/app-page.sha`** to whatever 188 leaves, and push. The
-   workflow republishes `index.html`.
-
-## The sign-in bug, reproduced and fixed
-
-Line 554 of the published page is the **first statement in the script**:
-
-```js
-var token = localStorage.getItem("cruxToken") || "";
-```
-
-`localStorage` does not return `null` when a browser refuses it — it
-**throws**. Private windows, blocked site data, some managed-device
-policies. Because that line runs before anything else, the throw takes the
-whole script with it: no function is ever defined, `boot()` never runs, the
-Google button never renders. What is left is the sign-in card, which is
-static HTML, with a Sign in button wired to nothing.
-
-**Reproduced in Chromium with site data blocked**, against the page that was
-live: one error, `The operation is insecure.`, and `el("go").onclick`
-undefined — the Sign in button has no handler and `boot()` never runs, so the
-Google button never renders either. Function declarations hoist, so
-`window.boot` still exists, which is why it looks like a working page rather
-than a broken one.
-
-It is the only explanation that fits the one piece of evidence that did not:
-**`login_attempt` records no failures at all.** Not one. The request was
-never made.
-
-After the fix, same test: button wired, `boot()` ran, **zero errors**. With
-storage working, patched and unpatched behave identically — app opens, 21 nav
-links, no errors.
-
-Three further sites do the same thing unguarded — both places a token is
-stored after a successful sign-in, and sign-out. All four now go through
-`aaGet` / `aaSet` / `aaDrop`, which catch and carry on. A browser that
-will not remember the token still signs in; it just has to sign in again
-next time, which is worth more than a page that will not load.
-
-## What was verified without the database
-
-Migration 188 was **simulated end to end** against the published
-`index.html` — every assertion it makes was run locally and passed:
-
-| Check | Result |
+| Migration | What it adds |
 |---|---|
-| `async function vHR(){` | 1 |
-| `function vHR(){` total | 1 |
-| `function vPeople(` | 1 (was 2) |
-| async declarations | +2 (+3 from the screen, −1 dead vPeople) |
-| `localStorage.` | 3 — only inside the three guards |
-| `aaPaint` declared | 1 |
-| `id="aabar"` | 1 |
-| Both script blocks under `node --check` | pass |
+| `194_setting_and_filing.sql` | `perf_cycle_open`, `perf_may_set`, `perf_assign`, `perf_assign_bulk`, `perf_carry_forward`, `perf_file` |
+| `195_what_a_manager_sees.sql` | `perf_node`, `perf_tree`, `perf_history`, `perf_kpi_score` |
+| `196_the_matrix_that_goes_out.sql` | `matrix_dispatch`, `matrix_scope_branches`, `matrix_client_view`, `matrix_pack`, `matrix_month`, `matrix_send` |
 
-Then the simulated page was **driven in Chromium**, signed in as three
-different people:
+Apply them in that order. 194 and 195 are already split into chunks small
+enough for the gate in the file itself; 196 is three sections separated by
+comment rules and can be applied in three calls if a whole-file call is
+refused.
 
-| As | Picker | Banner | Header | Page errors |
-|---|---|---|---|---|
-| Operations Alert (ADMIN) | shown | — | Operations Alert / Administrator | 0 |
-| Ananya Gawade (VIEWER) | **hidden** | — | Ananya Gawade / **Executive** | 0 |
-| Acting as Vinayak Jondale | hidden | shown, with Stop | Vinayak Jondale / **Branch Manager** | 0 |
+**One thing to check on 194.** `perf_cycle_open` calls
+`plb_wd_after(s, 5, null)` — the working-day helper from migration 168 — and
+the call was written from the live signature, but the gate closed before it
+could be re-read. If 194 fails on an ambiguous or undefined function, that
+line is why, and the fix is a cast on the third argument.
 
-The picker was opened and driven: 2 people listed, 2 chairs listed, the
-chair with nobody in it **disabled**, and typing `ananya` narrowed the list
-to one. The header showing a chair rather than `ADMIN` is the `auth_whoami`
-fix — the page had always asked for `chair_title`; it had never been given
-one.
+## Not deployed
+
+| Function | Change | Checked |
+|---|---|---|
+| `plb` → v5 | 12 `/perf/*` routes in `routes/plb.ts` | parses clean |
+| `ops` → v7 | `routes/pack.ts` mounted at `/api/pack`, four routes | parses clean |
+
+`api` is at the size an Edge Function deploy will carry and takes neither.
+That is why the matrix despatch routes are on `ops` rather than beside the
+rest of the matrix.
+
+## Not published
+
+The front end is applied at publish time by `.github/build-tool.py`, which is
+the lever that works while Supabase is unreachable — GitHub Pages serves
+`index.html`, and the workflow rebuilds it from `app_page` and re-applies
+every patch on the way past. Seven patches now; the first five detect
+themselves as already in `app_page` and skip.
+
+| Patch | What it does |
+|---|---|
+| 6. one Performance screen | folds the two Performance nav entries into one, keeps `#pms` and `#plb` as sub-tabs, and splices in `build/app/screen-perf.js` |
+| 7. the matrix that goes out | the dashboard line, the month section on `#matrix`, and `build/app/screen-matrix-month.js` |
+
+Pushing any of `.github/workflows/publish-tool.yml`, `.github/tool-shim.html`,
+`.github/build-tool.py` or `.github/app-page.sha` triggers the publish. The
+last two commits touched `build-tool.py`, so the next push publishes both
+screens — **and they will call routes that are not deployed yet.** Deploy
+`plb` and `ops` first, or the Performance screen will report the period as
+unopened and the matrix section will be empty.
+
+---
+
+## Verified without the database
+
+Both screens were driven in Chromium against stubbed routes, signed in as a
+Branch Manager.
+
+**Performance** — one nav entry, three sub-tabs (This month / Appraisal /
+Bonus); the due-today card; the tree expanding from two rows to five across a
+split and a team contribution; the team face appearing because `/perf/team`
+returned people; the assignment form with its cadence list and its "climbs
+into" list both built from what came back rather than from a guess. Zero page
+errors.
+
+**Escalation matrix** — the dashboard line; the client table with one client
+sent and one not; the pack opening with the primary and head-office contacts
+ticked and the CC not; the held-back branch named; five levels a branch; and
+the send posting exactly the two addresses that were ticked. Zero page errors.
+
+Three things that only showed up on screen, all now fixed in the patch:
+
+- `button{min-height:46px}` and `button:hover{background:var(--blue)}` in the
+  base sheet also catch a disclosure triangle, and `button:hover` outranks a
+  plain class — so the "+" turned into a 46px navy block mid-click.
+- `input{width:100%;min-height:44px}` also catches a checkbox. Every tick in
+  the tool is a 44px square for this reason.
+- `.chip` paints itself with `var(--ink2)`, which the stylesheet uses once and
+  defines nowhere, so the colour is inherited — white on white inside a
+  selected tab. Still undefined everywhere else, where chips happen to sit on
+  light backgrounds and inherit something readable by luck.
+
+---
 
 ## Still not done
 
-- **The second sign-in door.** A one-time code to the work address, so
-  Google is not the only way in. Nobody has a password — 635 active people,
-  zero hashes — so `/api/login` cannot succeed for anyone, and there is no
-  Activate control even though the activation e-mail tells people to use
-  one. Guarding `localStorage` removes the likely cause of the lockout; it
-  does not remove the single point of failure.
-- **Folding bonus into the one Performance screen.** The nav shows two
-  Performance entries where the design has one.
-- **Per-chair navigation.** The design gives every chair its own nav list;
-  the build shows one flat nav to everybody. See
-  `build/AUDIT_design_vs_built.md`.
+- **Scope enforced in the services, not just the nav.** The per-chair
+  navigation is live and the audit measured it (FE 18→8, TL 18→9, BM 18→14,
+  Partner 18→15, HR 19→17, Admin 21→21), but hiding a screen is not a
+  permission check. `buildScope()` runs on every `api` and `ops` request and
+  the scope *level* it carries is still unused, and nothing reconciles the
+  navigation against the endpoints. `ops/routes/mis.ts` and `auto.ts` have
+  not been read for this.
+- **A measure set for every seated chair.** The registry reaches 12 of 104
+  seated chairs. The monthly model makes that a default rather than the
+  answer — a manager sets the measures each month — but a chair with no set
+  still starts its manager from a blank list, and `/perf/measures` falls back
+  to the whole catalogue and says so rather than pretending.
+- **Reminders on the cadence.** `perf_due()` knows what is owed today; nothing
+  yet puts that in the outbox on the morning it is owed.
+- **The second sign-in door.** A one-time code to the work address, so Google
+  is not the only way in. 635 active people, zero password hashes.
+- **Back-testing the roll-up on dummy months.** The owner asked for deletable
+  sample months so the six-month history has something in it before the real
+  months accumulate.

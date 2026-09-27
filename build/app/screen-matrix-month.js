@@ -26,13 +26,20 @@ function mxMonthName(s){
   return d.toLocaleString("en-GB", { month:"long", year:"numeric", timeZone:"UTC" });
 }
 
+/* A screen is published from one place and its service is deployed from
+   another, and the two do not always land in the same minute. */
+function mxMissing(r){
+  return !!r && (r.error === "no_route" || r._status === 404);
+}
+
 /* ------------------------------------------------------ the dashboard line */
 async function mxCardLoad(){
   var box = el("mxcard");
   if (!box) return;
   var m = await ops("/pack/month").catch(function(){ return null; });
-  /* A chair with no client view gets no card at all. An empty box is
-     better than a card that explains why it is empty on a dashboard. */
+  /* A chair with no client view gets no card at all, and neither does a
+     dashboard whose service is not deployed yet. An empty box is better
+     than a card that explains itself on somebody's first screen. */
   if (!m || m.error || !m.clients || !m.clients.length) { box.innerHTML = ""; return; }
 
   var late = m.clients.filter(function(c){ return !c.sentAt; });
@@ -56,6 +63,13 @@ async function mxMonthLoad(){
   if (!el("mxmonth")) return;
   if (!MX.period) MX.period = mxMonth();
   MX.month = await ops("/pack/month?period=" + MX.period);
+  if (mxMissing(MX.month)) {
+    el("mxmonth").innerHTML = msg("warn",
+      "The monthly pack is published but the service behind it is not deployed " +
+      "yet. The five levels below are live and can still be filled in; what " +
+      "cannot be done yet is sending them.");
+    return;
+  }
   mxRender();
 }
 
