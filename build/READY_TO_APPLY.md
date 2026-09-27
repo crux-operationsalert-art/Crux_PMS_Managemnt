@@ -20,10 +20,11 @@ publish from `.github/build-tool.py`.
 | `199_a_split_without_an_id_is_still_a_split.sql` | replaces two unique indexes that contradicted the table's own CHECK |
 | `200_adds_is_a_default_nobody_set.sql` | the accrual precedence, and 46 registry rows corrected to `REPLACES` |
 | `201_the_tenth_of_the_month.sql` | `DAY_OF_MONTH` and `MONTH_END` added to `kpi_cadence` |
+| `202_my_tab.sql` | `person.address`, `person.emergency_contact`, `person_document`, `request_responder`, `request_raise`, `request_action`, `request_strike_sweep`, `my_desk`, the `REQUEST_STRIKES` job |
 
-Two cron jobs are scheduled: `crux-perf-reminders` at 04:00 UTC and
-`crux-matrix-nudge` at 04:30, which is before the working day in India
-rather than during it.
+Three cron jobs are scheduled: `crux-perf-reminders` at 04:00 UTC,
+`crux-matrix-nudge` at 04:30 and `crux-request-strikes` at 05:00 — all
+before the working day in India rather than during it.
 
 `perf_value()` holds the one rule that makes a roll-up correct — counts and
 rupees accumulate, a percentage or a score is a level — and applies it at all
@@ -35,6 +36,7 @@ three joins: across days, across a person's own splits, and across a team.
 |---|---|---|
 | `plb` | v5 | 12 `/perf/*` routes |
 | `pack` | v1 | new: the monthly matrix despatch, four routes |
+| `hr` | v5 | `/hr/desk`, `/hr/desk/request`, `/hr/desk/request/action` |
 | `ops` | v6, untouched | — |
 
 `pack` is a fifth front door and the reason is worth keeping: `api` is at the
@@ -46,7 +48,7 @@ and risks nothing that is already running.
 
 ## Published
 
-Eight patches in `.github/build-tool.py` now. The first five detect
+Nine patches in `.github/build-tool.py` now. The first five detect
 themselves as already in `app_page` and skip; 6 and 7 carry the two new
 screens; 8 is the difference between the despatch's first version and its own
 front door, because patch 7 is all-or-nothing on one sentinel and the page had
@@ -54,8 +56,8 @@ already taken it.
 
 ## How it was checked
 
-`./build/test/run.sh` builds a throwaway Postgres 16, applies 190–201 and runs
-**90 assertions, 0 failures**. It found five defects that reading had not —
+`./build/test/run.sh` builds a throwaway Postgres 16, applies 190–202 and runs
+**120 assertions, 0 failures**. It found five defects that reading had not —
 `build/test/README.md` lists them, and the worst would have made `perf_file`
 answer a 500 with a Postgres sentence in it.
 
@@ -88,6 +90,15 @@ inventing a reason.
   something in it before the real months accumulate.
 - **The second sign-in door.** A one-time code to the work address, so Google
   is not the only way in. 635 active people, zero password hashes.
+- **The automatic escalation at the third strike.** The strikes are counted
+  and everybody is told; nothing opens a case. The only case-creating
+  function here is `ogl_case_create`, which is about OGL verification and
+  means something else.
+- **Uploading a document.** `person_document` records what HR has seen. There
+  is no file store behind it yet, and the screen says so rather than showing
+  a control that does nothing.
 - **The repository cannot rebuild the database.** 51 of 106 migration files
   carry no executable SQL — from 134 on they are notes headed `Applied as:`.
-  `build/test/README.md` has the one query that fixes it.
+  This has now cost time three times: `plb_wd_after`, `working_hours_after`
+  and `next_ref` all had to be recovered from the live project rather than
+  read from a file. `build/test/README.md` has the one query that fixes it.
