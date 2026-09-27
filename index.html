@@ -597,8 +597,23 @@ var hrapi = function(p,o){ return call(HRF, p, o); };
 var crux = function(p,o){ return call(CRUX, p, o); };
 
 /* ------------------------------------------------------------- sign in */
+/* Wait for the Google library rather than testing for it once. It is
+   loaded async, so on a cold cache boot() reached the check first and
+   wrote "still loading" as a final answer with no retry behind it. */
+function gsiReady(ms){
+  var deadline = Date.now() + (ms || 8000);
+  return new Promise(function(done){
+    (function poll(){
+      if (window.google && google.accounts && google.accounts.id) return done(true);
+      if (Date.now() > deadline) return done(false);
+      setTimeout(poll, 60);
+    })();
+  });
+}
+
 async function boot(){
   var cfg = await fetch(CRUX + "/api/config").then(function(r){return r.json()}).catch(function(){return{}});
+  if (cfg.googleClientId) { await gsiReady(8000); }
   if (cfg.googleClientId && window.google && google.accounts) {
     google.accounts.id.initialize({
       client_id: cfg.googleClientId,
@@ -611,7 +626,10 @@ async function boot(){
     google.accounts.id.renderButton(el("gbtn"), { theme:"outline", size:"large", width:340 });
     el("ghint").textContent = "Use your " + (cfg.workspaceDomain||"work") + " account.";
   } else {
-    el("ghint").textContent = "Google sign-in is still loading, or is not configured yet.";
+    el("ghint").textContent = cfg.googleClientId
+      ? "Google sign-in did not load. Reload the page; if it keeps happening, "
+        + "tell your administrator \u2014 nothing is wrong with your account."
+      : "Google sign-in is not configured yet.";
   }
   if (token) { var p = await crux("/api/me"); if (p && p.id) return start(p); }
 }
@@ -619,9 +637,18 @@ async function boot(){
 el("go").onclick = async function(){
   var b = el("go"); b.disabled = true; el("loginMsg").innerHTML = "";
   try {
+    var em = el("em").value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) {
+      el("loginMsg").innerHTML = msg("bad", "That is not an e-mail address. Your "
+        + "browser has probably filled this box with a saved name rather than an "
+        + "address. Clear it and type your work address.");
+      return;
+    }
     var out = await crux("/api/login", { method:"POST",
-      body:{ email: el("em").value.trim(), password: el("pw").value } });
-    if (out.error) { el("loginMsg").innerHTML = msg("bad", out.reason || out.error); return; }
+      body:{ email: em, password: el("pw").value } });
+    if (out.error) { el("loginMsg").innerHTML = msg("bad", (out.reason || out.error)
+      + " No Crux account has a password set, so this box cannot let anyone in. "
+      + "Use the Google button above."); return; }
     token = out.token; aaSet("cruxToken", token); el("pw").value = "";
     start(out.person);
   } catch(e){ el("loginMsg").innerHTML = msg("bad", String(e)); }
