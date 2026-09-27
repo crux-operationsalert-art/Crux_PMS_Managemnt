@@ -14,9 +14,9 @@
 // post: turning the letter the database wrote into rows in the outbox,
 // one per recipient, through the same idempotent queue as everything else.
 //
-// It lives on `ops` rather than beside the rest of the matrix because
-// `api` is at the size an Edge Function deploy will carry and cannot take
-// another route. See ops/README.md.
+// It has its own front door rather than sitting on `ops`: `api` is at the
+// size an Edge Function deploy will carry, and re-uploading all of `ops`
+// to add one route risks six screens that work. See index.ts.
 // =====================================================================
 import { Router, one, enqueue } from "../shim.ts";
 import { requireChair } from "../scope.ts";

@@ -1,28 +1,23 @@
 // =====================================================================
-// Crux ops -- the screens added after the cut-over.
+// Crux pack -- the monthly escalation matrix despatch.
 //
-// One Edge Function deploys in one call, and `api` outgrew what that call
-// carries. This is the same front door serving the rest: the same session
-// token, the same scope rules, the same shim. See README.md -- shim.ts and
-// scope.ts here are copies of api's, never a second opinion.
+// A fifth front door, for one route file, and the reason is worth writing
+// down: `api` is at the size an Edge Function deploy will carry, and `ops`
+// serves six screens that work. Adding a route to `ops` means re-uploading
+// all of it, and a slip anywhere in that upload takes Places, Reports, MIS,
+// the rate master, report access and automations down with it. A new door
+// costs one more URL and risks nothing that is already running.
+//
+// Same session token, same shim, same scope rules -- shim.ts and scope.ts
+// here are copies of api's, never a second opinion. See ops/README.md.
 // =====================================================================
 import { CORS, Req, Res, one } from "./shim.ts";
 import { buildScope } from "./scope.ts";
 
-import field from "./routes/field.ts";
-import rates from "./routes/rates.ts";
-import mis from "./routes/mis.ts";
-import access from "./routes/access.ts";
-import auto from "./routes/auto.ts";
-import places from "./routes/places.ts";
+import pack from "./routes/pack.ts";
 
 const MOUNTS: [string, any][] = [
-  ["/api/field", field],
-  ["/api/rates", rates],
-  ["/api/mis", mis],
-  ["/api/access", access],
-  ["/api/auto", auto],
-  ["/api/places", places],
+  ["/api/pack", pack],
 ];
 
 const sha = async (s: string) => {
@@ -59,10 +54,10 @@ Deno.serve(async (request: Request) => {
   if (request.method === "OPTIONS") return new Response("ok", { headers: CORS });
 
   const url = new URL(request.url);
-  // The function is served at /functions/v1/ops, so the mount prefix has to be
-  // rebuilt: strip everything up to and including /ops and put /api back on.
-  // The route files are shared with `api` and expect to be mounted under it.
-  const path = "/api" + (url.pathname.replace(/^.*?\/ops(?=\/|$)/, "") || "");
+  // The function is served at /functions/v1/pack, so the mount prefix has to
+  // be rebuilt: strip everything up to and including /pack and put /api back
+  // on. The route file expects to be mounted under /api, as api's are.
+  const path = "/api" + (url.pathname.replace(/^.*?\/pack(?=\/|$)/, "") || "");
 
   try {
     if (path === "/" || path === "/api" || path === "/api/health") {
@@ -106,7 +101,7 @@ Deno.serve(async (request: Request) => {
   } catch (e) {
     const err = e as { status?: number; code?: string; message?: string; reason?: string };
     const status = err.status ?? 500;
-    if (status >= 500) console.error("[api]", e);
+    if (status >= 500) console.error("[pack]", e);
     // A bare SQLSTATE tells the reader nothing and sends them hunting through
     // logs. The message goes with it.
     return json({

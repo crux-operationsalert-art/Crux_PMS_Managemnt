@@ -384,7 +384,16 @@ SCREEN_MATRIX = io.open("build/app/screen-matrix-month.js", encoding="utf-8").re
 PATCHES.append((
     "the matrix that goes out",
     "function mxMonthLoad(",
-    [# the styles it needs that the page does not already have
+    [# a fifth front door. `api` is at the size a deploy will carry and
+     # `ops` serves six screens that work, so the despatch got its own
+     # rather than every one of those being re-uploaded to add one route.
+     ('var PLB  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/plb";\n'
+      'var plb  = function(p,o){ return call(PLB,  p, o); };',
+      'var PLB  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/plb";\n'
+      'var plb  = function(p,o){ return call(PLB,  p, o); };\n'
+      'var PACK = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/pack";\n'
+      'var packApi = function(p,o){ return call(PACK, p, o); };', 1),
+     # the styles it needs that the page does not already have
      ('.hrabad{color:var(--terra-ink);font-size:12px;line-height:1.45}',
       '.hrabad{color:var(--terra-ink);font-size:12px;line-height:1.45}\n'
       '/* ---------------------------------------------------------- matrix\n'
@@ -431,6 +440,34 @@ PATCHES.append((
      ('/* ---------------------------------------------------------- performance */',
       SCREEN_MATRIX.rstrip() + '\n\n'
       '/* ---------------------------------------------------------- performance */', 1)],
+))
+
+# --------------------------- 8. THE DESPATCH MOVED TO ITS OWN FRONT DOOR
+# Patch 7 is all-or-nothing on one sentinel, and by the time the despatch
+# needed a different base the page already carried patch 7's first version.
+# So this is the difference between the two, and nothing else.
+#
+# The routes were written for `ops`. `api` is at the size an Edge Function
+# deploy will carry, and `ops` serves six screens that work -- Places,
+# Reports, MIS, the rate master, report access and automations -- every one
+# of which would have had to be re-uploaded to add one route to it. A slip
+# anywhere in that upload takes all six down to add one. A fifth front door
+# costs one more URL and risks nothing that is already running.
+#
+# On a page that has never had patch 7, patch 7 splices the screen with
+# packApi already in it and defines the wrapper, so this one finds its
+# sentinel and skips. On the page as published, patch 7 skips and this one
+# does the move.
+PATCHES.append((
+    "the despatch has its own door",
+    "var packApi =",
+    [('var PLB  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/plb";\n'
+      'var plb  = function(p,o){ return call(PLB,  p, o); };',
+      'var PLB  = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/plb";\n'
+      'var plb  = function(p,o){ return call(PLB,  p, o); };\n'
+      'var PACK = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/pack";\n'
+      'var packApi = function(p,o){ return call(PACK, p, o); };', 1),
+     ('ops("/pack/', 'packApi("/pack/', 5)],
 ))
 
 for name, sentinel, rules in PATCHES:
