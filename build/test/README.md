@@ -92,3 +92,62 @@ check that the functions the body calls exist. That is how `person_merge_plan`
 came to call `person_merge_side`, which was never there. Nothing in a load
 can catch it, so `run.sh` checks it once, against everything that loaded,
 after the rebuild.
+
+## The stronger check: the same database, or only the same counts?
+
+Matching counts are not matching definitions. So the rebuilt database and the
+live project were fingerprinted object by object — the text Postgres itself
+prints for each one, hashed — and compared.
+
+| | |
+|---|---|
+| tables, columns, types, defaults, generated | `7b397118668975b1061eef6a217b9201` **identical** |
+| constraints (keys, uniques, checks, foreign keys) | `3b431d4d932d6b5adcb3473202ddce75` **identical** |
+| indexes | `9efe75facc4d78a4c0c12917fa9231c0` **identical** |
+| functions, all 314, whole definitions | `595bea1e0d4418d7a98b5abb877071d6` **identical** |
+| triggers | `d4b2e65fc9c411df3975ed7e655ac11e` **identical** |
+| policies | `25f45305460353531c939c2460f546f2` **identical** |
+| views | 19 of 20 identical |
+
+Two things had to be got right for that comparison to mean anything, and both
+were wrong on the first attempt:
+
+* **Sort under `collate "C"`.** A local cluster and Supabase do not order text
+  the same way, so `string_agg(… order by definition)` over an identical set
+  of functions produced two different hashes. The set was never different;
+  the sort was.
+* **Leave out `t_ok`.** The assertions create it, so it is in the rebuilt
+  database and not in the live one.
+
+**The one view that differs is `migration_gate`, and the difference is the
+deparser talking to itself.** Live prints
+`SELECT 'matrix rows loaded'::text,`; the rebuilt copy prints
+`SELECT 'matrix rows loaded'::text AS text,`. `pg_get_viewdef` adds column
+aliases to the second and later branches of a `UNION` when it writes the
+definition out; creating the view from that text makes those aliases real,
+and they are printed back the next time. The view's own column names come
+from the first branch, which is untouched, and both copies report the same
+six columns with the same types:
+
+```
+gate text, actual bigint, expected integer, delta bigint, result text, basis text
+```
+
+So it is the same view. It is worth knowing about because it means the
+baseline will not converge to byte-equality with a database rebuilt from it,
+and that is a property of `pg_get_viewdef`, not a fault in the baseline.
+
+To do the comparison again, run this against both and compare the rows:
+
+```sql
+select 'functions', md5(string_agg(d, E'\n' order by d collate "C")) from (
+  select pg_get_functiondef(p.oid) d from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+   where n.nspname = 'public' and p.prokind in ('f','p')
+     and p.proname not like 'schema\_snapshot%' and p.proname <> 't_ok') q
+union all
+select 'views', md5(string_agg(d, E'\n' order by d collate "C")) from (
+  select n.nspname||'.'||c.relname||'|'||pg_get_viewdef(c.oid, true) d
+    from pg_class c join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname in ('public','seam') and c.relkind = 'v') q;
+```
