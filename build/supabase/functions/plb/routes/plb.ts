@@ -376,18 +376,45 @@ r.get("/perf/team", async (req: any, res: any) => {
 // rather than from a blank box. My own measures come back too, because a
 // KPI given to somebody has to climb into one of mine.
 r.get("/perf/measures", async (req: any, res: any) => {
-  const chair = req.query.get("chair");
   const cycle = req.query.get("cycle");
-  const catalogue = await many(
-    `select k.id, k.name, k.unit, k.cadence::text as cadence,
-            k.accrual::text as accrual, k.mandatory,
-            perf_accrual_kind(k.id, k.unit) as kind
-       from kpi_definition k
-      where k.active and k.position < 100
-        and ($1::uuid is null or k.chair_id = $1::uuid)
-      order by k.position, k.name`,
-    [chair],
-  );
+  const person = req.query.get("person");
+  // Asked about a person rather than a chair, resolve their chair here.
+  // The screen knows who it is setting a KPI for; it has no business
+  // knowing chair ids, and a manager choosing from every measure in the
+  // company is searching rather than choosing.
+  let chair = req.query.get("chair");
+  if (!chair && person) {
+    const seat = await one(
+      `select h.chair_id from chair_holder h
+        where h.person_id = $1 and h.to_date is null
+        order by h.is_primary desc limit 1`,
+      [person],
+    );
+    chair = seat?.chair_id ?? null;
+  }
+  const measuresOf = (c: string | null) =>
+    many(
+      `select k.id, k.name, k.unit, k.cadence::text as cadence,
+              k.accrual::text as accrual, k.mandatory,
+              perf_accrual_kind(k.id, k.unit) as kind
+         from kpi_definition k
+        where k.active and k.position < 100
+          and ($1::uuid is null or k.chair_id = $1::uuid)
+        order by k.position, k.name`,
+      [c],
+    );
+
+  let catalogue = await measuresOf(chair);
+  let note: string | null = null;
+  // A chair nobody has given a measure set yet must not leave the manager
+  // with an empty dropdown and no way forward. Fall back to the whole
+  // catalogue and say why, rather than presenting nothing as an answer.
+  if (chair && catalogue.length === 0) {
+    catalogue = await measuresOf(null);
+    note = "That chair has no measure set of its own yet, so every measure " +
+           "is offered. Setting one here does not add it to the chair.";
+  }
+
   const mine = cycle
     ? await many(
       `select a.id as "assignmentId", a.name, a.unit, a.split_label as split
@@ -397,7 +424,7 @@ r.get("/perf/measures", async (req: any, res: any) => {
       [req.person.id, cycle],
     )
     : [];
-  return res.json({ catalogue, mine });
+  return res.json({ catalogue, mine, chairId: chair, note });
 });
 
 r.post("/perf/assign", async (req: any, res: any) => {

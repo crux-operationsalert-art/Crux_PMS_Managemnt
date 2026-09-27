@@ -15,7 +15,8 @@
    is a level. A second opinion about somebody's performance is the last
    thing a screen should hold.                                          */
 var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
-           who:null, open:{}, measures:null, form:null, sel:{}, busy:false, says:"" };
+           who:null, open:{}, measures:null, measuresFor:null, form:null,
+           sel:{}, busy:false, says:"" };
 
 function pfMonth(d){ d = d || new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0,10); }
@@ -177,7 +178,7 @@ function pfNode(m, depth, isTeam){
   var head = '<div class="pfrow" style="padding-left:' + (depth * 18) + 'px">' +
     (kids
       ? '<button class="pftog" data-pfopen="' + esc(id) + '">' + (isOpen ? '−' : '+') + '</button>'
-      : '<span class="pftog empty"></span>') +
+      : '<span class="pftog pfnone"></span>') +
     '<span class="pfname">' + (isTeam ? who : esc(m.split || m.name)) +
       (isTeam ? '' : (m.splitKind ? ' <span class="chip">' + esc(m.splitKind.toLowerCase()) + '</span>' : '')) +
     '</span>' +
@@ -276,6 +277,7 @@ function pfForm(){
             esc(m.name) + (m.split ? ' · ' + esc(m.split) : '') + '</option>'; }).join("") +
       '</select></label>' +
     '</div>' +
+    (PF.measures.note ? '<div class="plsub">' + msg("warn", PF.measures.note) + '</div>' : '') +
     '<p class="mute">A measure with no target is not scored and does not drag the average ' +
     'down — it is left out and says so. Leave it blank if you genuinely have not set one ' +
     'yet, rather than putting a nought in.</p>' +
@@ -286,11 +288,29 @@ function pfForm(){
     '</div></div>';
 }
 
+/* The catalogue a manager picks from. Asked for one person, it comes back
+   as that chair's measure set rather than as every measure in the company,
+   which is the difference between choosing and searching. Cached per
+   person, because the one thing worse than a long list is a long list that
+   is fetched again every time the form is drawn. */
+async function pfMeasuresFor(personId){
+  var key = personId || "all";
+  if (PF.measuresFor === key && PF.measures) return;
+  PF.measures = null; PF.measuresFor = key; pfRender();
+  var q = "/plb/perf/measures?cycle=" + PF.cycle.id +
+          (personId ? "&person=" + encodeURIComponent(personId) : "");
+  var m = await plb(q);
+  /* A second click while the first was in flight wins; this one is stale. */
+  if (PF.measuresFor !== key) return;
+  PF.measures = m;
+  pfRender();
+}
+
 /* ---------------------------------------------------------------- wiring */
 function pfWire(){
   if (el("pfperiod")) el("pfperiod").onchange = async function(){
     PF.period = el("pfperiod").value; PF.tree = null; PF.who = null;
-    PF.whoTree = null; PF.says = ""; PF.measures = null;
+    PF.whoTree = null; PF.says = ""; PF.measures = null; PF.measuresFor = null;
     el("view").innerHTML = '<p class="mute">Loading…</p>';
     await vPerf();
   };
@@ -345,19 +365,15 @@ function pfWire(){
   if (el("pfadd")) el("pfadd").onclick = async function(){
     PF.form = { personId: PF.who, name: (PF.whoTree.person || {}).name, bulk:false };
     pfRender();
-    if (!PF.measures) {
-      PF.measures = await plb("/plb/perf/measures?cycle=" + PF.cycle.id);
-      pfRender();
-    }
+    await pfMeasuresFor(PF.who);
   };
 
   if (el("pfbulk")) el("pfbulk").onclick = async function(){
     PF.form = { bulk:true };
     pfRender();
-    if (!PF.measures) {
-      PF.measures = await plb("/plb/perf/measures?cycle=" + PF.cycle.id);
-      pfRender();
-    }
+    /* No one person, so no one chair: the whole catalogue, which is the
+       honest answer when the same measure is going to several chairs. */
+    await pfMeasuresFor(null);
   };
 
   if (el("pfcarry")) el("pfcarry").onclick = async function(){
@@ -400,7 +416,7 @@ function pfWire(){
     }
     PF.busy = false;
     PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note || "Set.");
-    PF.form = null; PF.whoTree = null; PF.measures = null;
+    PF.form = null; PF.whoTree = null; PF.measures = null; PF.measuresFor = null;
     if (PF.who) PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
     pfRender();
   };

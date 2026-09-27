@@ -269,6 +269,106 @@ PATCHES.append((
       '}', 1)],
 ))
 
+# ------------------------------- 6. ONE PERFORMANCE SCREEN, AND THE MONTH
+# The navigation offered "Performance & appraisal" and "Performance & bonus"
+# as two separate top-level entries. The design has one. Somebody looking for
+# their bonus had to already know that bonus lives under the second
+# Performance and not the first, which is not a thing anybody knows.
+#
+# So: one entry, "Performance", with the monthly screen as its face and the
+# two existing screens kept as sub-tabs underneath it. Nothing is deleted --
+# #pms and #plb still route, still work, and are now reachable without
+# guessing which of two identically-named tabs to press.
+#
+# The new face is the monthly cycle the owner asked for: a manager sets the
+# measures and the targets inside the window, the person files on the cadence
+# they were given, and the numbers climb. It is one file, build/app/screen-
+# perf.js, read from the repository rather than pasted here, so the screen can
+# be read and reviewed as JavaScript instead of as Python string literals.
+SCREEN_PERF = io.open("build/app/screen-perf.js", encoding="utf-8").read()
+
+PATCHES.append((
+    "one Performance screen",
+    "function pfRender(",
+    [# the screen's own styles, beside the ones it borrows
+     ('.hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}',
+      '.hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}\n'
+      '/* ------------------------------------------------------------------ perf\n'
+      '   A tree that opens, a bar that stops at 100 even when the number does\n'
+      '   not, and a banner that says which of the two windows is still open.\n'
+      '   The numbers are tabular so a column of them reads as a column.     */\n'
+      '.pfperiod select{min-height:36px}\n'
+      '.pftabs{display:flex;gap:8px;margin:0 0 14px}\n'
+      '/* .chip paints itself with var(--ink2), which this sheet never\n'
+      '   defines, so the count inherits the button\'s colour -- white on\n'
+      '   near-white once the tab is selected, which is a count nobody can\n'
+      '   read. Both states are stated here. */\n'
+      '.pftabs .chip{color:var(--ink);margin-left:6px}\n'
+      '.pftabs .primary .chip{background:rgba(255,255,255,.18);\n'
+      '  border-color:rgba(255,255,255,.5);color:#fff}\n'
+      '.pfwin{margin:0 0 14px;padding:8px 12px;background:var(--green-bg);\n'
+      '  border-left:3px solid var(--green);font-size:13px;color:var(--body)}\n'
+      '.pfwin.shut{background:var(--terra-bg);border-left-color:var(--terra);color:var(--terra-ink)}\n'
+      '.pftree{padding:2px 0 8px}\n'
+      '.pfrow{display:flex;align-items:center;gap:8px;padding:7px 15px;\n'
+      '  border-top:1px solid var(--line3);font-size:13px}\n'
+      '/* The page gives every button a 46px minimum and a blue hover. A\n'
+      '   disclosure triangle is not that kind of button, so both are said\n'
+      '   again here -- the hover included, because button:hover outranks a\n'
+      '   plain class and would otherwise paint this one navy mid-click. */\n'
+      '.pftog{width:20px;height:20px;min-height:20px;flex:0 0 20px;\n'
+      '  border:1px solid var(--line);background:var(--white);color:var(--mute);\n'
+      '  font-size:12px;line-height:1;cursor:pointer;border-radius:3px;padding:0}\n'
+      '.pftog:hover{background:var(--panel);color:var(--ink);border-color:var(--field)}\n'
+      '.pftog.pfnone{border:none;background:none}\n'
+      '.pfname{flex:1 1 auto;min-width:0;color:var(--ink);overflow:hidden;\n'
+      '  text-overflow:ellipsis;white-space:nowrap}\n'
+      '.pfwho{font-weight:600}\n'
+      '.pfval{flex:0 0 96px;text-align:right;color:var(--ink);font-variant-numeric:tabular-nums}\n'
+      '.pftgt{flex:0 0 96px;text-align:right;color:var(--mute);font-variant-numeric:tabular-nums}\n'
+      '.pfpct{flex:0 0 52px;text-align:right;color:var(--body);font-variant-numeric:tabular-nums}\n'
+      '.pfmeter{flex:0 0 90px}\n'
+      '.pfbar{height:6px;background:var(--line2);border-radius:3px;overflow:hidden}\n'
+      '.pfbar i{display:block;height:100%}\n'
+      '.pfbar i.ok{background:var(--green)}\n'
+      '.pfbar i.warn{background:var(--gold)}\n'
+      '.pfbar i.bad{background:var(--terra)}\n'
+      'input.pfin{width:120px}\n'
+      '/* input{width:100%;min-height:44px} in the base sheet catches\n'
+      '   checkboxes as well as text boxes, which is why a tick elsewhere in\n'
+      '   the tool is a 44px-tall square. Here it is a tick.              */\n'
+      '.pfsel{display:inline-flex;align-items:center;gap:5px;margin-right:10px;\n'
+      '  font-size:12px;color:var(--mute);white-space:nowrap;vertical-align:middle}\n'
+      '.pfsel input[type=checkbox]{width:15px;height:15px;min-height:0;padding:0;\n'
+      '  margin:0;flex:0 0 15px;accent-color:var(--blue)}\n'
+      '.pfpanel{padding:2px 0 6px}\n'
+      '@media (max-width:720px){\n'
+      '  .pfrow{flex-wrap:wrap}\n'
+      '  .pftgt,.pfmeter{display:none}\n'
+      '}', 1),
+     # the two entries become one
+     ('["pms","Performance & appraisal"], ["plb","Performance & bonus"], ',
+      '["perf","Performance"], ', 1),
+     # and the old two keep their routes, as sub-tabs under it
+     ('var FAMILY = [\n'
+      '  ["clients", [["clients","Clients"], ["matrix","Escalation matrix"]]],',
+      'var FAMILY = [\n'
+      '  ["perf",    [["perf","This month"], ["pms","Appraisal"], ["plb","Bonus"]]],\n'
+      '  ["clients", [["clients","Clients"], ["matrix","Escalation matrix"]]],', 1),
+     # every chair that could see the two can see the one
+     ('"pms","plb",', '"perf",', 8),
+     # reaching #pms or #plb directly is reaching Performance
+     ('var UNDER = { matrix:"clients", org:"people", whatsapp:"mail",',
+      'var UNDER = { matrix:"clients", org:"people", whatsapp:"mail",\n'
+      '              pms:"perf", plb:"perf",', 1),
+     # the router learns the new face
+     ('pms:vPms, plb:vPlb,', 'pms:vPms, plb:vPlb, perf:vPerf,', 1),
+     # and the face itself goes in ahead of the first screen
+     ('/* --------------------------------------------------------------- today */',
+      SCREEN_PERF.rstrip() + '\n\n'
+      '/* --------------------------------------------------------------- today */', 1)],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
