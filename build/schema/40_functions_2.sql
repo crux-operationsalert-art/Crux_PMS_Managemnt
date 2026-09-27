@@ -8,6 +8,92 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.matrix_send(p_person uuid, p_client uuid, p_period date, p_to text[], p_note text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  pack jsonb; v_view text; v_period date; d matrix_dispatch;
+  body text; b jsonb; lv jsonb; again boolean := false;
+begin
+  v_view := matrix_client_view(p_person);
+  if v_view not in ('matrix','full') then
+    return jsonb_build_object('error','read_only',
+      'reason','Operations owns the matrix. Your function may read it and not send it.');
+  end if;
+
+  v_period := date_trunc('month', p_period)::date;
+  pack := matrix_pack(p_person, p_client, v_period);
+  if pack ? 'error' then return pack; end if;
+  if (pack->>'ready')::int = 0 then
+    return jsonb_build_object('error','nothing_complete', 'reason', pack->>'says');
+  end if;
+  if p_to is null or array_length(p_to, 1) is null then
+    return jsonb_build_object('error','no_recipient',
+      'reason','Nobody was named to send it to. The client''s contacts are on the pack; pick at least one.');
+  end if;
+
+  body := 'Escalation matrix for ' || (pack#>>'{client,name}') || ' -- '
+       || to_char(v_period, 'FMMonth YYYY') || E'\n\n';
+  for b in select jsonb_array_elements(pack->'branches') loop
+    body := body || (b->>'name') || ' (' || coalesce(b->>'code','') || ')' || E'\n';
+    for lv in select jsonb_array_elements(b->'levels') loop
+      body := body || '  L' || (lv->>'level') || '  ' || coalesce(lv->>'levelName','')
+           || ' -- ' || coalesce(lv->>'name','')
+           || case when coalesce(lv->>'mobile','') <> '' then ', ' || (lv->>'mobile') else '' end
+           || case when coalesce(lv->>'email','')  <> '' then ', ' || (lv->>'email')  else '' end
+           || E'\n';
+    end loop;
+    body := body || E'\n';
+  end loop;
+  if (pack->>'incomplete')::int > 0 then
+    body := body || 'Not included this month, because a level is still blank:' || E'\n';
+    for b in select jsonb_array_elements(pack->'heldBack') loop
+      body := body || '  ' || (b->>'name') || ' (' || coalesce(b->>'code','') || ') -- '
+           || (b->>'missing') || ' level(s) missing' || E'\n';
+    end loop;
+    body := body || E'\n';
+  end if;
+  if coalesce(btrim(p_note),'') <> '' then body := body || p_note || E'\n'; end if;
+
+  select * into d from matrix_dispatch where client_id = p_client and period = v_period;
+  again := d.id is not null and d.sent_at is not null;
+
+  insert into matrix_dispatch (client_id, period, snapshot, branch_count, held_back,
+                               recipients, prepared_by, sent_at, note)
+  values (p_client, v_period, pack, (pack->>'ready')::int, (pack->>'incomplete')::int,
+          p_to, p_person, now(), p_note)
+  on conflict (client_id, period) do update
+    set snapshot = excluded.snapshot, branch_count = excluded.branch_count,
+        held_back = excluded.held_back, recipients = excluded.recipients,
+        prepared_by = excluded.prepared_by, sent_at = now(), note = excluded.note
+  returning * into d;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_person, case when again then 'MATRIX_RESENT' else 'MATRIX_SENT' end,
+          'client', p_client::text, null,
+          jsonb_build_object('period', v_period, 'to', to_jsonb(p_to),
+                             'branches', (pack->>'ready')::int,
+                             'heldBack', (pack->>'incomplete')::int));
+
+  return jsonb_build_object('ok', true, 'dispatchId', d.id, 'period', v_period,
+    'subject', 'Escalation matrix -- ' || (pack#>>'{client,name}') || ' -- '
+               || to_char(v_period, 'FMMonth YYYY'),
+    'body', body, 'to', to_jsonb(p_to),
+    'branches', (pack->>'ready')::int, 'heldBack', (pack->>'incomplete')::int,
+    'note', case when again
+      then 'Sent again for ' || to_char(v_period, 'FMMonth YYYY')
+           || '. The earlier send is in the trail; this one replaces the snapshot.'
+      else (pack->>'ready') || ' branch(es) sent to ' || array_length(p_to,1) || ' recipient(s).'
+      end
+      || case when (pack->>'incomplete')::int > 0
+              then ' ' || (pack->>'incomplete') || ' held back and named in the letter.'
+              else '' end);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.may_edit_penalty_rule(p_person uuid)
  RETURNS boolean
  LANGUAGE sql

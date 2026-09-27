@@ -81,6 +81,26 @@ create or replace view public.dispatch_eligible_branch_v2 as
   GROUP BY b.id, b.client_id
  HAVING count(*) FILTER (WHERE e.name IS NOT NULL AND btrim(e.name) <> ''::text AND (COALESCE(btrim(e.mobile), ''::text) <> ''::text OR COALESCE(btrim(e.email), ''::text) <> ''::text)) = 5;
 
+create or replace view public.kpi_registry_gap as
+ SELECT id AS chair_id,
+    code,
+    title,
+    (( SELECT count(*) AS count
+           FROM chair_holder h
+          WHERE h.chair_id = ch.id AND h.to_date IS NULL))::integer AS seated,
+    (( SELECT count(*) AS count
+           FROM kpi_definition k
+          WHERE k.chair_id = ch.id AND k.active))::integer AS measures,
+    (( SELECT count(*) AS count
+           FROM chair_measure m
+          WHERE m.chair_id = ch.id))::integer AS statements
+   FROM chair ch
+  WHERE (EXISTS ( SELECT 1
+           FROM chair_holder h
+          WHERE h.chair_id = ch.id AND h.to_date IS NULL)) AND NOT (EXISTS ( SELECT 1
+           FROM kpi_definition k
+          WHERE k.chair_id = ch.id AND k.active));
+
 create or replace view public.migration_coverage_shape as
  SELECT scope_type,
     count(*) AS rules,

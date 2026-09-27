@@ -53,6 +53,7 @@ CREATE INDEX escalation_instance_assignment ON public.escalation_instance USING 
 CREATE INDEX escalation_instance_open ON public.escalation_instance USING btree (raised_at DESC) WHERE (closed_at IS NULL);
 CREATE UNIQUE INDEX geo_node_sibling_uniq ON public.geo_node USING btree (COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), lower(name));
 CREATE INDEX job_run_key_idx ON public.job_run USING btree (job_key, started_at DESC);
+CREATE UNIQUE INDEX kpi_definition_one_name_per_chair ON public.kpi_definition USING btree (chair_id, lower(btrim(name))) WHERE ((chair_id IS NOT NULL) AND active);
 CREATE UNIQUE INDEX kpi_target_period_uniq ON public.kpi_target USING btree (kpi_id, period);
 CREATE INDEX login_attempt_email_at ON public.login_attempt USING btree (email, at DESC);
 CREATE INDEX login_attempt_ip_at ON public.login_attempt USING btree (ip, at DESC);
