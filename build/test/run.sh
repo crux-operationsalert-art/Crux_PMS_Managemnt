@@ -109,10 +109,13 @@ fi
 
 echo
 echo "== behaviour"
+# || true on purpose: psql exits non-zero when an assertion RAISEs, and under
+# set -e that killed the script before it could print WHICH one. A test runner
+# that dies silently on a failing test is worse than no runner.
 out=""
 for t in test_190_198 test_scope; do
   out="$out
-$(psq -q -f "$REPO/build/test/$t.sql" 2>&1 | sed 's/^psql:[^ ]* //')"
+$(psq -q -f "$REPO/build/test/$t.sql" 2>&1 | sed 's/^psql:[^ ]* //' || true)"
 done
 echo "$out" | grep -E 'PASS|FAIL|ERROR|---' || true
 pass=$(echo "$out" | grep -c 'PASS' || true)

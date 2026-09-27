@@ -75,6 +75,10 @@ jobs:
             || { echo "::error::No access_level_screen; the scope policy is not in the baseline."; exit 1; }
           jq -e '.["50_views.sql"] | test("kpi_registry_gap")' snap.json > /dev/null \
             || { echo "::error::No kpi_registry_gap; the registry detector is not in the baseline."; exit 1; }
+          # The policy rows, and each value under its own column. jsonb orders
+          # keys by length, so this came out reversed once already.
+          jq -e '.["95_access_policy.sql"] | test("values\\n  .\x27admin.\x27, .\x27Administrator.\x27")' snap.json > /dev/null \
+            || { echo "::error::The access policy is missing, or its values are not in column order."; exit 1; }
           jq -e '.["10_tables.sql"] | test("create table if not exists public.person ")' snap.json > /dev/null \
             || { echo "::error::No person table in the tables file."; exit 1; }
           jq -e '.["40_functions_1.sql"] | length > 20000' snap.json > /dev/null \

@@ -24,6 +24,10 @@ end $$;
 
 -- ===================================================================== seed
 -- The seed is re-runnable: everything it makes, it removes first.
+-- notification and request_task are written by the request flow these
+-- tests exercise, and both name a person. They have to go before the
+-- people do, or a second run trips notification_person_id_fkey.
+delete from request_task; delete from notification; delete from raisable;
 delete from perf_entry; delete from perf_assignment; delete from perf_cycle;
 delete from matrix_dispatch; delete from outbox; delete from audit_entry;
 delete from job_run;

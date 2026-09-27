@@ -28,6 +28,8 @@
 #   75  grants
 #   80  comments
 #   90  cron                     skipped unless pg_cron is installed
+#   95  the access policy        the only rows the baseline carries; with
+#                                these tables empty nobody can open anything
 #
 # check_function_bodies is off for the whole load. The definitions came out
 # of a database where they worked; re-proving each one against a half-built
@@ -76,7 +78,7 @@ want=$(grep -c '^create or replace view ' "$here/50_views.sql")
 printf '  %-24s %8s of %s views\n' 50_views.sql "$after" "$want"
 [ "$after" = "$want" ] || { echo "not every view was created" >&2; exit 1; }
 
-for f in 60_triggers.sql 70_rls.sql 75_grants.sql 80_comments.sql; do
+for f in 60_triggers.sql 70_rls.sql 75_grants.sql 80_comments.sql 95_access_policy.sql; do
   run "$f"
 done
 

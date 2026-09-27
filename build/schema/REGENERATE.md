@@ -25,6 +25,7 @@ migration, then regenerate, and the change arrives here on its own.
 | `75_grants.sql` | what `anon`, `authenticated` and `service_role` may touch |
 | `80_comments.sql` | what the database says about itself |
 | `90_cron.sql` | the scheduled jobs |
+| `95_access_policy.sql` | who may open what — the only rows the baseline carries |
 | `load.sh` | loads them in the one order that works |
 
 ## To regenerate
@@ -70,9 +71,13 @@ and in `snapshot-schema.yml`, replace `$ANON` in the two request headers with
 
 ## What this does not cover
 
-* **Data.** This is the shape only. Reference data — the KPI registry, the
-  upload kinds, the templates, the holidays — is loaded by the numbered
-  migrations and by `build/migration/masters`.
+* **Data,** with one exception. This is the shape, plus `95_access_policy.sql`
+  — the five `access_*` tables, which are configuration and not data: nobody's
+  name is in them, they are the same in every environment, and with them empty
+  `access_may_open()` answers false for everybody and the rebuilt tool opens
+  for nobody. Everything else — the KPI registry, the upload kinds, the
+  templates, the holidays — is loaded by the numbered migrations and by
+  `build/migration/masters`.
 * **`auth`, `storage` and the other Supabase-owned schemas.** They are
   Supabase's to create. Only the `auth_gate` trigger reaches into `auth`, and
   it is in `60_triggers.sql`.

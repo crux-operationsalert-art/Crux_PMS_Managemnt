@@ -294,8 +294,32 @@ begin
     (select count(*) from kpi_definition where chair_id = ch) = 2);
 end $$;
 
+-- ===================================================================== clear up
+-- This fixture makes branches with no escalation contacts and coverage over
+-- them, which is exactly the shape the matrix nudge sweep looks for. Left
+-- behind, it makes the OTHER test file's "the person who covers it is nudged"
+-- count two people instead of one -- a failure with nothing wrong with it.
+-- A fixture that can only be run first is not a fixture.
+do $$
+begin
+  delete from business_record where source_ref = 'scope-test';
+  delete from kpi_definition where chair_id in
+    (select id from chair where code in ('SCOPE_BM','SCOPE_EXEC','SCOPE_MIS'));
+  delete from coverage_rule where person_id in
+    (select id from person where work_email like '%@scope.test');
+  delete from chair_holder where person_id in
+    (select id from person where work_email like '%@scope.test');
+  delete from person where work_email like '%@scope.test';
+  delete from matrix_contact where client_id in
+    (select id from client where code in ('SCOPE-A','SCOPE-B'));
+  delete from branch where source_ref = 'scope-test';
+  delete from client where code in ('SCOPE-A','SCOPE-B');
+  delete from chair where code in ('SCOPE_BM','SCOPE_EXEC','SCOPE_MIS');
+  delete from geo_node where name in ('Scopeland North','Scopeland South');
+end $$;
+
 do $$ begin
-  raise notice '--- % people, % records, % coverage rules in the scope fixture',
+  raise notice '--- scope fixture cleared: % people, % records, % coverage rules left',
     (select count(*) from person where work_email like '%@scope.test'),
     (select count(*) from business_record where source_ref = 'scope-test'),
     (select count(*) from coverage_rule where person_id in
