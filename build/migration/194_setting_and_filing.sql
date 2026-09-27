@@ -199,6 +199,19 @@ begin
   if a.state = 'LOCKED' then
     return jsonb_build_object('error','locked','reason','That measure is locked for scoring.');
   end if;
+  -- The trigger on perf_entry refuses this too, and must: it is what stops a
+  -- caller that never came through here. But a trigger RAISES, and a raise
+  -- out of this function is a 500 with a Postgres sentence in it where every
+  -- other refusal is a worded answer. So the same rule is asked here first,
+  -- and the trigger goes back to being the backstop it was meant to be.
+  -- aliased x, not c: plpgsql resolves a query alias against the declared
+  -- names first, and c is already the cycle in this function
+  if exists (select 1 from perf_assignment x where x.part_of_id = a.id) then
+    return jsonb_build_object('error','has_parts',
+      'reason','That measure is split into parts. File against the parts and the '
+               || 'total follows -- a total typed in beside its own parts is how two '
+               || 'right numbers make a wrong one.');
+  end if;
 
   select value into was from perf_entry where assignment_id = p_assignment and as_of = p_as_of;
 

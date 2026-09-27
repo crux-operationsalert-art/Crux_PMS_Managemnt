@@ -47,12 +47,20 @@ begin
   -- not diligence; it is noise that teaches people to ignore the next one.
   if not is_working_day(p_on, centre) then return out; end if;
 
+  -- A split is filed against, so a split needs a rhythm, and it is the
+  -- rhythm of the measure it splits unless somebody gave it its own. Without
+  -- this a measure split by client -- which is the ordinary case, and the
+  -- one the owner asked for by name -- falls to the default of month end and
+  -- nobody is reminded of it for four weeks.
   for r in
-    select a.id, a.name, a.unit, a.target_value, a.cadence::text as cadence, a.cadence_day,
+    select a.id, a.name, a.unit, a.target_value,
+           coalesce(a.cadence, par.cadence)::text as cadence,
+           coalesce(a.cadence_day, par.cadence_day) as cadence_day,
            a.split_label, c.period_start, c.entry_closes,
            (select max(e.as_of) from perf_entry e where e.assignment_id = a.id) as last_filed
       from perf_assignment a
       join perf_cycle c on c.id = a.cycle_id
+      left join perf_assignment par on par.id = a.part_of_id
      where a.person_id = p_person
        and a.state in ('ISSUED','ACKNOWLEDGED')
        and p_on between c.period_start and c.entry_closes

@@ -120,10 +120,14 @@ begin
     v := perf_value(r.id);
     if coalesce(r.target_value, 0) = 0 or v is null then
       skipped := skipped + 1;
+      -- Both can be true at once, and when they are, saying only the first
+      -- sends a manager to chase a filing for a measure they never set a
+      -- target on. Every reason that applies is named.
       rows := rows || jsonb_build_object('name', r.name, 'value', v,
         'target', r.target_value, 'counted', false,
-        'why', case when v is null then 'nothing filed yet'
-                    else 'no target was set' end);
+        'why', array_to_string(array_remove(array[
+                 case when coalesce(r.target_value, 0) = 0 then 'no target was set' end,
+                 case when v is null then 'nothing filed yet' end], null), ' and '));
     else
       ratio := least(150, round(100.0 * v / r.target_value, 2));
       wsum := wsum + ratio * coalesce(r.weight_pct, 1);
