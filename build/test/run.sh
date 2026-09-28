@@ -22,6 +22,8 @@ RUNAS=${RUNAS:-crux}
 BASE=${BASE:-/home/$RUNAS/pg}
 PORT=${PORT:-55432}
 REPO=$(cd "$(dirname "$0")/../.." && pwd)
+NODE=${NODE:-/opt/node22/bin/node}
+PGJS=${PGJS:-/tmp/claude-0/node_modules}
 
 as() { if [ "$(id -un)" = "$RUNAS" ]; then bash -c "$1"; else su "$RUNAS" -c "$1"; fi; }
 DSN="host=$BASE port=$PORT user=$RUNAS dbname=crux"
@@ -120,6 +122,26 @@ done
 echo "$out" | grep -E 'PASS|FAIL|ERROR|---' || true
 pass=$(echo "$out" | grep -c 'PASS' || true)
 fail=$(echo "$out" | grep -cE 'FAIL|ERROR' || true)
+
+# Everything above this line is true of the DATABASE. None of it is true of the
+# service until the values survive the trip through postgres.js -- and a text[]
+# that arrived as a string would make requireScreen() decide access by
+# substring, while an empty one would refuse everybody. Both are checked
+# against the same driver at the same version.
+echo
+echo "== the boundary between Postgres and the service"
+if [ -d "$PGJS/postgres" ] && [ -x "$NODE" ]; then
+  if PGJS="$PGJS" "$NODE" "$REPO/build/test/driver_check.mjs"; then
+    pass=$((pass + 10))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: postgres@3.4.5 is not installed here."
+  echo "   npm install postgres@3.4.5, or set PGJS to a node_modules holding it."
+  echo "   A check nobody can run must not read as a check that passed, so this"
+  echo "   says so rather than staying quiet."
+fi
 
 # The navigation and the database are two readers of one access policy. They
 # are meant to agree, and nothing but this makes them.
