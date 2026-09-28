@@ -30,6 +30,7 @@ alter table public.branch add constraint branch_pkey PRIMARY KEY (id);
 alter table public.branch_contact add constraint branch_contact_pkey PRIMARY KEY (id);
 alter table public.branch_generation_map add constraint branch_generation_map_pkey PRIMARY KEY (old_branch_id);
 alter table public.business_calendar add constraint business_calendar_pkey PRIMARY KEY (id);
+alter table public.business_import_alias add constraint business_import_alias_pkey PRIMARY KEY (kind, source_text);
 alter table public.business_record add constraint business_record_pkey PRIMARY KEY (id);
 alter table public.capability_level add constraint capability_level_pkey PRIMARY KEY (track_id, level);
 alter table public.capability_psychometric add constraint capability_psychometric_pkey PRIMARY KEY (track_id, ord);

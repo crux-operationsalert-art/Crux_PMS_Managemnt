@@ -272,6 +272,15 @@ create table if not exists public.business_calendar (
   effective_to date
 );
 
+create table if not exists public.business_import_alias (
+  kind text not null,
+  source_text text not null,
+  target_id uuid,
+  is_guess boolean default false not null,
+  note text,
+  created_at timestamp with time zone default now() not null
+);
+
 create table if not exists public.business_record (
   id uuid default gen_random_uuid() not null,
   period character(7) not null,

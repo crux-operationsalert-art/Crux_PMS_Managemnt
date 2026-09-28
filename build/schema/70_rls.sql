@@ -31,6 +31,7 @@ alter table public.branch enable row level security;
 alter table public.branch_contact enable row level security;
 alter table public.branch_generation_map enable row level security;
 alter table public.business_calendar enable row level security;
+alter table public.business_import_alias enable row level security;
 alter table public.business_record enable row level security;
 alter table public.capability_level enable row level security;
 alter table public.capability_psychometric enable row level security;
@@ -169,6 +170,7 @@ create policy audit_read on public.audit_entry as PERMISSIVE for SELECT to publi
 create policy branch_generation_map_admin on public.branch_generation_map as PERMISSIVE for ALL to public using (app_is_admin()) with check (app_is_admin());
 create policy branch_read on public.branch as PERMISSIVE for SELECT to public using (((client_id IN ( SELECT app_scope_clients.client_id
    FROM app_scope_clients() app_scope_clients(client_id))) OR app_is_admin()));
+create policy business_import_alias_read on public.business_import_alias as PERMISSIVE for SELECT to authenticated using (true);
 create policy client_contact_read on public.client_contact as PERMISSIVE for SELECT to public using ((app_is_admin() OR ((EXISTS ( SELECT 1
    FROM (person p
      JOIN client_view_policy v ON ((v.department = p.department)))

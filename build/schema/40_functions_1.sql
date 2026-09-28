@@ -703,6 +703,106 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.branch_place_from_address()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_before int;
+  v_placed int;
+  v_left   int;
+begin
+  select count(*) into v_before from branch where geo_node_id is null;
+
+  with cand as (
+    select b.id as branch_id, g.id as geo_id,
+           row_number() over (partition by b.id
+                              order by length(g.name) desc, g.name) as rn
+      from branch b
+      join geo_node g
+        on g.level = 'CITY'
+       and (b.address ~* ('\m' || g.name || '\M')
+         or b.name    ~* ('\m' || g.name || '\M'))
+     where b.geo_node_id is null)
+  update branch b
+     set geo_node_id = c.geo_id,
+         updated_at  = now()
+    from cand c
+   where c.rn = 1 and b.id = c.branch_id;
+
+  get diagnostics v_placed = row_count;
+  select count(*) into v_left from branch where geo_node_id is null;
+
+  return jsonb_build_object('was_unplaced', v_before, 'placed', v_placed, 'still_unplaced', v_left);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.business_import_run()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_in    int;
+  v_out   int;
+  v_mtd   bigint;
+  v_rev   numeric;
+  v_noown int;
+begin
+  if to_regclass('stg.bl_fact') is null then
+    return jsonb_build_object('loaded', 0, 'note', 'no staging table');
+  end if;
+
+  create temp table _bi on commit drop as
+  select to_char(dd.v::date, 'YYYY-MM')::bpchar                    as period,
+         max(dd.v::date)                                           as business_date,
+         cl.target_id                                              as client_id,
+         lo.target_id                                              as geo_node_id,
+         (array_agg(pe.target_id
+                    order by (pe.target_id is null), f.revenue desc, f.mtd desc))[1] as owner_id,
+         sum(f.mtd)::int                                           as mtd,
+         sum(f.revenue)::numeric(14,2)                             as revenue,
+         'Full_Data.xlsx: ' || string_agg(distinct dl.v || ' / ' || dc.v, '; ' order by dl.v || ' / ' || dc.v) as source_ref
+    from stg.bl_fact f
+    join stg.bl_dim  dd on dd.kind = 'date'   and dd.n = f.d
+    join stg.bl_dim  dl on dl.kind = 'loc'    and dl.n = f.loc
+    join stg.bl_dim  dc on dc.kind = 'client' and dc.n = f.cl
+    join business_import_alias lo on lo.kind = 'location' and lo.source_text = dl.v
+    join business_import_alias cl on cl.kind = 'client'   and cl.source_text = dc.v
+    left join stg.bl_own o on o.loc = f.loc and o.cl = f.cl
+    left join stg.bl_dim dm on dm.kind = 'mgr' and dm.n = o.mgr
+    left join business_import_alias pe on pe.kind = 'person' and pe.source_text = dm.v
+   where lo.target_id is not null and cl.target_id is not null
+   group by 1, 3, 4;
+
+  select count(*) into v_in  from stg.bl_fact;
+  select count(*), sum(mtd), sum(revenue), count(*) filter (where owner_id is null)
+    into v_out, v_mtd, v_rev, v_noown from _bi;
+
+  insert into business_record
+        (period, business_date, client_id, geo_node_id, owner_id, mtd, revenue, source_ref)
+  select period, business_date, client_id, geo_node_id, owner_id, mtd, revenue, source_ref
+    from _bi
+      on conflict (period, client_id, geo_node_id) do update
+     set business_date = excluded.business_date,
+         owner_id      = excluded.owner_id,
+         mtd           = excluded.mtd,
+         revenue       = excluded.revenue,
+         source_ref    = excluded.source_ref,
+         updated_at    = now();
+
+  return jsonb_build_object(
+    'rows_in',        v_in,
+    'rows_written',   v_out,
+    'mtd',            v_mtd,
+    'revenue',        v_rev,
+    'without_owner',  v_noown);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.business_minutes_between(p_from timestamp with time zone, p_to timestamp with time zone, p_cal uuid)
  RETURNS integer
  LANGUAGE plpgsql
@@ -2541,93 +2641,6 @@ begin
 exception when others then
   update job_run set finished_at = now(), state = 'FAILED', error = sqlerrm where id = v_run;
   raise;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.matrix_pack(p_person uuid, p_client uuid, p_period date DEFAULT CURRENT_DATE)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  v_view text; v_period date; c client%rowtype;
-  branches jsonb; held jsonb; n_ok int; n_held int; d matrix_dispatch;
-begin
-  v_view := matrix_client_view(p_person);
-  if v_view is null or v_view = 'none' then
-    return jsonb_build_object('error','no_client_view',
-      'reason','Your function does not see client data, so it does not see the matrix either.');
-  end if;
-
-  v_period := date_trunc('month', p_period)::date;
-  select * into c from client where id = p_client;
-  if c.id is null then return jsonb_build_object('error','no_such_client'); end if;
-
-  with mine as (
-    select b.id, b.code, b.name
-      from branch b
-      join matrix_scope_branches(p_person) s on s.branch_id = b.id
-     where b.client_id = p_client and b.status = 'ACTIVE'
-  ),
-  lv as (
-    select m.id as branch_id, m.code, m.name,
-           coalesce(jsonb_agg(jsonb_build_object(
-             'level', e.level, 'levelName', e.level_name, 'name', e.name,
-             'mobile', case when v_view = 'contacts' then null else e.mobile end,
-             'email',  case when v_view = 'contacts' then null else e.email end,
-             'inherited', e.inherited) order by e.level)
-             filter (where e.level is not null), '[]'::jsonb) as levels,
-           count(*) filter (
-             where e.name is not null and btrim(e.name) <> ''
-               and (coalesce(btrim(e.mobile),'') <> '' or coalesce(btrim(e.email),'') <> '')
-           ) as complete,
-           bool_or(e.inherited) as using_default
-      from mine m
-      left join branch_effective_matrix e on e.branch_id = m.id
-     group by m.id, m.code, m.name
-  )
-  select
-    coalesce(jsonb_agg(jsonb_build_object(
-      'branchId', branch_id, 'code', code, 'name', name,
-      'levels', levels, 'complete', complete,
-      'usingClientDefault', coalesce(using_default, false))
-      order by name) filter (where complete = 5), '[]'::jsonb),
-    coalesce(jsonb_agg(jsonb_build_object(
-      'branchId', branch_id, 'code', code, 'name', name,
-      'complete', complete, 'missing', 5 - complete)
-      order by name) filter (where complete < 5), '[]'::jsonb),
-    count(*) filter (where complete = 5),
-    count(*) filter (where complete < 5)
-    into branches, held, n_ok, n_held
-  from lv;
-
-  select * into d from matrix_dispatch
-   where client_id = p_client and period = v_period;
-
-  return jsonb_build_object(
-    'client', jsonb_build_object('clientId', c.id, 'code', c.code, 'name', c.name),
-    'period', v_period,
-    'view', v_view,
-    'branches', branches, 'heldBack', held,
-    'ready', n_ok, 'incomplete', n_held,
-    'recipients', coalesce((
-      select jsonb_agg(jsonb_build_object('kind', k.kind, 'name', k.name, 'email', k.email)
-             order by k.kind, k.email)
-        from client_contact k where k.client_id = p_client), '[]'::jsonb),
-    'dispatch', case when d.id is null then null else jsonb_build_object(
-      'dispatchId', d.id, 'sentAt', d.sent_at, 'recipients', to_jsonb(d.recipients),
-      'branchCount', d.branch_count, 'heldBack', d.held_back) end,
-    'says', case
-      when n_ok = 0 and n_held = 0 then
-        'You cover no active branch of this client, so there is nothing to send.'
-      when n_ok = 0 then
-        'Every branch you cover is missing a level, so there is nothing that can be sent. '
-        || 'A matrix with a gap in it reads as complete, which is worse than no matrix.'
-      when n_held > 0 then
-        n_ok || ' branch(es) are ready. ' || n_held || ' are held back until their '
-        || 'missing levels are filled, and are named below rather than sent with a gap.'
-      else 'All ' || n_ok || ' branch(es) are complete.' end);
 end $function$
 ;
 

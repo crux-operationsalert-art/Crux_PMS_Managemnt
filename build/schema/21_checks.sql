@@ -17,6 +17,7 @@ alter table public.automation add constraint automation_pause_reason CHECK ((ena
 alter table public.automation_run add constraint automation_run_outcome_check CHECK ((outcome = ANY (ARRAY['OK'::text, 'NOOP'::text, 'ERROR'::text])));
 alter table public.branch_contact add constraint branch_contact_identified CHECK (((person_id IS NOT NULL) OR (name IS NOT NULL)));
 alter table public.business_calendar add constraint business_calendar_check CHECK ((window_end > window_start));
+alter table public.business_import_alias add constraint business_import_alias_kind_check CHECK ((kind = ANY (ARRAY['location'::text, 'client'::text, 'person'::text])));
 alter table public.business_record add constraint business_record_day10_check CHECK ((day10 >= 0));
 alter table public.business_record add constraint business_record_mtd_check CHECK ((mtd >= 0));
 alter table public.business_record add constraint business_record_target_check CHECK ((target >= 0));

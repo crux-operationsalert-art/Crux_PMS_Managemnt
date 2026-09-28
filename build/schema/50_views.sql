@@ -40,6 +40,17 @@ create or replace view public.branch_matrix_state as
      LEFT JOIN matrix_contact m ON m.branch_id = b.id
   GROUP BY b.id, b.client_id;
 
+create or replace view public.branch_without_place as
+ SELECT b.id,
+    b.code,
+    b.name,
+    b.address,
+    c.code AS client_code,
+    c.name AS client_name
+   FROM branch b
+     JOIN client c ON c.id = b.client_id
+  WHERE b.geo_node_id IS NULL AND b.status = 'ACTIVE'::entity_status;
+
 create or replace view public.chair_status as
  SELECT c.id AS chair_id,
     c.id,

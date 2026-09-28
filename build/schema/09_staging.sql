@@ -33,6 +33,27 @@ create table if not exists stg.audit_log (
   new_value text
 );
 
+create table if not exists stg.bl_dim (
+  kind text not null,
+  n integer not null,
+  v text not null
+);
+
+create table if not exists stg.bl_fact (
+  d integer not null,
+  loc integer not null,
+  cl integer not null,
+  mtd integer not null,
+  revenue numeric not null
+);
+
+create table if not exists stg.bl_own (
+  loc integer not null,
+  cl integer not null,
+  mgr integer not null,
+  ha integer not null
+);
+
 create table if not exists stg.branch_assignments (
   row_no integer not null,
   user_email text,
@@ -261,6 +282,8 @@ create table if not exists stg.warnings (
 );
 
 alter table stg.audit_log add constraint audit_log_pkey PRIMARY KEY (row_no);
+alter table stg.bl_dim add constraint bl_dim_pkey PRIMARY KEY (kind, n);
+alter table stg.bl_own add constraint bl_own_pkey PRIMARY KEY (loc, cl);
 alter table stg.branch_assignments add constraint branch_assignments_pkey PRIMARY KEY (row_no);
 alter table stg.branches add constraint branches_pkey PRIMARY KEY (row_no);
 alter table stg.city_state add constraint city_state_pkey PRIMARY KEY (city);
