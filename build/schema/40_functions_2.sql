@@ -8,6 +8,24 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.matrix_scope_branches(p_person uuid)
+ RETURNS TABLE(branch_id uuid)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select b.id from branch b
+   where exists (select 1 from person p where p.id = p_person and p.app_role = 'ADMIN')
+  union
+  select distinct b.id
+    from coverage_rule r
+    cross join lateral coverage_resolve(r) cr(branch_id)
+    join branch b on b.id = cr.branch_id
+   where r.person_id = p_person
+     and (r.effective_to is null or r.effective_to >= current_date);
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.matrix_send(p_person uuid, p_client uuid, p_period date, p_to text[], p_note text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3714,25 +3732,5 @@ begin
    where id = p_id and resolved_at is null;
   return jsonb_build_object('ok', true);
 end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ops_alert_open(p_role text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'id', a.id, 'kind', a.kind, 'severity', a.severity,
-           'title', a.title, 'detail', a.detail, 'action', a.action_hint,
-           'since', a.opened_at, 'seen', a.last_seen_at,
-           'times', a.occurrences, 'retry_at', a.retry_at,
-           'acknowledged', a.acknowledged_at is not null)
-         order by case a.severity when 'URGENT' then 0 when 'WARN' then 1 else 2 end,
-                  a.opened_at), '[]'::jsonb)
-  from ops_alert a
-  where a.resolved_at is null
-    and (p_role is null or a.for_role = p_role)
-$function$
 ;
 

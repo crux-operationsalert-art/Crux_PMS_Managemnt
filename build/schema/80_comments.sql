@@ -46,6 +46,7 @@ comment on column public.sla_rule.op_node_id is 'The operating zone this rule is
 comment on column public.strike_event.location_id is 'The location as at the breach, not as at now. A person who moves branch does not move their history with them.';
 comment on function public.access_level_of(p_person uuid) is 'The scope level this person is at. Administrator, then primary chair, then department, then exec.';
 comment on function public.access_may_open(p_person uuid, p_screen text) is 'May this person open this screen. The one question the navigation and every service both ask, so that they cannot answer it differently.';
+comment on function public.access_policy_questions() is 'Three places where enforcing the access policy showed the policy itself may be wrong. Raises an INFO alert while each is true and resolves it when it is not. Not scheduled: a decision is not a sweep.';
 comment on function public.access_screens(p_person uuid) is 'Every screen key this person may open, children included. What auth_whoami hands the browser and what the ops service gates on.';
 comment on function public.auth_gate() is 'Refuses any sign-in that is not a Crux Workspace address already present and active on the people master. The three refusal messages are different on purpose: the person needs to know which one applies to them.';
 comment on function public.automation_load(p_rows jsonb) is 'Loads build/data/automations.json into automation. Takes the rows as jsonb so it does not care how they arrived.';
