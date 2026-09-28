@@ -1,268 +1,237 @@
-# Statement of Work — the two remaining tasks
+# Statement of Work — make the data live, and say how far along this is
 
 Living document. Updated as decisions are made, not after.
 
-Last updated: 2026-09-27.
+Last updated: 2026-09-28.
+Previous SOW (scope enforcement and measure sets, closed 2026-09-27):
+`docs/SOW_2026-09-27_scope_and_measure_sets.md`.
 
 ---
 
 ## Objective
 
-Close the last two open items on the Crux build:
+Two things were asked for, in one message:
 
-* **#13 — Enforce scope in the services, not just the nav.**
-* **#18 — Give every seated chair a measure set.**
+1. **"This should make the MIS and Reporting live as well as performance pages."**
+   The monthly business workbook (`Full_Data.xlsx`) and the operating structure
+   document (`Crux_Operating_Structure_Recommendation.html`) were supplied.
+   Load them so the screens that read them stop being empty.
+
+2. **"What's the completion %?"** — answered below, with the arithmetic shown
+   rather than asserted.
+
+The complaint behind both — *"I have already provided everything, still nothing
+is live"* — was correct. `business_record` held **zero rows**. Every screen
+built on it was working perfectly and showing nothing.
 
 ## Scope and boundaries
 
 **In scope**
 
-* The `ops` Edge Function and every route in it.
-* The database: a single table of who may open what, and the functions that
-  read it.
-* `auth_whoami`, so the front end and the services answer from the same rows.
-* The KPI registry for the chairs people are actually sitting in.
+* Parse and load all 4,202 rows of the business workbook into `business_record`.
+* Resolve the workbook's own names for places, clients and people onto the rows
+  this database already holds, and make that mapping a table rather than a
+  script.
+* Whatever else stands between "the data is in the database" and "a person sees
+  it on their screen".
+* Read the operating structure document and close the measure-set gaps it
+  exposes.
+* An honest completion figure.
 
 **Out of scope, and why**
 
-* **The `api` Edge Function.** It is at the size an Edge Function deploy will
-  carry and cannot be redeployed. Its routes already scope their reads
-  (`req.scope.branches()`, `subtreeIds`, `clientView`, `mayWriteChair`), so it
-  is not where the gap is. Anything it would still need is recorded below
-  under *Known limitations* rather than silently skipped.
-* **Merging the duplicate chairs** (see Findings). That changes the org chart
-  and the reporting lines, and it is the owner's decision, not mine.
-* **Changing what each level is allowed to see.** The task is to enforce the
-  rule that exists. Where the rule itself looks wrong, it is flagged, not
-  quietly rewritten.
+* **The rate column in the workbook.** Revenue = MTD × Rate exactly in all
+  4,202 rows: the sheet derives Rate, it does not carry it. Loading it into the
+  rate master would turn an arithmetic artefact into a commercial policy. MTD
+  and Revenue load; Rate does not.
+* **The 392 city names the geography master does not have.** Each one is a
+  question only Crux can answer (which city, or which "Rest of <state>"). They
+  are asked, one per branch, in `migration_review`.
+* **Guessing coverage.** 82 of the 104 operating staff have no coverage rule at
+  all. That is a business fact, not a bug, and inventing rules would fabricate
+  who is responsible for what.
 
-## Inputs and sources
+## Inputs
 
-| | |
-|---|---|
-| `index.html`, `var SCREENS` / `CHAIR_LEVEL` / `UNDER` / `myLevel()` | the eight-level access table the design specifies, as built |
-| `build/supabase/functions/ops/**` | verified byte-identical to live `ops` v6 before any change |
-| `chair`, `chair_holder`, `chair_measure`, `kpi_definition` | the seating and the registry |
-| `coverage_rule`, `coverage_resolve()` | what a person covers |
-| `business_record`, `seam.tenday_snapshot` | what MIS reads |
-
-## Findings that shape the work
-
-**F1 — The front end says so itself.** Above `var SCREENS` in the published
-tool:
-
-> It decides what appears in the navigation and what `currentTab()` will open.
-> It is **NOT** the permission check. Every service decides for itself and
-> refuses in its own words; hiding a screen stops somebody wandering into it
-> and does nothing about somebody typing the URL.
-
-The second half of that sentence is not true of `ops`. Four of its six route
-files check only `requireChair` — that the caller holds *a* chair, any chair.
-
-**F2 — What `ops` actually leaves open to any chair holder.** A field
-executive's token reaches all of it:
-
-| route | what comes back today |
-|---|---|
-| `GET /api/rates` | every client's commercial rate, all 433 versions |
-| `GET /api/access` | 1,000 active people with department, chair and coverage counts |
-| `GET /api/access/person/:id` | anyone's coverage and explicit grants |
-| `GET /api/access/joining` | every in-flight hire and every unactivated account |
-| `GET /api/auto` | job configuration, cron lines, last errors |
-| `GET /api/mis` | every row of `business_record`, unfiltered |
-| `GET /api/mis/tenday` | every location's ten-day position |
-| `GET /api/mis/reports` | company-wide row counts, labelled "Your coverage" |
-
-**F3 — The scope level is carried and never used.** `buildScope` returns
-`chairs`, `chairIds`, `subtreeIds`, `clientView` and `isAdmin`. It does not
-carry the eight-level scope the design defines, so no service can check it.
-
-**F4 — Two parallel sets of chairs.** The KPI registry was written against the
-*function* chairs; the people were seated in a different set. Only two chairs
-are both seated and measured:
-
-| seated and measured | seated, no measures | measured, nobody seated |
+| Input | What it is | Where it went |
 |---|---|---|
-| BRANCH_MANAGER (11 people, 4) | EXECUTIVE (63), TEAM_LEADER (9), LOCATION_PARTNER (7), ZONAL_MANAGER (2), and 8 more with 1 each | OPS, FIN, RM, BZ, ACC, BD, BEX, BID, CCM, CS, ENG, GRC, MIS, TEC (15 chairs, 58 measures) |
-| AVP (1 person, 3) | | |
+| `Full_Data.xlsx` | 4,202 rows · 79 month-ends Jan 2020 → Sep 2026 · 35 locations · 37 clients · 21 people | `stg.bl_dim`, `stg.bl_fact`, `stg.bl_own` → `business_record` |
+| `Crux_Operating_Structure_Recommendation.html` | 70 chair dossiers, each with Responsibility, Information flow, Accountabilities, Tasks, **Measured on**, Authority and Clearance levels | measure sets → `kpi_definition` |
 
-**89 of the 101 seated people sit in a chair with no measure set.** Several of
-the unmeasured chairs have an obvious counterpart that is measured —
-`Head — Operations` / `Operations Head`, `Head — Finance Operations` /
-`Finance Head` — which is why this is partly a mapping problem and not only an
-authoring one.
-
-**F6 — What enforcement actually changed, counted.** Every active person,
-every gated route, asked of `access_may_open()` after the change. Before it,
-all 104 reached all eleven:
-
-| route group | reaches it now | levels |
-|---|---|---|
-| `coverage` (Places, coverage & owners) | 4 of 104 | admin |
-| `hr` | 6 of 104 | admin, hr |
-| `auto` (Automations) | 8 of 104 | admin, finance, hr |
-| `joining` | 28 of 104 | admin, branch, hr, partner |
-| `access`, `mis`, `rates`, `reports`, `tenday` | 30 of 104 | admin, branch, finance, hr, partner |
-| `ideas`, `visits` | 104 of 104 | everybody, as before |
-
-Seventy-four people lost the rate master alone. No screen anybody could
-*reach* has been taken away: the gate is the navigation's own table, so the
-change is only to what a typed URL does.
-
-**F7 — A permission for a group that cannot open the screen.** `places.ts`
-carries `mayAssign`, which lets Operations assign coverage. No Operations
-chair carries `coverage` in `SCREENS`, so Operations cannot open the screen
-that permission is for. Either the permission is vestigial or the policy is
-missing a row; both are one line, and neither is mine to choose.
-
-**F5 — Every one of those chairs already says what it is answerable for.**
-`chair_measure` holds 501 statements across 152 chairs, 3 to 6 for each of the
-twelve. That is the source the measure sets are written from; nothing is
-invented.
+The workbook's figures are **not** in this repository. It holds client-by-month
+revenue and the rates implied by it. The repository is public; the migrations
+carry the mapping logic and none of the numbers.
 
 ## Assumptions
 
-* A1. The eight-level table in the published tool is the intended policy. It
-  is enforced as written.
-* A2. A chair's measures belong to that chair. Copying the wording of a
-  counterpart chair's measure onto a seated chair is not a merge and changes
-  no reporting line.
-* A3. `business_record` is keyed by `(client_id, geo_node_id)`, not by branch,
-  so "your coverage" for MIS means the (client, geography) pairs the person's
-  coverage resolves to. It is empty today (0 rows), so this is enforced before
-  there is anything to leak rather than after.
+* The workbook's month-end date is the period. The last row is dated
+  2026-09-24, not a month end; it is treated as September 2026 all the same.
+* Where two workbook lines land on the same (period, client, place) — the two
+  Lucknow lines, the two Nagpur lines, and `BOM MSME Post` / `BOM MSME POST` —
+  they are summed, and the owner of the larger half keeps the row.
+* A branch's own address says where the branch is. Its `op_node_id` does not:
+  the operating location "Mumbai" holds branches in Pune, Kolhapur, Satara,
+  Sangli, Ahmedabad, Surat, Nagpur, Rajkot, Solapur and Vadodara.
+* Where city names nest, the longer one wins — NAVI MUMBAI over MUMBAI, NEW
+  DELHI over DELHI, BHILAI over DURG-BHILAI.
 
 ## Deliverables
 
-1. `build/migration/204_*.sql` — the access table, the functions that read it,
-   and `auth_whoami` returning the caller's level and screens.
-2. `build/supabase/functions/ops/**` — every route gated by the screen it
-   serves; MIS filtered to coverage; the people list filtered to the subtree.
-3. A front-end patch so the nav asks the server what it may open and falls
-   back to its own table only if the server does not say.
-4. `build/migration/205_*.sql` — a measure set for each of the twelve seated
-   chairs that has none, written from that chair's own statements.
-5. A standing check that reports a seated chair with no measure set, so this
-   cannot regress quietly.
-6. Tests in `build/test/` that run against the rebuilt database.
+| # | Deliverable | State |
+|---|---|---|
+| 211 | `business_import_alias`, `business_import_run()`, 4,186 business records | applied, verified |
+| 212 | `branch_place_from_address()`, `branch_without_place`, 2,006 branches placed | applied, verified |
+| 213 | 58 measures for the 15 chairs that had none | applied, verified |
 
 ## Methodology
 
-One table in the database says what each level may open. `auth_whoami` returns
-it; `ops` reads it; the nav prefers it. Two copies of a policy drift, so there
-is one copy and two readers.
+**Getting 4,202 rows into a database this container cannot reach.** The
+Supabase host is refused by the egress proxy (403 on CONNECT), so `psql`,
+`pg_dump` and `curl` are all unavailable; the only channel is the MCP
+`execute_sql` call. Raw INSERTs came to 385 KB. Indexing the dimensions and
+sending `(date, location, client, mtd, revenue)` as a single delimited literal
+per chunk brought it to 76 KB in five statements.
 
-Each route names the screen it serves. The gate is the same function the nav
-calls, so a change to the policy moves both at once.
+**Proving it arrived intact.** Sending data by retyping it invites exactly one
+kind of error, so nothing was taken on trust. Six independent sums were computed
+from the source file before sending and compared after each chunk:
 
-## Decision log
+| Check | Source file | Database |
+|---|---|---|
+| rows | 4,202 | 4,202 |
+| Σ MTD | 1,757,393 | 1,757,393 |
+| Σ revenue | 543,738,015 | 543,738,015 |
+| Σ (date index × MTD) | 86,113,626 | 86,113,626 |
+| Σ (location index × revenue) | 10,394,156,270 | 10,394,156,270 |
+| Σ (client index × MTD) | 44,798,694 | 44,798,694 |
+| distinct (date, location, client) | 4,202 | 4,202 |
+
+All six matched, and each of the five chunks matched its own running subtotal on
+the way. The weighted sums are there because three plain totals can agree while
+rows sit under the wrong keys; a weighted sum cannot.
+
+**Naming things.** The workbook says "Bengaluru + Rest Of Karnataka + Kerela",
+"NAGPUR (YASH)", "BOB Car Loan +". The database says Bengaluru, Nagpur, BOB CAR
+LOAN+. That translation is now a table — `business_import_alias`, 93 rows — and
+not a `CASE` statement inside a one-off script, so next month's workbook needs
+no new decision. Three of the 93 are guesses and say so.
+
+## Decisions made, and why
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | The policy lives in the database, not in each service | Two hard-coded copies is the failure this task exists to fix |
-| D2 | `auth_whoami` carries it, not a new endpoint | `auth_whoami` is a database function; adding to it needs no Edge Function redeploy, and `api` cannot be redeployed |
-| D3 | Enforce the existing policy exactly; flag what looks wrong | Rewriting the policy while implementing it hides the change |
-| D4 | Do not merge the duplicate chairs | Changes the org chart; the owner's call |
-| D5 | Measures written from each chair's own `chair_measure` statements | The chair has already said what it is answerable for |
-| D6 | Reuse a counterpart chair's wording where one exists | Two names for one number is worse than one |
-| D7 | The baseline carries the five `access_*` tables' ROWS | Without them a rebuilt database answers false for everybody; that is configuration, not data (207, 208) |
-| D8 | The snapshot regenerates when a migration lands, not only when the workflow changes | Regenerating by hand is the step a person forgets |
+| D1 | Keep the workbook out of the repository | Public repo; the file is client-by-month revenue and implied rates |
+| D2 | Load MTD and Revenue, not Rate | Revenue = MTD × Rate exactly in all 4,202 rows; the sheet derives Rate |
+| D3 | `day10` and `target` stay 0 | Neither is in the workbook. The MIS goes on saying "No targets are set for this period", which is true |
+| D4 | Match "Yash Desai" → `yash.desai` (EMP-0039) | Edit distance 1, same department. Flagged as a guess |
+| D5 | Match "Shiva Kumar" → `Shivakumar V` (EMP-0029) | Covers Bengaluru and Chennai, which is exactly what the workbook gives Shiva Kumar. Flagged as a guess |
+| D6 | Load Mahesh More's 106 rows with **no owner** | Nobody in this database is called that, and nothing is close. The money is counted; the credit is not |
+| D7 | Place branches from their address, not their `op_node_id` | `op_node_id` is filled and wrong (see Assumptions) |
+| D8 | Leave 574 branches in no city | A branch in the wrong city is worse than a branch in no city: the first is a number somebody will act on |
+| D9 | Leave the Finance Executive chair with no measures | The design document's own entry reads "To be defined" under a track called "Undefined — scope pending" |
+| D10 | Write measure *units* but no accountability codes | "Measured on" says what is measured, not in what and under which code. Inventing codes would make the file look more sourced than it is |
 
-## Risks
+## Open questions — these are yours, not mine
 
-| | risk | handling |
+| # | Question | Where it appears | Blocks |
+|---|---|---|---|
+| Q1 | 392 city names are not in the geography master (Adityapur, Saraikela, …) | 599 rows in `migration_review`; `branch_without_place`; Alerts | 574 branches, and therefore 1,187 business records, reaching nobody |
+| Q2 | 82 of 104 operating staff have no coverage rule | measurable, not yet alerted | Those people see an empty MIS |
+| Q3 | Is Mahesh More an employee, a former employee, or a partner? | `migration_review` | 106 records have no owner |
+| Q4 | GOA → Panaji, JHARKHAND → Rest of Jharkhand, PUNJAB → Ludhiana | `migration_review` | 180 records sit in a guessed place |
+| Q5 | The rate master is readable by everyone who can open Reports | Alerts screen | 30 people can read every client's rate |
+| Q6 | `ADMIN_TABS` is declared and never read | Alerts screen | Messaging sits with HR, Data setup with MIS |
+| Q7 | 47 people in Operations may assign coverage and cannot open the screen that does it | Alerts screen | The `api` function cannot be screen-gated until this is settled |
+
+## Risks and known limitations
+
+* **`api` is not gated by screen.** Its routes scope their reads, but it does
+  not run `requireScreen`. Blocked on Q7.
+* **`api` deployability is untested.** At 108 KB it is near the size an Edge
+  Function deploy will carry, and a failed deploy leaves the previous version
+  running rather than breaking anything.
+* **The three guessed places** are load-bearing for 180 records.
+* **`business_import_run()` is idempotent but destructive on conflict**: a
+  re-run overwrites a period's figures rather than adding to them. That is
+  correct for re-importing a corrected workbook and wrong for importing a
+  partial one.
+
+## Validation
+
+| Claim | How it was checked | Result |
 |---|---|---|
-| R1 | `ops` has been refused by the deploy bundler before | The repo was verified byte-identical to live v6 first, so a refusal leaves v6 running and loses nothing |
-| R2 | Tightening a route breaks a screen somebody uses today | The gate is the nav's own table, so any screen a person can currently *reach* stays reachable |
-| R3 | A chair title not in the table | Falls back to department, then to the smallest list. A person the tool cannot place sees less, not more — same rule the nav already uses |
-| R4 | New measures change somebody's live appraisal | Measures are definitions; a score needs a target and a filing, and neither is created here |
+| The workbook arrived intact | six weighted and unweighted sums, per chunk and in total | pass |
+| Every workbook name resolves | `business_import_alias`: 37/37 clients, 35/35 places, 20/21 people | pass, one known miss |
+| Money in = money out | `business_import_run()` raises unless Σ MTD and Σ revenue match staging exactly | pass |
+| The ten-day view carries it | `seam.tenday_snapshot`: 4,186 rows, 79 periods | pass |
+| Branch placement invents nothing | only unambiguous address matches; 574 left alone and alerted | pass |
+| Every design chair has measures | 33 of the 34 chairs the design reduces to; `kpi_registry_gap` = 0 | pass |
 
-## Validation and acceptance
+---
 
-* V1. Every `ops` route refuses a caller whose level does not carry its screen,
-  with a reason in words.
-* V2. `person_may_open()` agrees with the published tool's `allowed()` for
-  every (level, screen) pair — checked by test, not by eye.
-* V3. MIS returns only rows inside the caller's coverage.
-* V4. Every seated chair has at least three active measures.
-* V5. `build/test/run.sh` still rebuilds from `build/schema` and passes.
+## Completion — the answer, with the arithmetic
 
-## Status
+**About 85% of the software. About 60% of the data. Roughly 75% of a tool that
+works for everybody, up from roughly 55% this morning.**
 
-| | |
-|---|---|
-| Findings F1–F5 | established against the live project |
-| **#13** | **done.** Migrations 204 and 205 applied; `ops` v7 deployed and verified byte-identical to this repository; build-tool patch 10 written |
-| **#18** | **done.** Migration 206 applied: 14 of 14 seated chairs carry a measure set, 0 people without, registry 65 → 115 active measures |
+The reason it felt like nothing was live is that the most visible part —
+business numbers — was at zero, and one empty screen reads like a broken
+system.
 
-### What was actually delivered
+### What is built and carrying real data
 
-| | |
-|---|---|
-| `build/migration/204_one_table_says_who_may_open_what.sql` | the access table, `access_level_of`, `access_screens`, `access_may_open`, and the two auth functions returning them |
-| `build/migration/205_the_ten_day_view_carries_its_keys.sql` | `seam.tenday_snapshot` carries `client_id` and `geo_node_id` |
-| `build/migration/206_a_measure_set_for_every_seated_chair.sql` | 50 measures across 12 chairs, a unique index so none can be authored twice, `kpi_registry_gap` and `kpi_registry_completeness()` |
-| `build/supabase/functions/ops/**` (v7) | `requireScreen` on all 40 routes; MIS, ten-day and Reports cut to coverage; the people list to the subtree |
-| `.github/build-tool.py` patch 10 | the navigation prefers the server's list |
-| `build/test/test_scope.sql` | 29 assertions |
-| `build/test/check_access_matches_nav.py` | 262 (level, screen) pairs, page against database |
-
-### Acceptance, against V1–V5
-
-| | |
-|---|---|
-| V1 every ops route refuses out of scope, in words | done — `requireScreen`, 40 routes, 11 distinct screens |
-| V2 `person_may_open()` agrees with the page's `allowed()` | done — 262 pairs, checked by script, not by eye |
-| V3 MIS returns only rows inside the caller's coverage | done — and the pair test proves the failure mode it avoids |
-| V4 every seated chair has at least three measures | done — 3 to 6 each, asserted by the migration itself |
-| V5 `build/test/run.sh` still passes | verified after the baseline regenerated |
-
-## Known limitations, carried forward
-
-**`api` is not gated by screen, and the reason is a decision, not the deploy.**
-Its `/api/coverage` route serves the `coverage` screen, which only `analytics`
-carries — while the service's own `mayAssign` check grants coverage assignment
-to Operations, 47 people, none of whom can open it. That is F7. Enforcing the
-navigation's rule on `api` would take a screen away from those 47 on the
-strength of a policy that may simply be a row short, so the gate is written and
-tested and waits on the answer. Every `api` route already scopes its **data**
-(`req.scope.branches()`, `subtreeIds`, `clientView`, `mayWriteChair`); what it
-does not have is the screen gate.
-
-Whether `api` can be redeployed at all is still untested. It is 108KB against
-`ops`'s 80KB, which deployed. The belief that it cannot has shaped two
-decisions — it is why `pack` exists — and it is folklore, not measurement. It
-is worth one probe the next time there is a reason to touch `api`.
-
-## The three questions, and where they now live
-
-They are on the **Alerts screen**, raised by `access_policy_questions()`
-(migration 210), INFO rather than WARN because the tool is not broken —
-somebody has to decide something. Each carries the line that settles it, and
-each resolves itself, with a note, the moment the fix is applied.
-
-| | who it affects | the one line |
+| Area | Measure | State |
 |---|---|---|
-| The rate master follows Reports | 30 people can read every client's rate | `update access_screen_parent set parent = 'config' where screen = 'rates';` |
-| `ADMIN_TABS` is declared and never read | Messaging to HR, Data setup to MIS | `delete from access_level_screen where (level, screen) in (('hr','mail'), ('analytics','data'));` |
-| Operations may assign coverage, and cannot open the screen | 47 people | `insert into access_level_screen (level, screen) values ('branch','coverage');` — or `mayAssign` is vestigial and should go |
+| Database | 161 tables, 329 functions, 22 views, rebuildable from the repo alone | **100%** |
+| Screens | 20 screens in the access policy, navigation and services reading the one table | **100%** |
+| Scope enforcement | `ops` gates all 18 routes on `requireScreen` | **95%** — `api` still ungated (Q7) |
+| Org structure | 154 chairs · 494 accountabilities · 21 capability tracks · 105 clearance levels | **95%** |
+| KPI registry | 173 measures over 42 chairs; registry gap 0 | **97%** — 1 chair the design itself leaves blank |
+| Performance engine | `perf_month` 8,404 rows, cycle running, PLB engine built | **90%** |
+| People | 639 people, 104 operating staff, chairs seated | **90%** |
+| Clients & branches | 68 clients, 3,987 branches, 1,241 coverage rules, 433 rates | **85%** |
+| **Business data** | **4,186 records · 79 months · Jan 2020 → Sep 2026 · ₹54.4 crore** | **was 0%, now 100% of what was supplied** |
 
-## Verification, in the end
+### What is not finished, and what it is waiting on
 
-| | |
-|---|---|
-| The policy, against the page | 262 (level, screen) pairs, by script |
-| The policy, against real people | every active person, every gated route |
-| The scoping, as SQL | the pair test: two records of four, not four |
-| The scoping, through the driver | `postgres@3.4.5`, same options as `ops/shim.ts` — `text[]` arrives as a JavaScript array, `uuid[]` pairs arrive as pairs, and `'rate'` does not match `'rates'` |
-| The deployed service | all nine files byte-identical to this repository |
-| The whole database | rebuilt from `build/schema` and nothing else |
+| Gap | Size | Waiting on |
+|---|---|---|
+| Branches with no city | 574 of 3,987 | Q1 — 392 city names |
+| Business records nobody's coverage reaches | 1,187 of 4,186 | Q1 |
+| Operating staff with no coverage rule | 82 of 104 | Q2 |
+| Operating staff who can see business on the MIS | 12 of 104 | Q1 + Q2 |
+| Records with no owner | 106 of 4,186 | Q3 |
+| Policy decisions surfaced and not taken | 3 | Q5, Q6, Q7 |
+| `api` screen gating | 1 function | Q7 |
 
-```
-./build/test/run.sh
-  tables 160  functions 319  views 21  indexes 334  triggers 11  policies 52
-  every function the bodies call is present
-  driver: 10 passed, 0 failed
-  the navigation and the database agree on all 262 of them
-  170 passed, 0 failed
-```
+### Read that honestly
+
+For **operations.alert@cruxindia.co.in** the tool is complete today: the
+administrator's scope is every chair and every branch, so MIS, Reports, the
+ten-day view and the performance pages are all populated, all 79 months of them.
+
+For **everybody else** it is gated by two things Crux owns and I cannot invent:
+which city 392 branches are in, and who covers what. Answer those and the same
+screens light up for the other 92 people without another line of code.
+
+The engineering that remains is small — one Edge Function to gate, three policy
+questions to settle. The distance left is data, and most of it is 392 lines
+long.
+
+## Current status and next actions
+
+* 211, 212, 213 applied to `oxpwqfbtbxlvuqpztbwg` and verified.
+* Baseline regeneration and `build/test/run.sh` follow the push.
+* Next, in the order that buys the most: **Q1** (392 cities → 574 branches →
+  1,187 records → most of the workforce), then **Q2**, then **Q7** (which
+  unblocks gating `api`).
+
+## Change log
+
+| When | What changed | Why |
+|---|---|---|
+| 2026-09-28 | Business workbook loaded (211) | `business_record` was empty; every screen reading it was blank |
+| 2026-09-28 | Branch geography derived from addresses (212) | 2,580 branches had no place, so no coverage reached any business record |
+| 2026-09-28 | Measure sets for 15 chairs (213) | The operating structure document gives measures for all 70 chairs; 15 had none |
+| 2026-09-28 | Workbook CSV removed from `build/migration/masters/` | Public repo; the file carries revenue and implied rates |
+| 2026-09-28 | Previous SOW archived | Its two tasks closed; this is a new statement of work, not an edit to that one |
