@@ -8,46 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ops_alert_ack(p_actor uuid, p_id uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_role role_kind;
-begin
-  select app_role into v_role from person
-   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
-  if v_role is distinct from 'ADMIN' then
-    return jsonb_build_object('error','not_admin',
-      'reason','Only an administrator can take an operational alert.');
-  end if;
-  update ops_alert set acknowledged_by = p_actor, acknowledged_at = now()
-   where id = p_id and resolved_at is null;
-  return jsonb_build_object('ok', true);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ops_alert_open(p_role text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'id', a.id, 'kind', a.kind, 'severity', a.severity,
-           'title', a.title, 'detail', a.detail, 'action', a.action_hint,
-           'since', a.opened_at, 'seen', a.last_seen_at,
-           'times', a.occurrences, 'retry_at', a.retry_at,
-           'acknowledged', a.acknowledged_at is not null)
-         order by case a.severity when 'URGENT' then 0 when 'WARN' then 1 else 2 end,
-                  a.opened_at), '[]'::jsonb)
-  from ops_alert a
-  where a.resolved_at is null
-    and (p_role is null or a.for_role = p_role)
-$function$
-;
-
 CREATE OR REPLACE FUNCTION public.ops_alert_raise(p_kind text, p_title text, p_dedupe_key text, p_severity text DEFAULT 'WARN'::text, p_detail text DEFAULT NULL::text, p_action_hint text DEFAULT NULL::text, p_retry_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_entity_type text DEFAULT NULL::text, p_entity_id uuid DEFAULT NULL::uuid, p_for_role text DEFAULT 'ADMIN'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -3332,6 +3292,128 @@ AS $function$
     (select nullif(regexp_replace(value, '[^0-9.]', '', 'g'), '')::numeric
        from app_setting where key = p_key),
     p_default)
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.pms_cycle_score(p_cycle uuid, p_include_team boolean DEFAULT true)
+ RETURNS TABLE(kpi numeric, attr numeric, final numeric, own numeric, cut numeric, held numeric, floored boolean, team_avg numeric)
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+declare
+  st record;
+  cy record;
+  w_kpi numeric := pms_cfg('pms_wkpi', 70);
+  share numeric := pms_cfg('pms_team_share', 50) / 100.0;
+  floor_score numeric := pms_cfg('pms_probation', 5);
+  has_base boolean;
+begin
+  select * into cy from pms_cycle c where c.id = p_cycle;
+  if not found then return; end if;
+  select * into st from pms_cycle_state(p_cycle);
+
+  select exists (select 1 from pms_component where cycle_id = p_cycle
+                  and kind in ('KPI','ATTRIBUTE')) into has_base;
+  if not has_base then
+    kpi := null; attr := null; final := null; own := null;
+    cut := st.cut; held := st.held; floored := false; team_avg := null;
+    return next; return;
+  end if;
+
+  kpi := st.kpi; own := st.attr; cut := st.cut; held := st.held;
+  team_avg := null;
+
+  if p_include_team then
+    team_avg := pms_team_average(cy.person_id, cy.period);
+    if team_avg is not null then
+      attr := own * (1 - share) + team_avg * share;
+    else
+      attr := own;
+    end if;
+  else
+    attr := own;
+  end if;
+
+  attr := greatest(0, least(10, attr));
+  final := (kpi * w_kpi + attr * (100 - w_kpi)) / 100.0;
+
+  floored := cy.on_probation and final < floor_score;
+  if floored then final := floor_score; end if;
+  return next;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.pms_cycle_state(p_cycle uuid)
+ RETURNS TABLE(attr numeric, kpi numeric, cut numeric, held numeric)
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+declare rec record;
+begin
+  attr := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'ATTRIBUTE'), 0);
+  kpi  := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'KPI'), 0);
+  cut  := 0;
+  held := coalesce((select sum(abs(a.points)) from pms_adjustment a
+                     where a.cycle_id = p_cycle and not a.applied), 0);
+
+  for rec in select a.points as pts, a.half as hf from pms_adjustment a
+              where a.cycle_id = p_cycle and a.applied
+              order by a.at, a.id loop
+    if rec.hf = 'ATTRIBUTE' then
+      attr := greatest(0, least(10, attr + rec.pts));
+    else
+      if rec.pts < 0 then cut := cut - rec.pts; end if;
+      kpi := greatest(0, least(10, kpi + rec.pts));
+    end if;
+  end loop;
+  return next;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.pms_team_average(p_person uuid, p_period date)
+ RETURNS numeric
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  with recursive my_chair as (
+    select ch.chair_id from chair_holder ch
+     where ch.person_id = p_person and ch.to_date is null
+  ), below as (
+    select c.id from chair c join my_chair m on c.parent_id = m.chair_id
+    union all
+    select c.id from chair c join below b on c.parent_id = b.id
+  ), ppl as (
+    select distinct h.person_id from chair_holder h
+      join below b on b.id = h.chair_id
+     where h.to_date is null
+  )
+  select avg(s.final)
+    from ppl p
+    join pms_cycle cy on cy.person_id = p.person_id and cy.period = p_period
+    cross join lateral pms_cycle_score(cy.id, false) s
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.pms_window_may_open(p_person uuid, p_period date)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select not exists (
+    select 1
+    from chair_holder ch
+    join chair c on c.id = ch.chair_id
+    join chair_holder sub_h on true
+    join chair sub on sub.id = sub_h.chair_id and sub.parent_id = c.id
+    left join pms_cycle pc on pc.person_id = sub_h.person_id and pc.period = p_period
+    where ch.person_id = p_person and ch.to_date is null and sub_h.to_date is null
+      and coalesce(pc.state, 'PENDING') <> 'CLOSED'
+  )
+  or not (select coalesce(value, 'Yes') like 'Y%' from app_setting where key = 'pms_bottom_up');
 $function$
 ;
 

@@ -106,6 +106,7 @@ alter table public.rate add constraint rate_value_check CHECK ((value >= (0)::nu
 alter table public.role_change add constraint role_change_kind_check CHECK ((kind = ANY (ARRAY['JOIN'::text, 'MOVE'::text, 'PROMOTION'::text, 'LATERAL'::text, 'EXIT'::text])));
 alter table public.strike_event add constraint strike_event_status_check CHECK ((status = ANY (ARRAY['ACTIVE'::text, 'WAIVED'::text, 'EXPIRED'::text])));
 alter table public.strike_event add constraint strike_event_trigger_code_check CHECK ((trigger_code = ANY (ARRAY['SLA_BREACH'::text, 'SUB_TAT_BREACH'::text, 'DISPUTE_UPHELD'::text, 'MIGRATED'::text])));
+alter table public.task add constraint task_status_check CHECK ((status = ANY (ARRAY['OPEN'::text, 'DONE'::text, 'LATE'::text, 'MISSED'::text, 'CANCELLED'::text])));
 alter table public.upload_batch add constraint upload_batch_state_check CHECK ((state = ANY (ARRAY['PREVIEW'::text, 'APPLIED'::text, 'REJECTED'::text, 'CANCELLED'::text])));
 alter table public.value_correction add constraint value_correction_reason_real CHECK ((length(btrim(reason)) >= 8));
 alter table public.wa_bridge add constraint wa_bridge_device_kind_check CHECK ((device_kind = ANY (ARRAY['laptop'::text, 'phone'::text, 'server'::text])));

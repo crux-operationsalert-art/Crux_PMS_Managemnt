@@ -8,128 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.pms_cycle_score(p_cycle uuid, p_include_team boolean DEFAULT true)
- RETURNS TABLE(kpi numeric, attr numeric, final numeric, own numeric, cut numeric, held numeric, floored boolean, team_avg numeric)
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare
-  st record;
-  cy record;
-  w_kpi numeric := pms_cfg('pms_wkpi', 70);
-  share numeric := pms_cfg('pms_team_share', 50) / 100.0;
-  floor_score numeric := pms_cfg('pms_probation', 5);
-  has_base boolean;
-begin
-  select * into cy from pms_cycle c where c.id = p_cycle;
-  if not found then return; end if;
-  select * into st from pms_cycle_state(p_cycle);
-
-  select exists (select 1 from pms_component where cycle_id = p_cycle
-                  and kind in ('KPI','ATTRIBUTE')) into has_base;
-  if not has_base then
-    kpi := null; attr := null; final := null; own := null;
-    cut := st.cut; held := st.held; floored := false; team_avg := null;
-    return next; return;
-  end if;
-
-  kpi := st.kpi; own := st.attr; cut := st.cut; held := st.held;
-  team_avg := null;
-
-  if p_include_team then
-    team_avg := pms_team_average(cy.person_id, cy.period);
-    if team_avg is not null then
-      attr := own * (1 - share) + team_avg * share;
-    else
-      attr := own;
-    end if;
-  else
-    attr := own;
-  end if;
-
-  attr := greatest(0, least(10, attr));
-  final := (kpi * w_kpi + attr * (100 - w_kpi)) / 100.0;
-
-  floored := cy.on_probation and final < floor_score;
-  if floored then final := floor_score; end if;
-  return next;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_cycle_state(p_cycle uuid)
- RETURNS TABLE(attr numeric, kpi numeric, cut numeric, held numeric)
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare rec record;
-begin
-  attr := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'ATTRIBUTE'), 0);
-  kpi  := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'KPI'), 0);
-  cut  := 0;
-  held := coalesce((select sum(abs(a.points)) from pms_adjustment a
-                     where a.cycle_id = p_cycle and not a.applied), 0);
-
-  for rec in select a.points as pts, a.half as hf from pms_adjustment a
-              where a.cycle_id = p_cycle and a.applied
-              order by a.at, a.id loop
-    if rec.hf = 'ATTRIBUTE' then
-      attr := greatest(0, least(10, attr + rec.pts));
-    else
-      if rec.pts < 0 then cut := cut - rec.pts; end if;
-      kpi := greatest(0, least(10, kpi + rec.pts));
-    end if;
-  end loop;
-  return next;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_team_average(p_person uuid, p_period date)
- RETURNS numeric
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  with recursive my_chair as (
-    select ch.chair_id from chair_holder ch
-     where ch.person_id = p_person and ch.to_date is null
-  ), below as (
-    select c.id from chair c join my_chair m on c.parent_id = m.chair_id
-    union all
-    select c.id from chair c join below b on c.parent_id = b.id
-  ), ppl as (
-    select distinct h.person_id from chair_holder h
-      join below b on b.id = h.chair_id
-     where h.to_date is null
-  )
-  select avg(s.final)
-    from ppl p
-    join pms_cycle cy on cy.person_id = p.person_id and cy.period = p_period
-    cross join lateral pms_cycle_score(cy.id, false) s
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_window_may_open(p_person uuid, p_period date)
- RETURNS boolean
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  select not exists (
-    select 1
-    from chair_holder ch
-    join chair c on c.id = ch.chair_id
-    join chair_holder sub_h on true
-    join chair sub on sub.id = sub_h.chair_id and sub.parent_id = c.id
-    left join pms_cycle pc on pc.person_id = sub_h.person_id and pc.period = p_period
-    where ch.person_id = p_person and ch.to_date is null and sub_h.to_date is null
-      and coalesce(pc.state, 'PENDING') <> 'CLOSED'
-  )
-  or not (select coalesce(value, 'Yes') like 'Y%' from app_setting where key = 'pms_bottom_up');
-$function$
-;
-
 CREATE OR REPLACE FUNCTION public.raise_escalation(p_assignment uuid, p_level integer, p_trigger text, p_actor uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -750,6 +628,234 @@ AS $function$
   on conflict do nothing
   returning row_id
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.task_assign(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_title   text := nullif(btrim(p_in->>'title'), '');
+  v_detail  text := nullif(btrim(p_in->>'detail'), '');
+  v_due     date := nullif(p_in->>'dueOn','')::date;
+  v_weight  numeric := nullif(p_in->>'attributeWeight','')::numeric;
+  v_period  text := coalesce(nullif(p_in->>'period',''), to_char(coalesce(v_due, current_date), 'YYYY-MM'));
+  v_admin   boolean;
+  v_made    int := 0;
+  v_refused text[] := '{}';
+  r record;
+begin
+  if p_actor is null then return jsonb_build_object('error','no_actor'); end if;
+  if v_title is null then return jsonb_build_object('error','no_title',
+      'reason','A task needs a sentence saying what is being asked for.'); end if;
+  if v_weight is not null and (v_weight < 0 or v_weight > 2) then
+    return jsonb_build_object('error','bad_weight',
+      'reason','An attribute is worth 0 to 2 points. A task cannot be worth more than the attribute it feeds.');
+  end if;
+
+  select coalesce(p.app_role = 'ADMIN', false) into v_admin from person p where p.id = p_actor;
+
+  create temp table if not exists _mine (person_id uuid primary key) on commit drop;
+  delete from _mine;
+  insert into _mine select person_id from kpi_subtree_people(p_actor) on conflict do nothing;
+
+  for r in
+    select distinct pe.id as person_id, pe.full_name
+      from person pe
+     where pe.employment_status = 'ACTIVE' and pe.superseded_by is null
+       and coalesce(pe.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+       and (
+            (p_in ? 'people'
+               and pe.id in (select (jsonb_array_elements_text(p_in->'people'))::uuid))
+         or (nullif(p_in->>'chair','') is not null and exists (
+               select 1 from chair_holder h
+                where h.person_id = pe.id and h.chair_id = (p_in->>'chair')::uuid
+                  and (h.to_date is null or h.to_date >= current_date)))
+         or (nullif(p_in->>'department','') is not null and pe.department = p_in->>'department')
+         or (coalesce((p_in->>'allReports')::boolean, false)
+               and pe.id in (select person_id from _mine))
+       )
+     order by pe.full_name
+  loop
+    if not v_admin
+       and r.person_id <> p_actor
+       and r.person_id not in (select person_id from _mine) then
+      v_refused := v_refused || r.full_name;
+      continue;
+    end if;
+    insert into task (person_id, assigned_by, title, detail, due_on, period,
+                      status, attribute_weight)
+    values (r.person_id, p_actor, v_title, v_detail, v_due, v_period, 'OPEN', v_weight);
+    v_made := v_made + 1;
+  end loop;
+
+  if v_made = 0 and array_length(v_refused,1) is null then
+    return jsonb_build_object('error','nobody',
+      'reason','That names nobody who is still here.');
+  end if;
+
+  return jsonb_build_object('created', v_made, 'period', v_period,
+    'refused', to_jsonb(v_refused),
+    'note', case when array_length(v_refused,1) is null then null
+                 else 'A task can only be set for somebody who reports to you.' end);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.task_cancel(p_actor uuid, p_task uuid, p_why text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare t task;
+begin
+  select * into t from task where id = p_task;
+  if t.id is null then return jsonb_build_object('error','no_such_task'); end if;
+  if p_actor <> t.assigned_by
+     and not exists (select 1 from person p where p.id = p_actor and p.app_role = 'ADMIN') then
+    return jsonb_build_object('error','not_yours',
+      'reason','Only whoever set a task can call it off.');
+  end if;
+  update task set status = 'CANCELLED', outcome = nullif(btrim(p_why),''), closed_at = now()
+   where id = p_task and status = 'OPEN';
+  return jsonb_build_object('cancelled', found);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.task_close(p_actor uuid, p_task uuid, p_outcome text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare t task; v_state text;
+begin
+  select * into t from task where id = p_task;
+  if t.id is null then return jsonb_build_object('error','no_such_task'); end if;
+  if t.status <> 'OPEN' then
+    return jsonb_build_object('error','already_closed', 'status', t.status);
+  end if;
+  if p_actor <> t.person_id and p_actor <> t.assigned_by
+     and not exists (select 1 from person p where p.id = p_actor and p.app_role = 'ADMIN') then
+    return jsonb_build_object('error','not_yours',
+      'reason','A task is closed by the person it was set for, or by whoever set it.');
+  end if;
+
+  v_state := case when t.due_on is null or current_date <= t.due_on then 'DONE' else 'LATE' end;
+
+  update task set status = v_state, outcome = nullif(btrim(p_outcome),''), closed_at = now()
+   where id = p_task;
+
+  return jsonb_build_object('status', v_state, 'dueOn', t.due_on, 'closedOn', current_date);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.task_evidence(p_person uuid, p_period text)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select jsonb_build_object(
+    'period',   p_period,
+    'assigned', count(*),
+    'onTime',   count(*) filter (where status = 'DONE'),
+    'late',     count(*) filter (where status = 'LATE'),
+    'missed',   count(*) filter (where status = 'MISSED'),
+    'open',     count(*) filter (where status = 'OPEN'),
+    'cancelled',count(*) filter (where status = 'CANCELLED'),
+    'a3Suggested', case
+      when count(*) filter (where status in ('DONE','LATE','MISSED')) = 0 then null
+      else round( 2.0 * (
+             count(*) filter (where status = 'DONE')
+             + 0.5 * count(*) filter (where status = 'LATE')
+           )::numeric
+           / nullif(count(*) filter (where status in ('DONE','LATE','MISSED')), 0), 2)
+      end,
+    'items', coalesce(jsonb_agg(jsonb_build_object(
+        'id', id, 'title', title, 'dueOn', due_on, 'status', status,
+        'outcome', outcome, 'weight', attribute_weight,
+        'setBy', (select pp.full_name from person pp where pp.id = assigned_by))
+      order by due_on nulls last, created_at), '[]'::jsonb))
+  from task where person_id = p_person and period = p_period;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.task_mine(p_person uuid, p_period text)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select jsonb_build_object(
+    'period', p_period,
+    'owed', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', t.id, 'title', t.title, 'detail', t.detail, 'dueOn', t.due_on,
+               'status', t.status, 'weight', t.attribute_weight,
+               'overdue', (t.status = 'OPEN' and t.due_on is not null and t.due_on < current_date),
+               'setBy', b.full_name)
+             order by t.due_on nulls last, t.created_at)
+        from task t join person b on b.id = t.assigned_by
+       where t.person_id = p_person and t.period = p_period), '[]'::jsonb),
+    'set', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', t.id, 'title', t.title, 'dueOn', t.due_on, 'status', t.status,
+               'forWhom', w.full_name)
+             order by t.due_on nulls last, t.created_at)
+        from task t join person w on w.id = t.person_id
+       where t.assigned_by = p_person and t.period = p_period), '[]'::jsonb));
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.task_sweep()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_missed int := 0; v_told int := 0; v_more int := 0;
+begin
+  create temp table if not exists _missed (id uuid primary key, person_id uuid,
+                                           assigned_by uuid, title text) on commit drop;
+  delete from _missed;
+
+  with gone as (
+    update task set status = 'MISSED'
+     where status = 'OPEN' and due_on is not null and due_on < current_date
+    returning id, person_id, assigned_by, title)
+  insert into _missed select id, person_id, assigned_by, title from gone;
+  get diagnostics v_missed = row_count;
+
+  if v_missed = 0 then
+    return jsonb_build_object('tasks_missed', 0, 'people_told', 0);
+  end if;
+
+  insert into notification (person_id, kind, text, entity_type, entity_id, push, at)
+  select m.person_id, 'TASK_MISSED',
+         count(*) || ' task' || case when count(*) = 1 then '' else 's' end
+           || ' you were given went past its date'
+           || case when count(*) = 1 then ' — ' || min(m.title) else '' end
+           || '. A missed task stands as a nil for A-3 this month.',
+         'person', m.person_id, true, now()
+    from _missed m group by m.person_id;
+  get diagnostics v_told = row_count;
+
+  insert into notification (person_id, kind, text, entity_type, entity_id, push, at)
+  select m.assigned_by, 'TASK_MISSED',
+         count(*) || ' task' || case when count(*) = 1 then '' else 's' end
+           || ' you set went past the date you gave'
+           || case when count(*) = 1 then ' — ' || min(m.title) else '' end
+           || '. Close the ones that were done, and call off the ones that should not have been asked for.',
+         'person', m.assigned_by, false, now()
+    from _missed m where m.assigned_by <> m.person_id group by m.assigned_by;
+  get diagnostics v_more = row_count;
+  v_told := v_told + v_more;
+
+  return jsonb_build_object('tasks_missed', v_missed, 'people_told', v_told);
+end $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.ua_assignments(p_batch uuid, p_actor uuid)

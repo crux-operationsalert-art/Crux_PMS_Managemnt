@@ -109,6 +109,8 @@ CREATE UNIQUE INDEX sla_one_open_segment ON public.sla_clock_segment USING btree
 CREATE INDEX sla_rule_match_idx ON public.sla_rule USING btree (client_id, verification_type_id, op_node_id, specificity DESC);
 CREATE INDEX sla_sweep_idx ON public.sla_instance USING btree (sla_status, due_at) WHERE (stopped_at IS NULL);
 CREATE INDEX strike_event_person ON public.strike_event USING btree (person_id, occurred_at DESC) WHERE (status = 'ACTIVE'::text);
+CREATE INDEX task_assigner_idx ON public.task USING btree (assigned_by, period);
+CREATE INDEX task_open_due_idx ON public.task USING btree (due_on) WHERE (status = 'OPEN'::text);
 CREATE INDEX task_person_period_idx ON public.task USING btree (person_id, period);
 CREATE INDEX temp_participant_live ON public.temp_participant_grant USING btree (person_id) WHERE (revoked_at IS NULL);
 CREATE INDEX upload_batch_kind_idx ON public.upload_batch USING btree (kind, uploaded_at DESC);

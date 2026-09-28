@@ -1405,6 +1405,20 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.crux_task_tick()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if not coalesce((select enabled from job_config where job_key='TASK_SWEEP'), false) then
+    return jsonb_build_object('skipped', 'TASK_SWEEP is switched off.');
+  end if;
+  return task_sweep();
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.crux_tick()
  RETURNS jsonb
  LANGUAGE plpgsql

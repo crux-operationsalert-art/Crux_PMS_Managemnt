@@ -3801,3 +3801,43 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ops_alert_ack(p_actor uuid, p_id uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_role role_kind;
+begin
+  select app_role into v_role from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if v_role is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_admin',
+      'reason','Only an administrator can take an operational alert.');
+  end if;
+  update ops_alert set acknowledged_by = p_actor, acknowledged_at = now()
+   where id = p_id and resolved_at is null;
+  return jsonb_build_object('ok', true);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ops_alert_open(p_role text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', a.id, 'kind', a.kind, 'severity', a.severity,
+           'title', a.title, 'detail', a.detail, 'action', a.action_hint,
+           'since', a.opened_at, 'seen', a.last_seen_at,
+           'times', a.occurrences, 'retry_at', a.retry_at,
+           'acknowledged', a.acknowledged_at is not null)
+         order by case a.severity when 'URGENT' then 0 when 'WARN' then 1 else 2 end,
+                  a.opened_at), '[]'::jsonb)
+  from ops_alert a
+  where a.resolved_at is null
+    and (p_role is null or a.for_role = p_role)
+$function$
+;
+
