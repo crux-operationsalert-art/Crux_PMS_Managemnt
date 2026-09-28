@@ -216,20 +216,121 @@ already there — not new engineering underneath.
 | P3 | Build every section, including the four missing ones, with honest empty states | A control that is absent and a control that says "nothing yet" are different failures, and only the first is mine |
 | P4 | Restore the blueprint's label, **"Performance & appraisal"** | It is the design's word and it describes the merged screen |
 
-## Open questions from this tab
+## Both open questions, answered
+
+### P-Q1 — it is monthly **and** quarterly. Two layers, not a choice between them.
+
+Answered 2026-09-28: *"scoring and targets is done monthly and then the
+Quarterly scorecard is different… this is a two layer performance management
+system. Also KPI numbers to be updated as per the cadence."* Re-read against
+the PLB Constitution V2.0, Annexure F and the Scorecard Guide by Department.
+
+**Layer 1 — the month.** `Monthly Score = 0.75 × KPI /10 + 0.25 × Attribute /10`.
+The KPI half asks one question per KPI: did this month's registered share of the
+quarterly plan land *in this month*? — 2.0 landed, 1.0 partly or late but still
+inside the month, 0.0 not, or only at quarter end. The Attribute half is five
+slots worth 2 points each: A-1 process and control discipline, A-2 data and
+reporting hygiene, A-3 contribution beyond your chair (the same three for
+everyone), A-4 capability and A-5 institutional build (yours to propose). Self
+evaluation opens on the last working day and closes at the end of WD 1; the
+manager cannot score until it closes or you submit; **SCORE LOCK at WD 3**. If
+the manager differs from the self-evaluation by 2.0 or more they must write one
+line naming the component — compulsory, not approvable.
+
+**Layer 2 — the quarter.** `PLB = Target × Payout Factor × Consistency Factor`.
+The goal sheet is issued and acknowledged by day 10 and locked at the end of it;
+day 15 is the backstop — no sheet and the chair's standard one applies and you
+cannot be scored below it. Achievement against the sheet sets the **Payout
+Factor** (under 50% nothing, 85% full, 115% and above 125%). The mean of the
+monthly scores sets the **Consistency Factor** (8/10 releases 80%, 10/10 all of
+it, floor 30%). Data freezes at WD 3 after quarter end, the result is certified
+and published at WD 5, and the dispute window is the 10 working days after that.
+
+So the monthly layer decides *how much of what you earned is released*, and the
+quarterly layer decides *how much you earned*. Neither replaces the other, and
+the screen has to show both without pretending they are the same number.
+
+**And the arithmetic is already right.** Both curves were checked against the
+Constitution at every published point, and all five of its worked examples were
+run through the live functions on its own base case:
+
+| Quarter | Achievement | Monthly mean | Constitution | `plb_payout_factor` × `plb_consistency` |
+|---|---:|---:|---:|---:|
+| Standard delivery | 100% | 8.0 | ₹44,000 | **₹44,000** |
+| Steady, under target | 78% | 9.0 | ₹36,000 | **₹36,000** |
+| Quarter-end spike, weak months | 110% | 5.0 | ₹30,000 | **₹30,000** |
+| Strong on both | 110% | 9.5 | ₹57,000 | **₹57,000** |
+| Below half target | 49% | 10.0 | ₹0 | **₹0** |
+
+The engine is not the gap. **Every table it fills is empty** — no goal sheet has
+ever been issued, no month has ever been scored, `perf_assignment` has no rows,
+and `pms_weighting` had none either, so the 75/25 split existed only as two
+numbers typed into a heading in the page.
+
+### P-Q2 — a task is one person asking another for something by a date.
+
+Answered 2026-09-28: *"this is someone giving task to someone, like I can create
+a task for a specific manager or all the managers to visit the SBI branches…
+these gets considered in the attributes if done on time or escalations get
+raised."*
+
+The `task` table was already here with exactly that shape — `person_id`,
+`assigned_by`, `title`, `detail`, `due_on`, `period`, `status`, `outcome`,
+**`attribute_weight`**, `closed_at` — and not one row in it. No service route,
+no screen, and no database function so much as mentioned it. Migration 214 gives
+it verbs.
+
+It lands on **A-3, contribution beyond your chair**, which is the one the
+Scorecard Guide says must cite "a named artefact ID — a ticket, a sign-off, a
+document reference" and never "a generic description". A task closed on time is
+that artefact. `task_evidence()` returns the month's record and what A-3 would
+be if scored from it alone — a suggestion with its working shown, because the
+Guide is equally clear that the manager scores and HR cannot move it.
+
+## What was built for this tab so far — migration 214
+
+| | |
+|---|---|
+| `task_assign(actor, in)` | One instruction to named people, to everybody in a chair, to a department, or to your whole subtree. Refuses anybody outside it **by name** rather than dropping them quietly |
+| `task_close(actor, task, outcome)` | DONE or LATE is decided by the due date against today, not by whoever closes it |
+| `task_cancel(actor, task, why)` | Only whoever asked can call it off |
+| `task_sweep()` | Overdue becomes MISSED and tells the two people it concerns, once each |
+| `task_evidence(person, period)` | The month's tasks and the A-3 they suggest. Null, not zero, for a month nobody asked anything of you |
+| `task_mine(person, period)` | Both sides: what I owe and what I asked for |
+| `crux_task_tick()` + `crux-task-sweep` | Daily at 07:15 India time, after the penalty sweep and before anybody opens the tool |
+| `pms_weighting` | The Constitution's 75/25, as a row, effective 1 October 2026 |
+
+**A missed task raises no `ops_alert`.** That screen is filtered by role and not
+by person, so `ops_alert_open()` would show one manager's forgotten instruction
+to whoever holds ADMIN. It writes a `notification` to the person (pushed — it
+moves their score) and to whoever asked (not pushed — they are the only one who
+can call it off). The first version did raise an alert; the test caught it.
+
+**It opens no case either.** A case in this tool belongs to a client and a
+branch and carries an SLA clock. A task has none of those. If a missed task
+should also open a formal case, that needs a client attached to it and is a
+policy decision — recorded here rather than assumed.
+
+`build/test/test_task.sql` holds 16 assertions covering all of it, including the
+two curves and the five worked examples, and runs on a database rebuilt from
+`build/schema` alone.
+
+## Still open from this tab
 
 | # | Question | Why it is yours |
 |---|---|---|
-| P-Q1 | The blueprint's appraisal is **monthly**; the built bonus scheme is **quarterly** with a 10-working-day dispute window | Both are real designs. Which cadence governs the score a person accepts or disputes is a policy call, not a layout one |
-| P-Q2 | "Assign a task" — the blueprint shows the button, and nothing behind it says what a task is here | No table in the database answers to it. It may be the Ideathon's sponsor task, or a new thing |
+| P-Q3 | Should a missed task also open a case? | A case needs a client and a branch; a task has neither. Saying yes means deciding which |
+| P-Q4 | No goal sheet has ever been issued, for anybody | Targets "come from a fixed hierarchy" and are a business input. The engine is ready and idle |
+| P-Q5 | `pms_impact` — what an escalation, warning or appreciation does to a score — has no rows | The blueprint puts it on the weighting panel. The Constitution scores from the A-1 rubric instead, so these two may be the same thing said twice |
 
 ## Status
 
 | | |
 |---|---|
 | Audited | yes — 11 sections, 20 buttons, element by element |
-| Fixed | not yet |
-| Next | P1 and P3, in the blueprint's order, shipped through `.github/build-tool.py` |
+| Both open questions | answered, and written into the design above |
+| Built | migration 214 — the task engine, the 75/25 split, 16 assertions |
+| Next | the screen: one Performance page, sections A→K, both layers visible |
 
 ---
 
