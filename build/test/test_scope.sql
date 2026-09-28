@@ -294,6 +294,68 @@ begin
     (select count(*) from kpi_definition where chair_id = ch) = 2);
 end $$;
 
+-- ================================ the three questions that are not mine
+-- Migration 210 raises an INFO alert while each policy question is still
+-- open and resolves it when it is not. Both halves are asserted, because an
+-- alert that never clears is a nag and an alert that clears on its own
+-- without the fix is a lie.
+--
+-- Wrapped in a transaction that is rolled back: the probe applies the three
+-- fixes to see them clear, and the navigation check that runs after this file
+-- compares the page against these very rows.
+begin;
+do $$
+declare r jsonb;
+begin
+  -- whatever earlier runs left, start from the live answer
+  r := access_policy_questions();
+  perform t_ok('all three policy questions are open', (r->>'open')::int = 3, r::text);
+  perform t_ok('and each is an INFO alert, not a warning',
+    (select count(*) from ops_alert
+      where kind = 'ACCESS_POLICY' and resolved_at is null and severity = 'INFO') = 3);
+  perform t_ok('and each carries the line that settles it',
+    (select count(*) from ops_alert
+      where kind = 'ACCESS_POLICY' and resolved_at is null
+        and coalesce(btrim(action_hint), '') <> '') = 3);
+
+  update access_screen_parent set parent = 'config' where screen = 'rates';
+  r := access_policy_questions();
+  perform t_ok('moving the rate master under Settings closes its question',
+    (r->>'open')::int = 2 and (r->>'resolved')::int = 1, r::text);
+
+  delete from access_level_screen where (level, screen) in (('hr','mail'), ('analytics','data'));
+  r := access_policy_questions();
+  perform t_ok('and taking Messaging and Data setup back closes the second',
+    (r->>'open')::int = 1 and (r->>'resolved')::int = 1, r::text);
+
+  insert into access_level_screen (level, screen)
+  values ('branch','coverage'), ('exec','coverage'),
+         ('team','coverage'), ('partner','coverage')
+  on conflict do nothing;
+  r := access_policy_questions();
+  perform t_ok('and giving Operations the screen closes the third',
+    (r->>'open')::int = 0 and (r->>'resolved')::int = 1, r::text);
+
+  perform t_ok('nothing is left open once all three are settled',
+    (select count(*) from ops_alert
+      where kind = 'ACCESS_POLICY' and resolved_at is null) = 0);
+  perform t_ok('and each says why it closed',
+    (select count(*) from ops_alert
+      where kind = 'ACCESS_POLICY' and resolved_at is not null
+        and coalesce(btrim(resolved_note), '') <> '') = 3);
+end $$;
+rollback;
+
+-- The rollback put the policy back. Say so out loud, because the navigation
+-- check runs next and reads these rows.
+do $$
+begin
+  perform t_ok('the policy is back as it was after the probe',
+    (select parent from access_screen_parent where screen = 'rates') = 'reports'
+    and exists (select 1 from access_level_screen where level='hr' and screen='mail')
+    and not exists (select 1 from access_level_screen where level='branch' and screen='coverage'));
+end $$;
+
 -- ===================================================================== clear up
 -- This fixture makes branches with no escalation contacts and coverage over
 -- them, which is exactly the shape the matrix nudge sweep looks for. Left
