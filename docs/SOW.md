@@ -219,37 +219,50 @@ calls, so a change to the policy moves both at once.
 
 ## Known limitations, carried forward
 
-* `api` cannot be redeployed, so its routes keep the guards they have. They
-  scope their reads already; what they do not have is the level gate. If `api`
-  is ever split or shrunk, `requireScreen` should go on it too.
+**`api` is not gated by screen, and the reason is a decision, not the deploy.**
+Its `/api/coverage` route serves the `coverage` screen, which only `analytics`
+carries — while the service's own `mayAssign` check grants coverage assignment
+to Operations, 47 people, none of whom can open it. That is F7. Enforcing the
+navigation's rule on `api` would take a screen away from those 47 on the
+strength of a policy that may simply be a row short, so the gate is written and
+tested and waits on the answer. Every `api` route already scopes its **data**
+(`req.scope.branches()`, `subtreeIds`, `clientView`, `mayWriteChair`); what it
+does not have is the screen gate.
 
----
+Whether `api` can be redeployed at all is still untested. It is 108KB against
+`ops`'s 80KB, which deployed. The belief that it cannot has shaped two
+decisions — it is why `pack` exists — and it is folklore, not measurement. It
+is worth one probe the next time there is a reason to touch `api`.
 
-## What the verification found, after the work looked finished
+## The three questions, and where they now live
 
-Rebuilding from `build/schema` is what caught all of these. None would have
-been visible from the live project, because the live project already had them
-right.
+They are on the **Alerts screen**, raised by `access_policy_questions()`
+(migration 210), INFO rather than WARN because the tool is not broken —
+somebody has to decide something. Each carries the line that settles it, and
+each resolves itself, with a note, the moment the fix is applied.
+
+| | who it affects | the one line |
+|---|---|---|
+| The rate master follows Reports | 30 people can read every client's rate | `update access_screen_parent set parent = 'config' where screen = 'rates';` |
+| `ADMIN_TABS` is declared and never read | Messaging to HR, Data setup to MIS | `delete from access_level_screen where (level, screen) in (('hr','mail'), ('analytics','data'));` |
+| Operations may assign coverage, and cannot open the screen | 47 people | `insert into access_level_screen (level, screen) values ('branch','coverage');` — or `mayAssign` is vestigial and should go |
+
+## Verification, in the end
 
 | | |
 |---|---|
-| The baseline held the access tables' shape and none of their rows | A rebuilt database answered false for everybody and every screen. Fixed by 207 |
-| 207 built its VALUES rows with `jsonb_each_text`, which orders keys by LENGTH | `access_level` came out as (note, label, level) under the headings (level, label, note). Fixed by 208, which reads each value by name in column order and asserts five literal rows |
-| 207's own guard checked the key order of one table whose two columns happen to agree with length order | A check that passes by coincidence is not a check |
-| `80_comments.sql` commented on functions the baseline does not create | The rebuild stopped on `schema_snapshot_policy() does not exist`. Fixed by 209 |
-| `run.sh` died silently on a failing test | `psql` exits non-zero when an assertion RAISEs, and `set -e` killed the script before it printed which one |
-| `test_190_198` could not run twice | Its seed deleted people that `notification` and `request_task` still named |
-| `test_scope` left branches with no escalation contacts behind | Which made the other file's nudge count two people instead of one — a failure with nothing wrong with it |
-| The workflow guard added with 207 carried a literal `\x27` instead of an apostrophe | It could never match, so the snapshot failed on it rather than committing. Rewritten as a `grep` against the written file |
-
-## Final state
+| The policy, against the page | 262 (level, screen) pairs, by script |
+| The policy, against real people | every active person, every gated route |
+| The scoping, as SQL | the pair test: two records of four, not four |
+| The scoping, through the driver | `postgres@3.4.5`, same options as `ops/shim.ts` — `text[]` arrives as a JavaScript array, `uuid[]` pairs arrive as pairs, and `'rate'` does not match `'rates'` |
+| The deployed service | all nine files byte-identical to this repository |
+| The whole database | rebuilt from `build/schema` and nothing else |
 
 ```
 ./build/test/run.sh
-  tables 160  functions 318  views 21  indexes 334  triggers 11  policies 52
+  tables 160  functions 319  views 21  indexes 334  triggers 11  policies 52
   every function the bodies call is present
+  driver: 10 passed, 0 failed
   the navigation and the database agree on all 262 of them
-  151 passed, 0 failed
+  170 passed, 0 failed
 ```
-
-Built from `build/schema` and nothing else.
