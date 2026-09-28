@@ -166,6 +166,20 @@ no new decision. Three of the 93 are guesses and say so.
 | The ten-day view carries it | `seam.tenday_snapshot`: 4,186 rows, 79 periods | pass |
 | Branch placement invents nothing | only unambiguous address matches; 574 left alone and alerted | pass |
 | Every design chair has measures | 33 of the 34 chairs the design reduces to; `kpi_registry_gap` = 0 | pass |
+| The repository still rebuilds the database | `./build/test/run.sh` on a blank Postgres, baseline only | pass |
+
+```
+./build/test/run.sh
+  tables 161  functions 321  views 22  indexes 335  triggers 11  policies 53
+  every function the bodies call is present
+  driver: 10 passed, 0 failed
+  the navigation and the database agree on all 262 of them
+  170 passed, 0 failed
+```
+
+The rebuilt database holds every function the live one does except the eight
+`schema_snapshot*` functions, which are the snapshotter itself and are left out
+of its own output on purpose (209). Nothing else differs.
 
 ---
 
