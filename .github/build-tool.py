@@ -309,6 +309,29 @@ PATCHES.append((
       '.pfwin{margin:0 0 14px;padding:8px 12px;background:var(--green-bg);\n'
       '  border-left:3px solid var(--green);font-size:13px;color:var(--body)}\n'
       '.pfwin.shut{background:var(--terra-bg);border-left-color:var(--terra);color:var(--terra-ink)}\n'
+      '/* The three score chips at the head of the screen: KPIs, Attributes,\n'
+      '   Final. Only the blueprint\'s own eighteen tokens are used.       */\n'
+      '.pfchiprow{display:flex;gap:10px;flex-wrap:wrap}\n'
+      '.pfchip{flex:1 1 150px;min-width:130px;padding:12px 14px;background:var(--panel);\n'
+      '  border:1px solid var(--line2);border-radius:4px}\n'
+      '.pfchipv{font-size:26px;line-height:1.1;color:var(--ink)}\n'
+      '.pfchipl{font-size:13px;color:var(--body);margin-top:3px}\n'
+      '.pfchips{font-size:12px;color:var(--mute);margin-top:1px}\n'
+      '/* Fourteen days. Filled is a day filed, hollow a working day missed,\n'
+      '   faded a day that was never a working day and cannot break a run. */\n'
+      '.pfstreak{display:flex;gap:5px;flex-wrap:wrap;margin:2px 0 10px}\n'
+      '.pfday{width:34px;padding:5px 0;text-align:center;border-radius:3px;\n'
+      '  border:1px solid var(--line);background:var(--white);color:var(--mute)}\n'
+      '.pfday.on{background:var(--green-bg);border-color:var(--green);color:var(--green)}\n'
+      '.pfday.miss{background:var(--white);border-color:var(--field)}\n'
+      '.pfday.off{background:var(--panel2);border-color:var(--line3);color:var(--line)}\n'
+      '.pfdow{font-size:11px;line-height:1.2}\n'
+      '.pfdd{font-size:13px;line-height:1.2;color:var(--ink)}\n'
+      '.pfday.off .pfdd{color:var(--mute)}\n'
+      '/* A task, and what became of it. */\n'
+      '.pftask.ok td{background:var(--green-bg)}\n'
+      '.pftask.warn td{background:var(--gold-bg)}\n'
+      '.pftask.bad td{background:var(--terra-bg)}\n'
       '.pftree{padding:2px 0 8px}\n'
       '.pfrow{display:flex;align-items:center;gap:8px;padding:7px 15px;\n'
       '  border-top:1px solid var(--line3);font-size:13px}\n'
@@ -348,12 +371,17 @@ PATCHES.append((
       '}', 1),
      # the two entries become one
      ('["pms","Performance & appraisal"], ["plb","Performance & bonus"], ',
-      '["perf","Performance"], ', 1),
+      '["perf","Performance & appraisal"], ', 1),
      # and the old two keep their routes, as sub-tabs under it
      ('var FAMILY = [\n'
       '  ["clients", [["clients","Clients"], ["matrix","Escalation matrix"]]],',
       'var FAMILY = [\n'
-      '  ["perf",    [["perf","This month"], ["pms","Appraisal"], ["plb","Bonus"]]],\n'
+      '  /* The blueprint has NO sub-tabs on Performance: isAppraisal is set\n'
+      '     inside the same route, so the appraisal is a section on the page.\n'
+      '     What is left is the one job the design does not place anywhere --\n'
+      '     issuing sheets, certifying and closing a quarter -- which is HR\'s\n'
+      '     and Business Excellence\'s, not the employee\'s.              */\n'
+      '  ["perf",    [["perf","Performance & appraisal"], ["plb","Running the scheme"]]],\n'
       '  ["clients", [["clients","Clients"], ["matrix","Escalation matrix"]]],', 1),
      # every chair that could see the two can see the one
      ('"pms","plb",', '"perf",', 8),

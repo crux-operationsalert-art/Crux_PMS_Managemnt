@@ -16,7 +16,11 @@
    thing a screen should hold.                                          */
 var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            who:null, open:{}, measures:null, measuresFor:null, form:null,
-           sel:{}, busy:false, says:"" };
+           sel:{}, busy:false, says:"",
+           /* the blueprint's other sections: the split, the fortnight, the
+              tasks, the quarter, and the forms that write to them. */
+           weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
+           taskForm:null, weightForm:null, elig:false };
 
 function pfMonth(d){ d = d || new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0,10); }
@@ -52,15 +56,26 @@ function pfMissing(r){
   return !!r && (r.error === "no_route" || r._status === 404);
 }
 
-/* --------------------------------------------------------------- the shell */
+/* --------------------------------------------------------------- the shell
+   ONE screen, in the blueprint's order. Crux App v2 renders Performance from
+   two sections -- isPms and isAppraisal -- and sets isAppraisal:true inside
+   the same `route === 'pms'` branch, so the appraisal is a section on this
+   page and not a destination. The tool had three pages instead (This month /
+   Appraisal / Bonus), two of them titled "Performance", because the same
+   screen was built three times in three passes. This is them joined up.
+
+   A to K below are the blueprint's own sections, in its own sequence. Where
+   a section has no data path yet it renders with an honest empty state that
+   says what is missing: a control that is absent and a control that says
+   "nothing yet" are different failures, and only the first is ours.        */
 async function vPerf(){
   if (!PF.period) PF.period = pfMonth();
   var c = await plb("/plb/perf/cycle?period=" + PF.period);
   if (pfMissing(c)) {
-    el("view").innerHTML = '<h1>Performance</h1>' +
+    el("view").innerHTML = '<h1>Performance &amp; appraisal</h1>' +
       msg("warn", "This screen is published but the service behind it is not " +
         "deployed yet, so there is nothing to show. Nothing is wrong with your " +
-        "account and nothing has been lost. Appraisal and Bonus, above, still work.");
+        "account and nothing has been lost.");
     return;
   }
   PF.cycle = c.cycle || null;
@@ -69,23 +84,38 @@ async function vPerf(){
     var t = await plb("/plb/perf/team");
     PF.team = t.error ? [] : (t.people || []);
   }
+  /* The month, the quarter and the split are three different clocks and the
+     page shows all three. Asked together because they are drawn together —
+     a chip that arrives after the table it belongs to reads as a bug.     */
+  var side = await Promise.all([
+    plb("/weighting"),
+    plb("/plb/task/mine?period=" + PF.period.slice(0,7)),
+    plb("/plb/mine")
+  ]);
+  PF.weighting = side[0] || {};
+  PF.tasks     = side[1] || {};
+  PF.plb       = side[2] || {};
   await pfLoadMine();
   pfRender();
 }
 
 async function pfLoadMine(){
-  if (!PF.cycle) { PF.tree = null; PF.due = null; return; }
+  if (!PF.cycle) { PF.tree = null; PF.due = null; PF.history = null; return; }
   var r = await Promise.all([
     plb("/plb/perf/tree?cycle=" + PF.cycle.id),
     plb("/plb/perf/due"),
+    plb("/plb/perf/score?cycle=" + PF.cycle.id),
+    plb("/plb/perf/filed?days=14"),
   ]);
-  PF.tree = r[0]; PF.due = (r[1] || {}).due || [];
+  PF.tree = r[0]; PF.due = (r[1] || {}).due || []; PF.score = r[2] || null;
+  PF.filed = r[3] || null;
 }
 
 function pfRender(){
-  var head = '<div class="page-head"><div><h1>Performance</h1>' +
-    '<p class="mute">What you are measured on this period, what you owe today, and ' +
-    'where your numbers land once they have climbed.</p></div>' +
+  var head = '<div class="page-head"><div><h1>Performance &amp; appraisal</h1>' +
+    '<p class="mute">Two layers, and they are not the same number. The month ' +
+    'decides how much of what you earned is released; the quarter decides how ' +
+    'much you earned.</p></div>' +
     '<div class="pfperiod">' + pfPeriodPicker() + '</div></div>';
 
   if (!PF.cycle) {
@@ -102,16 +132,17 @@ function pfRender(){
     return;
   }
 
-  var tabs = '<div class="pftabs">' +
-    '<button class="btn' + (PF.tab === "mine" ? " primary" : "") + '" data-pftab="mine">Mine</button>' +
-    (PF.team.length
-      ? '<button class="btn' + (PF.tab === "team" ? " primary" : "") + '" data-pftab="team">' +
-        'My team <span class="chip">' + esc(PF.team.length) + '</span></button>'
-      : '') +
-    '</div>';
-
-  el("view").innerHTML = head + pfWindowBanner() + tabs +
-    (PF.tab === "team" ? pfTeam() : pfMine()) +
+  el("view").innerHTML = head + pfWindowBanner() +
+    pfChips() +            /* A  the three score chips                    */
+    pfDaily() +            /* B+D the daily table, and one submission     */
+    pfDayNote() +          /* C  anything else about today                */
+    pfStreak() +           /* E  your last fourteen days                  */
+    pfMyKpis() +           /* F  my KPIs                                  */
+    pfAttributes() +       /* G  attributes                               */
+    pfRequests() +         /* H  KPI change requests                      */
+    pfTeamSection() +      /* I  my team: targets, tasks and eligibility  */
+    pfWeighting() +        /* J  the split, for Admin and HR              */
+    pfAppraisal() +        /* K  appraisal, and the quarter behind it     */
     '<div id="pfmsg">' + PF.says + '</div>';
   pfWire();
 }
@@ -140,44 +171,422 @@ function pfWindowBanner(){
     bits.join(' · ') + '</div>';
 }
 
-/* ------------------------------------------------------------------ mine */
-function pfMine(){
-  var t = PF.tree || {};
-  if (t.says) {
-    return '<div class="card"><h2>' + esc(pfMonthName(PF.period)) + '</h2>' +
-      '<div class="empty">' + esc(t.says) + '</div></div>';
+/* ---------------------------------------------------------- A · the chips
+   KPIs, Attributes, Final. The weights are not typed in here: they come from
+   pms_weighting through pms_weighting_for(), which also answers "the scheme
+   has not started yet" — and on 29 September 2026 that is the true answer,
+   because the Constitution takes effect on 1 October.                     */
+function pfChips(){
+  var w = PF.weighting.mine || {};
+  var kpi = PF.score && PF.score.score !== undefined && PF.score.score !== null
+    ? Number(PF.score.score) : null;
+  var attr = null, fin = null;
+  var m = pfThisMonthScore();
+  if (m) { attr = m.attr; fin = m.final; if (m.kpi !== null && m.kpi !== undefined) kpi = m.kpi; }
+
+  function chip(v, label, sub){
+    return '<div class="pfchip"><div class="pfchipv">' +
+      (v === null || v === undefined ? '—' : esc(pfNum(v))) + '</div>' +
+      '<div class="pfchipl">' + label + '</div>' +
+      (sub ? '<div class="pfchips">' + sub + '</div>' : '') + '</div>';
   }
-  var measures = t.measures || [];
-  return pfDueCard() +
-    '<div class="card"><h2>What you are measured on</h2>' +
-    (measures.length
-      ? '<div class="pftree">' + measures.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>'
-      : '<div class="empty">Nothing has been set for you this period.</div>') +
+  var note = w.applies
+    ? esc(w.note)
+    : esc(w.note || "No split has been set, so no monthly score can be worked out.");
+
+  return '<div class="card"><div class="pfchiprow">' +
+    chip(kpi,  'KPIs',       w.applies ? esc(w.kpiPercent) + '%'  : '') +
+    chip(attr, 'Attributes', w.applies ? esc(w.attrPercent) + '%' : '') +
+    chip(fin,  'Final',      'out of 10') +
+    '</div><p class="mute">' + note +
+    (w.applies && w.scope && w.scope !== 'everybody'
+      ? ' This split is set for ' + esc(w.scope) + '.' : '') +
+    '</p></div>';
+}
+
+/* The month's scored row, if there is one. Empty until a manager scores it,
+   which is the design: a score nobody has given is not a zero.            */
+function pfThisMonthScore(){
+  var s = (PF.plb || {}).sheet;
+  if (!s || !s.months) return null;
+  var want = PF.period.slice(0,7);
+  for (var i = 0; i < s.months.length; i++) {
+    var m = s.months[i];
+    if (String(m.month || "").slice(0,7) === want) {
+      return { kpi: m.kpiPoints, attr: m.attrPoints, final: m.monthlyScore };
+    }
+  }
+  return null;
+}
+
+/* ------------------------------------------------- B and D · daily update
+   The blueprint's table is five columns — KPI, Monthly target, Achieved, %,
+   Today's count — and ONE submission for the whole day rather than a button
+   per row. The tool had two columns and a button each, which turns filing a
+   day into eleven separate acts.                                          */
+function pfDaily(){
+  var due = PF.due || [];
+  var open = PF.cycle.entry_open;
+  var byId = {};
+  (function walk(list){
+    (list || []).forEach(function(m){
+      if (m.assignmentId) byId[m.assignmentId] = m;
+      walk(m.parts);
+    });
+  })((PF.tree || {}).measures);
+
+  if (!open) {
+    return '<div class="card"><h2>Daily update</h2>' +
+      '<div class="empty">Filing closed on ' + day(PF.cycle.entry_closes) +
+      '. The month is still readable below.</div></div>';
+  }
+  if (!due.length) {
+    return '<div class="card"><h2>Daily update</h2>' +
+      '<p class="mute">Numbers against every KPI, then anything worth recording ' +
+      'that is not a number.</p>' +
+      '<div class="empty">Nothing is due from you today. What you file and when is ' +
+      'set with your KPI, not by this screen.</div></div>';
+  }
+
+  var rows = due.map(function(d){
+    var m = byId[d.assignmentId] || {};
+    var pct = (m.pct === null || m.pct === undefined) ? '' : esc(m.pct) + '%';
+    return '<tr>' +
+      '<td><b>' + esc(d.name) + '</b>' +
+        (d.split ? ' <span class="mute">' + esc(d.split) + '</span>' : '') +
+        '<div class="mute">' +
+          esc(String(d.cadence || "").toLowerCase().replace(/_/g, " ")) +
+          (d.setBy ? ' · set by ' + esc(d.setBy) : '') +
+        '</div></td>' +
+      '<td>' + (d.target ? esc(pfNum(d.target, d.unit)) : '<span class="mute">no target</span>') + '</td>' +
+      '<td>' + esc(pfNum(m.value, m.unit)) + '</td>' +
+      '<td>' + pct + '</td>' +
+      '<td><input class="pfin" data-pffile="' + esc(d.assignmentId) + '" type="number" step="any" ' +
+        'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '"></td>' +
+      '</tr>';
+  }).join("");
+
+  return '<div class="card"><h2>Daily update</h2>' +
+    '<p class="mute">Numbers against every KPI, then anything worth recording ' +
+    'that is not a number. The number is for today: filing it tomorrow does not ' +
+    'make it tomorrow’s number.</p>' +
+    '<div class="scroll"><table><thead><tr>' +
+      '<th>KPI</th><th>Monthly target</th><th>Achieved</th><th>%</th><th>Today’s count</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p><button class="btn primary" id="pfsubmitday">Submit daily update</button> ' +
+    '<span class="mute">Everything you have filled in, in one go. Blank rows are left alone.</span></p>' +
     '</div>';
 }
 
-function pfDueCard(){
-  var due = PF.due || [];
-  if (!PF.cycle.entry_open) return "";
-  if (!due.length) {
-    return '<div class="card"><h2>Due today</h2>' +
-      '<div class="empty">Nothing is due from you today. What you file and when is set ' +
-      'with your KPI, not by this screen.</div></div>';
-  }
-  var rows = due.map(function(d){
-    return '<tr><td><b>' + esc(d.name) + '</b>' +
-      (d.split ? ' <span class="mute">' + esc(d.split) + '</span>' : '') +
-      '<div class="mute">' + esc(String(d.cadence || "").toLowerCase().replace(/_/g," ")) +
-      (d.target ? ' · target ' + pfNum(d.target, d.unit) : '') + '</div></td>' +
-      '<td><input class="pfin" data-pffile="' + esc(d.assignmentId) + '" type="number" step="any" ' +
-        'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '"></td>' +
-      '<td class="plact"><button class="btn" data-pffileb="' + esc(d.assignmentId) + '">' +
-        (d.alreadyFiled ? 'Change' : 'File') + '</button></td></tr>';
+/* ------------------------------------------- C · anything else about today
+   A note that counts towards Attributes. The blueprint has an assistant
+   proposing which attribute it files under and under what heading, both
+   overridable. There is nowhere to file it until a goal sheet exists — the
+   attribute rows hang off the sheet — so this says that rather than offering
+   a box whose contents would go nowhere.                                  */
+function pfDayNote(){
+  return '<div class="card"><h2>Anything else about today <span class="mute">· optional</span></h2>' +
+    '<p class="mute">Cover you provided, a client remark, a problem you found, ' +
+    'somebody who helped. The design files it as an Attribute with a heading, or ' +
+    'keeps it as FYI, and it never scores you — your manager does, from these notes.</p>' +
+    '<div class="empty">Not built, and not for want of a box. The only attribute ' +
+    'writing this database has is the quarterly A-4 / A-5 proposal, which carries ' +
+    'three milestones and an evidence reference — it is not a place to put a dated ' +
+    'note. Nothing here holds one. Until something does, the record a manager scores ' +
+    'A-3 from is the task list below, which is the same idea with a date and an owner ' +
+    'on it.</div></div>';
+}
+
+/* ----------------------------------------- E · your last fourteen days
+   A daily cadence you cannot see the record of is just a form.            */
+function pfStreak(){
+  var h = PF.filed || {};
+  var days = h.days || [];
+  if (!days.length) return "";
+  var cells = days.map(function(d){
+    var cls = d.filed ? ' on' : (d.working ? ' miss' : ' off');
+    return '<div class="pfday' + cls + '" title="' + esc(d.day || '') +
+      (d.working ? '' : ' · not a working day') + '">' +
+      '<div class="pfdow">' + esc((d.dow || '').slice(0,1)) + '</div>' +
+      '<div class="pfdd">' + esc(d.dd || '') + '</div></div>';
   }).join("");
-  return '<div class="card"><h2>Due today</h2>' +
-    '<p class="mute">The number is for today. Filing it tomorrow does not make it ' +
-    'tomorrow’s number.</p>' +
-    '<div class="scroll"><table>' + rows + '</table></div></div>';
+  var run = Number(h.run || 0);
+  return '<div class="card"><h2>Your last fourteen days</h2>' +
+    '<div class="pfstreak">' + cells + '</div>' +
+    '<p class="mute">' +
+      (run > 0 ? '<b>' + run + ' in a row.</b> ' : '') +
+      esc(h.filedDays || 0) + ' of ' + esc(h.workingDays || 0) + ' working days filed. ' +
+      'A filled square is a day you filed; a hollow one is a working day you did not; ' +
+      'a faded one is not a working day and cannot break a run. ' +
+      'It counts days, not numbers — showing up is not the same as doing well.' +
+    '</p></div>';
+}
+
+/* ------------------------------------------------------------ F · my KPIs */
+function pfMyKpis(){
+  var t = PF.tree || {};
+  if (t.says) {
+    return '<div class="card"><h2>My KPIs</h2><div class="empty">' + esc(t.says) + '</div></div>';
+  }
+  var measures = t.measures || [];
+  var n = measures.length;
+  return '<div class="card"><h2>My KPIs' +
+      (n ? ' <span class="mute">· ' + n + ' set</span>' : '') + '</h2>' +
+    '<p class="mute">Set by your manager from your chair’s published measure set — ' +
+    'they choose nothing, and neither do you. Sub-categories show under each.</p>' +
+    (measures.length
+      ? '<div class="pftree">' + measures.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>'
+      : '<div class="empty">Nothing has been set for you this period.</div>') +
+    '<p class="mute">Five is the design: three mandatory, two optional. More than five ' +
+    'and nobody remembers what they are being measured on.</p></div>';
+}
+
+/* --------------------------------------------------------- G · attributes */
+function pfAttributes(){
+  var s = (PF.plb || {}).sheet;
+  if (!s || !(s.attributes || []).length) {
+    return '<div class="card"><h2>Attributes <span class="mute">· everything beyond the KPIs</span></h2>' +
+      '<p class="mute">Five slots worth two points each. Three are the same for everybody — ' +
+      'process and control discipline, data and reporting hygiene, contribution beyond your ' +
+      'own chair. The other two are yours to propose.</p>' +
+      '<div class="empty">No goal sheet has been issued to you for this quarter, so the ' +
+      'attribute slots do not exist yet.</div></div>';
+  }
+  var m = pfThisMonthScore();
+  var rows = (s.attributes || []).map(function(a){
+    return '<tr><td><b>' + esc(a.name) + '</b>' +
+      (a.proposal ? '<div class="mute">' + esc(a.proposal) + '</div>' : '') +
+      (a.evidence ? '<div class="mute">evidence: ' + esc(a.evidence) + '</div>' : '') + '</td>' +
+      '<td>' + (a.fixed ? 'the same for everybody' : 'yours to propose') + '</td>' +
+      '<td>2 points</td>' +
+      '<td>' + esc(String(a.state || "—").toLowerCase()) + '</td></tr>';
+  }).join("");
+  return '<div class="card"><h2>Attributes <span class="mute">· everything beyond the KPIs</span></h2>' +
+    '<div class="scroll"><table><thead><tr><th>Attribute</th><th>Who decides</th>' +
+    '<th>Worth</th><th>State</th></tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p class="mute">Each is worth two points of the ten. The score itself is monthly, not ' +
+    'per attribute: ' +
+    (m && m.attr !== null && m.attr !== undefined
+      ? 'this month it is ' + esc(pfNum(m.attr)) + ' out of 10.'
+      : 'this month has not been scored yet.') +
+    ' Every point cites a specific record — never an opinion.</p></div>';
+}
+
+/* ------------------------------------------- H · KPI change requests
+   The blueprint shows a queue with HR: who asked, for which KPI, from what
+   to what, why, and the action. Nothing in this database answers to it —
+   there is no request kind for a KPI change and no queue behind it. Saying
+   so is the honest thing; a button here would go nowhere.                 */
+function pfRequests(){
+  return '<div class="card"><h2>KPI change requests</h2>' +
+    '<div class="empty">Not built. The design has a queue here — who asked, which ' +
+    'KPI, from what to what, why, and what HR did — and nothing in the database ' +
+    'holds one yet. Until it does, a target change is raised the way the ' +
+    'Constitution says: a Target Change Request before the quarter midpoint, ' +
+    'through your Functional Head.</div></div>';
+}
+
+/* ------------------------- I · my team: targets, tasks and eligibility */
+function pfTeamSection(){
+  if (!PF.team || !PF.team.length) return "";
+  var n = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; }).length;
+  var rows = PF.team.map(function(p){
+    var open = PF.who === p.personId;
+    return '<tr><td><b>' + esc(p.name) + '</b>' +
+      (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
+      '<div class="mute">' + esc(p.chair || "no chair") + '</div></td>' +
+      '<td class="plact">' +
+        '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
+          (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
+        '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
+          (open ? 'Hide' : 'Set targets') + '</button>' +
+        '<button class="btn" data-pftask="' + esc(p.personId) + '">Assign a task</button>' +
+        '</td></tr>' +
+      (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
+  }).join("");
+
+  return '<div class="card"><h2>My team <span class="mute">· targets, tasks and eligibility</span></h2>' +
+    '<p class="mute">A KPI you give somebody climbs into one of yours. Pick which one ' +
+    'as you set it — that link is what makes the numbers add up to a branch, and a ' +
+    'branch to a zone.</p>' +
+    '<div class="plbar">' +
+      '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
+        (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
+      '<button class="btn" id="pfcarry"' + (n ? '' : ' disabled') + '>Carry last month forward</button>' +
+      '<button class="btn" id="pftaskall">Assign a task to ' + (n ? n + ' selected' : 'the whole team') + '</button>' +
+      '<button class="btn" id="pfelig">Eligibility matrix</button>' +
+    '</div>' +
+    '<div class="scroll"><table>' + rows + '</table></div>' +
+    (PF.form ? pfForm() : '') +
+    (PF.taskForm ? pfTaskForm() : '') +
+    (PF.elig ? pfEligibility() : '') +
+    pfTasksOwed() +
+    '</div>';
+}
+
+/* What I was asked for, and what I asked of other people. A task closed on
+   time is the named artefact A-3 is scored from; a missed one is the other
+   kind of record.                                                         */
+function pfTasksOwed(){
+  var t = PF.tasks || {};
+  var owed = t.owed || [], set = t.set || [];
+  if (!owed.length && !set.length) return "";
+  function list(items, mine){
+    return items.map(function(x){
+      var cls = x.status === 'MISSED' ? ' bad' : x.status === 'LATE' ? ' warn'
+              : x.status === 'DONE' ? ' ok' : x.overdue ? ' warn' : '';
+      return '<tr class="pftask' + cls + '"><td><b>' + esc(x.title) + '</b>' +
+        '<div class="mute">' +
+          (x.dueOn ? 'due ' + day(x.dueOn) : 'no date') +
+          (mine ? (x.setBy ? ' · asked by ' + esc(x.setBy) : '')
+                : (x.forWhom ? ' · ' + esc(x.forWhom) : '')) +
+        '</div></td>' +
+        '<td>' + esc(x.status.toLowerCase()) + '</td>' +
+        '<td class="plact">' +
+          (mine && x.status === 'OPEN'
+            ? '<button class="btn" data-pfdone="' + esc(x.id) + '">Done</button>' : '') +
+          (!mine && x.status === 'OPEN'
+            ? '<button class="btn" data-pfcancel="' + esc(x.id) + '">Call it off</button>' : '') +
+        '</td></tr>';
+    }).join("");
+  }
+  return '<h4 class="plh">Tasks this month</h4>' +
+    (owed.length ? '<div class="scroll"><table>' + list(owed, true) + '</table></div>'
+                 : '<div class="empty">Nobody has asked you for anything this month.</div>') +
+    (set.length ? '<h4 class="plh">What you asked for</h4><div class="scroll"><table>' +
+                  list(set, false) + '</table></div>' : '');
+}
+
+function pfTaskForm(){
+  var f = PF.taskForm;
+  return '<div class="plform">' +
+    '<h4 class="plh">' + (f.who ? 'A task for ' + esc(f.name) : 'A task for the whole team') + '</h4>' +
+    '<div class="hragrid">' +
+      '<label class="hrafield"><span>What is being asked for</span>' +
+        '<input data-pftf="title" value="' + esc(f.title || "") + '" ' +
+        'placeholder="Visit the SBI branches in your area"></label>' +
+      '<label class="hrafield"><span>By when</span>' +
+        '<input data-pftf="dueOn" type="date" value="' + esc(f.dueOn || "") + '"></label>' +
+      '<label class="hrafield"><span>Worth, towards A-3</span>' +
+        '<select data-pftf="attributeWeight">' +
+          '<option value="">not scored</option>' +
+          '<option value="1"' + (f.attributeWeight === "1" ? ' selected' : '') + '>1 — partly</option>' +
+          '<option value="2"' + (f.attributeWeight === "2" ? ' selected' : '') + '>2 — in full</option>' +
+        '</select></label>' +
+    '</div>' +
+    '<label class="hrafield"><span>Detail</span><textarea data-pftf="detail" rows="2">' +
+      esc(f.detail || "") + '</textarea></label>' +
+    '<p class="mute">A task closed on time is the record A-3 is scored from — the ' +
+    'Constitution says an attribute point must cite a named artefact and never a ' +
+    'manager’s assertion. One missed is the other kind of record.</p>' +
+    '<p><button class="btn primary" id="pftasksave">Set it</button> ' +
+    '<button class="btn" id="pftaskcancel">Cancel</button></p></div>';
+}
+
+/* The eligibility matrix, from the Scorecard Guide's own gates. Read-only:
+   the gates are the Constitution's and this screen does not set them.     */
+function pfEligibility(){
+  var rows = [
+    ["Goal sheet acknowledged", "By day 10. Not acknowledging changes nothing — it still operates, and the fact is recorded."],
+    ["Goal sheet issued at all", "By day 15, or the chair's standard sheet applies and you cannot be scored below it."],
+    ["A month scored", "Neither manager nor Functional Head scored it — that month is excluded and the denominator reduces."],
+    ["Protected leave", "The month is excluded, and the denominator reduces."],
+    ["Attribute total above 1.5 in a month", "Functional Head countersigns."],
+    ["Average monthly score 9.5 or above, or 4.0 or below", "Functional Head, with a Business Excellence rubric check."],
+    ["Achievement below 50% or above 110%", "Functional Head, with MIS attesting the source data — both tails, not just the good one."],
+    ["Unit average above 8.5", "Business Excellence calibration review — never a cap, never a forced curve."]
+  ].map(function(r){
+    return '<tr><td><b>' + esc(r[0]) + '</b></td><td>' + esc(r[1]) + '</td></tr>';
+  }).join("");
+  return '<div class="plform"><h4 class="plh">Eligibility matrix</h4>' +
+    '<p class="mute">The gates in the Constitution, and what each one does. There is no ' +
+    'forced distribution: no quota, no ranking, no bell curve, and no cap on how many ' +
+    'people can score well.</p>' +
+    '<div class="scroll"><table>' + rows + '</table></div>' +
+    '<p><button class="btn" id="pfeligclose">Close</button></p></div>';
+}
+
+/* ---------------------------------------------------- J · the weighting */
+function pfWeighting(){
+  if (!PF.weighting.maySet) return "";
+  var all = PF.weighting.all || [];
+  var rows = all.map(function(w){
+    return '<tr><td>' + (w.scopeAll ? '<b>Everybody</b>'
+        : w.chair ? esc(w.chair) : w.person ? esc(w.person) : '—') + '</td>' +
+      '<td>' + esc(w.kpiPercent) + ' / ' + esc(w.attrPercent) + '</td>' +
+      '<td>' + day(w.effectiveFrom) + '</td>' +
+      '<td class="mute">' + esc(w.setBy || '—') + '</td></tr>';
+  }).join("");
+  return '<div class="card"><h2>PMS weighting <span class="mute">· Admin and HR</span></h2>' +
+    '<p class="mute">The split between KPIs and Attributes, for everybody or for selected ' +
+    'teams. The Constitution sets it at 75 / 25 from 1 October 2026. A rule about one ' +
+    'person beats a rule about their chair, which beats a rule about everybody.</p>' +
+    (rows ? '<div class="scroll"><table><thead><tr><th>Applies to</th><th>KPI / Attr</th>' +
+            '<th>From</th><th>Set by</th></tr></thead><tbody>' + rows + '</tbody></table></div>'
+          : '<div class="empty">No split has been set. Nothing can be scored until one is.</div>') +
+    '<p><button class="btn" id="pfweight">Open weighting</button></p>' +
+    (PF.weightForm ? pfWeightForm() : '') + '</div>';
+}
+
+function pfWeightForm(){
+  var f = PF.weightForm;
+  return '<div class="plform"><h4 class="plh">A new split</h4>' +
+    '<div class="hragrid">' +
+      '<label class="hrafield"><span>KPIs %</span><input data-pfwf="kpiPercent" type="number" ' +
+        'min="0" max="100" value="' + esc(f.kpiPercent || 75) + '"></label>' +
+      '<label class="hrafield"><span>Attributes %</span><input data-pfwf="attrPercent" type="number" ' +
+        'min="0" max="100" value="' + esc(f.attrPercent || 25) + '"></label>' +
+      '<label class="hrafield"><span>From</span><input data-pfwf="effectiveFrom" type="date" ' +
+        'value="' + esc(f.effectiveFrom || "") + '"></label>' +
+    '</div>' +
+    '<p class="mute">It has to add to 100. Earlier months keep the split they were scored ' +
+    'under — changing this does not rewrite a month that has already closed.</p>' +
+    '<p><button class="btn primary" id="pfweightsave">Save</button> ' +
+    '<button class="btn" id="pfweightcancel">Cancel</button></p></div>';
+}
+
+/* ------------------------------------------------------- K · the appraisal
+   The quarter. The blueprint puts it on this page and so does the scheme:
+   PLB = Target × Payout Factor × Consistency Factor, where the Payout Factor
+   comes from the quarter's Achievement and the Consistency Factor from the
+   mean of these monthly scores. The two layers meet here, which is why this
+   section is on the same screen as the daily update rather than behind a tab.
+
+   The renderers are the ones the Bonus screen already used and they are
+   correct — disputes, countersign, the manager's view. Reusing them is the
+   difference between joining two screens and rewriting nine hundred lines. */
+function pfAppraisal(){
+  var p = PF.plb || {};
+  var s = p.sheet;
+  var head = '<div class="card"><h2>Appraisal <span class="mute">· ' +
+    (p.quarter ? 'the quarter from ' + day(p.quarter) : 'this quarter') + '</span></h2>' +
+    '<p class="mute">Your monthly scores decide how much of what you earned is released. ' +
+    'An average of 8 out of 10 releases 80% of it; 10 releases all of it; below 3 it stops ' +
+    'falling. What you earned comes from the goal sheet below.</p>';
+
+  if (!s) {
+    return head + '<div class="empty">' +
+      (p.inScheme === false
+        ? 'Your chair is not in the PLB scheme. The scheme starts at Branch Manager and ' +
+          'Manager level; the Board and the Managing Director are outside it entirely.'
+        : 'No goal sheet has been issued to you for this quarter. If none reaches you by ' +
+          'day 15 your chair’s standard sheet applies, and you cannot be scored below what ' +
+          'it produces.') +
+      '</div></div>';
+  }
+  /* Those renderers arrive with the Bonus screen, which is a different patch
+     in the same page. If a build ever leaves one out, say so here rather than
+     throwing and taking the whole screen down with it — the sections above
+     this one are still true and still worth reading. */
+  if (typeof pbGoalSheet !== "function" || typeof pbMonthTable !== "function" ||
+      typeof pbResult !== "function" || typeof pbDisputes !== "function") {
+    return head + '<div class="empty">Your goal sheet is there, but the part of ' +
+      'the page that draws it was not published with this one. Nothing is wrong ' +
+      'with your account and nothing has been lost.</div></div>';
+  }
+  PB.data = p; PB.quarter = p.quarter;
+  return head + '</div>' +
+    pbGoalSheet(s) + pbMonthTable(s) + pbResult(s) + pbDisputes(s, true);
 }
 
 /* One node, and its parts and its team under it. Depth is only indentation;
@@ -436,4 +845,148 @@ function pfWire(){
     if (PF.who) PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
     pfRender();
   };
+
+  /* ------------------------------------------------ the one daily submission
+     The blueprint submits a day, not a row. Everything filled in goes at
+     once; a blank is left alone rather than filed as a zero, because a zero
+     you meant and a box you did not reach are different facts.            */
+  if (el("pfsubmitday")) el("pfsubmitday").onclick = async function(){
+    if (PF.busy) return;
+    var boxes = Array.prototype.slice.call(el("view").querySelectorAll("[data-pffile]"))
+      .filter(function(b){ return b.value !== ""; });
+    if (!boxes.length) {
+      PF.says = msg("warn", "Nothing to file — every box is blank.");
+      pfRender(); return;
+    }
+    PF.busy = true; el("pfsubmitday").disabled = true;
+    var today = new Date().toISOString().slice(0,10), done = 0, bad = [];
+    for (var i = 0; i < boxes.length; i++) {
+      var o = await plb("/plb/perf/file", { method:"POST", body:{
+        assignmentId: boxes[i].getAttribute("data-pffile"), asOf: today, value: boxes[i].value } });
+      if (o.error) bad.push(o.reason || o.error); else done++;
+    }
+    PF.busy = false;
+    PF.says = bad.length
+      ? msg("bad", done + " filed, " + bad.length + " refused. " + bad.join(" "))
+      : msg("ok", done + (done === 1 ? " number" : " numbers") + " filed for today.");
+    await pfLoadMine(); pfRender();
+  };
+
+  /* ------------------------------------------------------------ the tasks */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pftask]"), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute("data-pftask");
+      var who = (PF.team || []).filter(function(p){ return p.personId === id; })[0] || {};
+      PF.taskForm = { who: id, name: who.name || "them" };
+      pfRender();
+    };
+  });
+
+  if (el("pftaskall")) el("pftaskall").onclick = function(){
+    PF.taskForm = { who: null, name: null };
+    pfRender();
+  };
+
+  if (el("pftaskcancel")) el("pftaskcancel").onclick = function(){
+    PF.taskForm = null; pfRender();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pftf]"), function(f){
+    f.onchange = function(){ PF.taskForm[f.getAttribute("data-pftf")] = f.value; };
+    f.oninput  = function(){ PF.taskForm[f.getAttribute("data-pftf")] = f.value; };
+  });
+
+  if (el("pftasksave")) el("pftasksave").onclick = async function(){
+    if (PF.busy) return;
+    var f = PF.taskForm;
+    if (!f.title) { PF.says = msg("bad", "A task needs a sentence saying what is being asked for."); pfRender(); return; }
+    PF.busy = true; el("pftasksave").disabled = true;
+    var body = { title: f.title, detail: f.detail || null, dueOn: f.dueOn || null,
+                 attributeWeight: f.attributeWeight || null };
+    if (f.who) {
+      body.people = [f.who];
+    } else {
+      var picked = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; });
+      if (picked.length) body.people = picked; else body.allReports = true;
+    }
+    var o = await plb("/plb/task/assign", { method:"POST", body: body });
+    PF.busy = false;
+    if (o.error) {
+      PF.says = msg("bad", o.reason || o.error);
+    } else {
+      var refused = (o.refused || []).length;
+      PF.says = msg(refused ? "warn" : "ok",
+        o.created + (o.created === 1 ? " task set" : " tasks set") + " for " + o.period +
+        (refused ? ". " + refused + " refused: " + (o.refused || []).join(", ") + ". " + (o.note || "") : "."));
+    }
+    PF.taskForm = null;
+    PF.tasks = await plb("/plb/task/mine?period=" + PF.period.slice(0,7));
+    pfRender();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfdone]"), function(b){
+    b.onclick = async function(){
+      if (PF.busy) return;
+      PF.busy = true; b.disabled = true;
+      var o = await plb("/plb/task/close", { method:"POST",
+        body:{ id: b.getAttribute("data-pfdone") } });
+      PF.busy = false;
+      PF.says = o.error ? msg("bad", o.reason || o.error)
+        : msg(o.status === "LATE" ? "warn" : "ok",
+            o.status === "LATE"
+              ? "Closed, but after " + day(o.dueOn) + ", so it stands as late."
+              : "Closed on time.");
+      PF.tasks = await plb("/plb/task/mine?period=" + PF.period.slice(0,7));
+      pfRender();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfcancel]"), function(b){
+    b.onclick = async function(){
+      if (PF.busy) return;
+      var why = prompt("Why is this being called off? It goes on the record.");
+      if (why === null) return;
+      PF.busy = true; b.disabled = true;
+      var o = await plb("/plb/task/cancel", { method:"POST",
+        body:{ id: b.getAttribute("data-pfcancel"), why: why } });
+      PF.busy = false;
+      PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", "Called off.");
+      PF.tasks = await plb("/plb/task/mine?period=" + PF.period.slice(0,7));
+      pfRender();
+    };
+  });
+
+  /* ----------------------------------------------------- the eligibility */
+  if (el("pfelig")) el("pfelig").onclick = function(){ PF.elig = true; pfRender(); };
+  if (el("pfeligclose")) el("pfeligclose").onclick = function(){ PF.elig = false; pfRender(); };
+
+  /* ------------------------------------------------------- the weighting */
+  if (el("pfweight")) el("pfweight").onclick = function(){
+    var w = (PF.weighting.mine || {});
+    PF.weightForm = { kpiPercent: w.kpiPercent || 75, attrPercent: w.attrPercent || 25,
+                      effectiveFrom: "" };
+    pfRender();
+  };
+  if (el("pfweightcancel")) el("pfweightcancel").onclick = function(){
+    PF.weightForm = null; pfRender();
+  };
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfwf]"), function(f){
+    f.onchange = function(){ PF.weightForm[f.getAttribute("data-pfwf")] = f.value; };
+    f.oninput  = function(){ PF.weightForm[f.getAttribute("data-pfwf")] = f.value; };
+  });
+  if (el("pfweightsave")) el("pfweightsave").onclick = async function(){
+    if (PF.busy) return;
+    PF.busy = true; el("pfweightsave").disabled = true;
+    var o = await plb("/weighting", { method:"POST", body: PF.weightForm });
+    PF.busy = false;
+    PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note);
+    PF.weightForm = null;
+    PF.weighting = await plb("/weighting");
+    pfRender();
+  };
+
+  /* The appraisal section is the Bonus screen's own renderers, so it is the
+     Bonus screen's own wiring. Guarded because every one of those handlers
+     tests for its element first, and most of them are not on this page. */
+  try { if ((PF.plb || {}).sheet) pbWire(); } catch (e) {}
 }

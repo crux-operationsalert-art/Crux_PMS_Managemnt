@@ -27,6 +27,11 @@ on:
       - .github/tool-shim.html
       - .github/build-tool.py
       - .github/app-page.sha
+      # The screens build-tool.py reads from the repository rather than
+      # carries as Python string literals. Changing one of these changes the
+      # published page, and until this line was here it did not republish --
+      # the change sat in git looking applied.
+      - build/app/*.js
 
 permissions:
   contents: write

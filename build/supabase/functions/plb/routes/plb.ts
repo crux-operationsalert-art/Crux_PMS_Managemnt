@@ -466,6 +466,14 @@ r.get("/perf/score", async (req: any, res: any) => {
   return res.json(o.o);
 });
 
+// The fortnight strip above the KPI list. Days, not numbers: a run is a
+// record of showing up, and a Sunday cannot break one.
+r.get("/perf/filed", async (req: any, res: any) => {
+  const o = await one(`select perf_filed_days($1, $2::int) as o`,
+    [req.query.get("person") || req.person.id, Number(req.query.get("days") || 14)]);
+  return res.json(o.o);
+});
+
 // =====================================================================
 // Tasks — "Assign a task", the second of the three buttons the blueprint
 // puts over the team list.
