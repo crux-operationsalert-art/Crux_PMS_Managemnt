@@ -323,14 +323,61 @@ two curves and the five worked examples, and runs on a database rebuilt from
 | P-Q4 | No goal sheet has ever been issued, for anybody | Targets "come from a fixed hierarchy" and are a business input. The engine is ready and idle |
 | P-Q5 | `pms_impact` — what an escalation, warning or appreciation does to a score — has no rows | The blueprint puts it on the weighting panel. The Constitution scores from the A-1 rubric instead, so these two may be the same thing said twice |
 
+## The screen, as rebuilt
+
+`build/app/screen-perf.js` — 20,349 → 49,183 bytes — is now one page in the
+blueprint's order, published at 460,432 bytes with every patch assertion
+passing. The three tabs are gone; what is left beside it is **Running the
+scheme** (issuing sheets, certifying, closing a quarter), which is HR's and
+Business Excellence's job and which the design does not place anywhere.
+
+| | Section | State |
+|---|---|---|
+| A | Three score chips, KPIs / Attributes / Final | **built** — weights read from `pms_weighting_for()`, not typed into a heading |
+| B | Daily table, five columns | **built** — was two; now KPI, Monthly target, Achieved, %, Today's count |
+| C | Day note + assistant classification | **stated gap** — see below |
+| D | One "Submit daily update" | **built** — was one button per row; a blank box is still left alone, not filed as zero |
+| E | Your last fourteen days | **built** — `perf_filed_days()` (217). A run breaks only on a *working* day nobody filed on |
+| F | My KPIs | **built**, with the design's own rule: five is the design |
+| G | Attributes | **built** — shown as the sheet actually holds them |
+| H | KPI change requests | **stated gap** — see below |
+| I | My team: targets, tasks, eligibility | **built** — Assign a task and the Eligibility matrix now exist |
+| J | PMS weighting | **built** — reads and writes the split |
+| K | Appraisal | **built** — reusing the Bonus screen's own renderers rather than rewriting 900 correct lines |
+
+**The two gaps are findings, not omissions.** Section C has nowhere to write:
+the only attribute writing this database has is the quarterly A-4 / A-5
+proposal, which carries three milestones and an evidence reference and is not a
+place for a dated note. Section H has no table at all. Both say so on the
+screen, and say what would make them work. The field shapes for G and A were
+checked against `plb_sheet()` rather than assumed — attributes carry
+name/fixed/state/proposal/evidence, not the weight and score I had first
+guessed, and the attribute score is monthly rather than per attribute.
+
+One latent trap closed on the way past: `build/app/*.js` was **not** in the
+publish workflow's trigger paths, so changing a screen the build reads from the
+repository did not republish — the change sat in git looking applied.
+
+## Still to do on this tab
+
+**The `plb` Edge Function is not yet redeployed.** The screen's new sections
+call `/weighting`, `/task/*` and `/perf/filed`; those routes are written and
+committed but the deployed function is still v5, so they answer 404 until it
+goes out. The screen degrades rather than breaks — the chips fall back to "no
+split has been set", and the fortnight strip and task lists render as nothing —
+but Assign a task will not work until the deploy lands. It is the first thing
+in the next pass.
+
 ## Status
 
 | | |
 |---|---|
 | Audited | yes — 11 sections, 20 buttons, element by element |
 | Both open questions | answered, and written into the design above |
-| Built | migration 214 — the task engine, the 75/25 split, 16 assertions |
-| Next | the screen: one Performance page, sections A→K, both layers visible |
+| Built | 214 the task engine · 215 the baseline carries the split · 216 whose split applies · 217 the fortnight · the screen itself |
+| Published | yes — 460,432 bytes, parses, every patch assertion passed |
+| Tests | 190 passed, 0 failed, on a database rebuilt from `build/schema` alone |
+| Blocking | the `plb` redeploy |
 
 ---
 
