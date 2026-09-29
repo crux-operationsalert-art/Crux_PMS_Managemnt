@@ -8,210 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ops_alert_resolve(p_dedupe_key text, p_note text DEFAULT NULL::text)
- RETURNS integer
- LANGUAGE sql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  with done as (
-    update ops_alert set resolved_at = now(), resolved_note = p_note
-     where dedupe_key = p_dedupe_key and resolved_at is null
-    returning 1)
-  select count(*)::int from done
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.org_chair(p_code text)
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select jsonb_build_object(
-    'code', c.code, 'title', c.title, 'sg', c.sg_level,
-    'function', c.function_name, 'band', c.band, 'purpose', c.purpose,
-    'parent', (select p.title from chair p where p.id = c.parent_id),
-    'reports', coalesce((select jsonb_agg(k.title order by k.title)
-                         from chair k where k.parent_id = c.id), '[]'::jsonb),
-    'track', t.name,
-    'knowledge_test', t.knowledge_test,
-    'unlock', t.unlock,
-    'headcount', (select count(distinct person_id) from chair_holder ch
-                   where ch.chair_id = c.id and ch.to_date is null),
-    'seatings', coalesce((select jsonb_agg(jsonb_build_object(
-                   'scope', cs.scope_label, 'holder', cs.holder_text, 'note', cs.note,
-                   'people', coalesce((select jsonb_agg(pe.full_name order by pe.full_name)
-                              from chair_holder ch join person pe on pe.id = ch.person_id
-                              where ch.seating_id = cs.id and ch.to_date is null), '[]'::jsonb))
-                   order by cs.scope_label nulls first)
-                 from chair_seating cs where cs.chair_id = c.id), '[]'::jsonb),
-    -- the places this chair has, so a missing one can be chosen rather than typed
-    'places', coalesce((select jsonb_agg(jsonb_build_object(
-                   'id', cs.id, 'scope', coalesce(cs.scope_label, 'No particular place'))
-                   order by cs.scope_label nulls first)
-                 from chair_seating cs where cs.chair_id = c.id), '[]'::jsonb),
-    'unplaced', coalesce((select jsonb_agg(jsonb_build_object(
-                   'holder', ch.id, 'name', pe.full_name) order by pe.full_name)
-                 from chair_holder ch join person pe on pe.id = ch.person_id
-                 where ch.chair_id = c.id and ch.to_date is null and ch.seating_id is null),
-                 '[]'::jsonb),
-    'accountabilities', coalesce((select jsonb_agg(a.statement order by a.ord)
-                 from chair_accountability a where a.chair_id = c.id), '[]'::jsonb),
-    'measures', coalesce((select jsonb_agg(m.statement order by m.ord)
-                 from chair_measure m where m.chair_id = c.id), '[]'::jsonb),
-    'decides', coalesce((select jsonb_agg(a.statement order by a.ord)
-                 from chair_authority a where a.chair_id = c.id and a.kind='DECIDE'), '[]'::jsonb),
-    'escalates', coalesce((select jsonb_agg(a.statement order by a.ord)
-                 from chair_authority a where a.chair_id = c.id and a.kind='ESCALATE'), '[]'::jsonb),
-    'tasks', coalesce((select jsonb_agg(jsonb_build_object('task', tk.task,
-                   'subtasks', coalesce((select jsonb_agg(st.statement order by st.ord)
-                                from chair_subtask st where st.task_id = tk.id), '[]'::jsonb))
-                   order by tk.ord)
-                 from chair_task tk where tk.chair_id = c.id), '[]'::jsonb),
-    'owns', coalesce((select jsonb_agg(jsonb_build_object('ref', x.ref, 'name', x.name) order by x.ref)
-                 from process x where x.owner_chair_id = c.id), '[]'::jsonb),
-    'parts', coalesce((select jsonb_agg(jsonb_build_object(
-                   'part', pp.part, 'ref', x.ref, 'name', x.name) order by pp.part, x.ref)
-                 from process_party pp join process x on x.id = pp.process_id
-                 where pp.chair_id = c.id), '[]'::jsonb),
-    'receives', coalesce((select jsonb_agg(jsonb_build_object(
-                   'what', pi.what, 'from', fc.title, 'for', x.name) order by pi.what)
-                 from process_input pi
-                 join process x on x.id = pi.process_id
-                 join chair fc on fc.id = pi.from_chair_id
-                 where x.owner_chair_id = c.id), '[]'::jsonb),
-    'supplies', coalesce((select jsonb_agg(jsonb_build_object(
-                   'what', pi.what, 'to', oc.title, 'for', x.name) order by pi.what)
-                 from process_input pi
-                 join process x on x.id = pi.process_id
-                 join chair oc on oc.id = x.owner_chair_id
-                 where pi.from_chair_id = c.id), '[]'::jsonb),
-    'levels', coalesce((select jsonb_agg(jsonb_build_object(
-                   'level', l.level, 'name', l.level_name, 'requirement', l.requirement,
-                   'qualification', l.qualification, 'experience', l.experience,
-                   'certification', l.certification, 'test', l.test_score, 'evidence', l.evidence)
-                   order by l.level)
-                 from capability_level l where l.track_id = t.id), '[]'::jsonb),
-    'topics', coalesce((select jsonb_agg(k.topic order by k.ord)
-                 from capability_topic k where k.track_id = t.id), '[]'::jsonb),
-    'psychometric', coalesce((select jsonb_agg(jsonb_build_object(
-                   'instrument', ps.instrument, 'standard', ps.standard) order by ps.ord)
-                 from capability_psychometric ps where ps.track_id = t.id), '[]'::jsonb)
-  )
-  from chair c
-  left join capability_track t on t.id = c.capability_track_id
-  where c.code = p_code;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.org_chart()
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select jsonb_build_object(
-    'stats', jsonb_build_object(
-      'seats',     (select count(*) from chair),
-      'seatings',  (select count(*) from chair_seating),
-      'processes', (select count(*) from process),
-      'tracks',    (select count(*) from capability_track),
-      'people',    (select count(distinct person_id) from chair_holder where to_date is null)
-    ),
-    'seats', coalesce((
-      select jsonb_agg(s order by s->>'sg' desc, s->>'title')
-      from (
-        select jsonb_build_object(
-          'code',     c.code,
-          'title',    c.title,
-          'sg',       c.sg_level,
-          'function', c.function_name,
-          'band',     c.band,
-          'purpose',  c.purpose,
-          'parent',   p.code,
-          'track',    t.name,
-          'owns',     (select count(*) from process x where x.owner_chair_id = c.id),
-          'does',     (select count(*) from process_party x where x.chair_id = c.id and x.part='R'),
-          'advises',  (select count(*) from process_party x where x.chair_id = c.id and x.part='C'),
-          'informed', (select count(*) from process_party x where x.chair_id = c.id and x.part='I'),
-          -- the places this seat is held, each with the people placed there
-          'seatings', coalesce((
-             select jsonb_agg(jsonb_build_object(
-                      'scope',      cs.scope_label,
-                      'holder',     cs.holder_text,
-                      'note',       cs.note,
-                      'reports_to', rp.code,
-                      'people',     coalesce((
-                         select jsonb_agg(pe.full_name order by pe.full_name)
-                         from chair_holder ch join person pe on pe.id = ch.person_id
-                         where ch.seating_id = cs.id and ch.to_date is null), '[]'::jsonb))
-                    order by cs.scope_label nulls first)
-             from chair_seating cs
-             left join chair rp on rp.id = cs.reports_to_chair_id
-             where cs.chair_id = c.id), '[]'::jsonb),
-          -- people on this chair whom the document did not place
-          'holders', coalesce((
-             select jsonb_agg(jsonb_build_object('name', pe.full_name, 'email', pe.work_email)
-                    order by pe.full_name)
-             from chair_holder ch join person pe on pe.id = ch.person_id
-             where ch.chair_id = c.id and ch.to_date is null and ch.seating_id is null), '[]'::jsonb),
-          'headcount', (select count(distinct person_id) from chair_holder ch
-                         where ch.chair_id = c.id and ch.to_date is null)
-        ) as s
-        from chair c
-        left join chair p on p.id = c.parent_id
-        left join capability_track t on t.id = c.capability_track_id
-      ) q
-    ), '[]'::jsonb)
-  );
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.org_place_holder(p_actor uuid, p_holder uuid, p_seating uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_role role_kind; h chair_holder; s chair_seating; v_name text;
-begin
-  select app_role into v_role from person
-   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
-  if v_role is distinct from 'ADMIN' then
-    return jsonb_build_object('error','not_admin',
-      'reason','Recording where a chair is held is an administrator''s to do.');
-  end if;
-
-  select * into h from chair_holder where id = p_holder;
-  if h.id is null then return jsonb_build_object('error','no_such_holder'); end if;
-
-  if p_seating is null then
-    update chair_holder set seating_id = null where id = p_holder;
-    return jsonb_build_object('ok', true, 'place', null);
-  end if;
-
-  select * into s from chair_seating where id = p_seating;
-  if s.id is null then return jsonb_build_object('error','no_such_place'); end if;
-  if s.chair_id <> h.chair_id then
-    return jsonb_build_object('error','wrong_chair',
-      'reason','That place belongs to a different chair. Change the chair first.');
-  end if;
-
-  update chair_holder set seating_id = p_seating where id = p_holder;
-
-  select full_name into v_name from person where id = h.person_id;
-  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
-  values (p_actor, 'CHAIR_HOLDER_PLACED', 'chair_holder', p_holder::text,
-          jsonb_build_object('seating_id', h.seating_id),
-          jsonb_build_object('seating_id', p_seating, 'person', v_name,
-                             'place', s.scope_label));
-
-  return jsonb_build_object('ok', true, 'person', v_name,
-    'place', coalesce(s.scope_label, 'No particular place'));
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.org_unplaced()
  RETURNS jsonb
  LANGUAGE sql
@@ -828,6 +624,43 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_filed_days(p_person uuid, p_days integer DEFAULT 14, p_to date DEFAULT CURRENT_DATE)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  with span as (
+    select generate_series(p_to - (greatest(p_days, 1) - 1), p_to, interval '1 day')::date as d
+  ),
+  filed as (
+    select distinct e.as_of
+      from perf_entry e
+      join perf_assignment a on a.id = e.assignment_id
+     where a.person_id = p_person
+       and e.as_of between p_to - (greatest(p_days, 1) - 1) and p_to
+  ),
+  mark as (
+    select s.d,
+           is_working_day(s.d, null) as wd,
+           (f.as_of is not null)     as ok
+      from span s left join filed f on f.as_of = s.d
+  ),
+  gap as (select max(d) as d from mark where wd and not ok)
+  select jsonb_build_object(
+    'from', (select min(d) from mark),
+    'to',   (select max(d) from mark),
+    'days', (select coalesce(jsonb_agg(jsonb_build_object(
+                      'day', m.d, 'dow', to_char(m.d, 'Dy'), 'dd', to_char(m.d, 'FMDD'),
+                      'working', m.wd, 'filed', m.ok) order by m.d), '[]'::jsonb)
+               from mark m),
+    'filedDays',   (select count(*) from mark where ok),
+    'workingDays', (select count(*) from mark where wd),
+    'run',         (select count(*) from mark m, gap
+                     where m.ok and (gap.d is null or m.d > gap.d)));
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_history(p_person uuid, p_name text, p_kpi uuid DEFAULT NULL::uuid, p_months integer DEFAULT 6)
  RETURNS jsonb
  LANGUAGE sql
@@ -850,6 +683,20 @@ AS $function$
        and c.period_start >= (date_trunc('month', current_date) - (p_months || ' months')::interval)::date
   ) t;
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_history_for(p_actor uuid, p_person uuid, p_name text, p_kpi uuid, p_months integer)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if perf_rel(p_actor, p_person) is null then
+    return jsonb_build_object('error','not_permitted','reason','That person is not in your line.');
+  end if;
+  return perf_history(p_person, p_name, p_kpi, p_months);
+end $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_kpi_score(p_person uuid, p_cycle uuid)
@@ -893,22 +740,71 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_kpi_score_for(p_actor uuid, p_person uuid, p_cycle uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if perf_rel(p_actor, p_person) is null then
+    return jsonb_build_object('error','not_permitted','reason','That person is not in your line.');
+  end if;
+  return perf_kpi_score(p_person, p_cycle);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_line(p_actor uuid)
+ RETURNS TABLE(person_id uuid, depth integer)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  with recursive edge as (
+    -- the seating tree: this seat, in this place, reports to that one
+    select distinct hs.person_id as mgr, hr.person_id as rep
+      from chair_seating cs
+      join chair_holder hs on hs.seating_id = cs.reports_to_seating_id and hs.to_date is null
+      join chair_holder hr on hr.seating_id = cs.id and hr.to_date is null
+     where hs.person_id <> hr.person_id
+    union
+    -- and the reporting line as the person record states it
+    select p.manager_id, p.id from person p
+     where p.manager_id is not null and p.manager_id <> p.id
+       and p.employment_status = 'ACTIVE' and p.superseded_by is null
+  ),
+  walk as (
+    select e.rep as pid, 1 as d, array[p_actor, e.rep] as seen
+      from edge e where e.mgr = p_actor
+    union all
+    select e.rep, w.d + 1, w.seen || e.rep
+      from walk w join edge e on e.mgr = w.pid
+     where w.d < 12 and not (e.rep = any (w.seen))
+  )
+  select w.pid, min(w.d)::int
+    from walk w join person p on p.id = w.pid
+   where p.employment_status = 'ACTIVE' and p.superseded_by is null
+     and coalesce(p.employee_type, 'EMPLOYEE') <> 'CLIENT_CONTACT'
+     and w.pid <> p_actor
+   group by w.pid
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_may_see(p_actor uuid, p_person uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$ select perf_rel(p_actor, p_person) is not null $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_may_set(p_actor uuid, p_person uuid)
  RETURNS boolean
  LANGUAGE sql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-  select exists (
-    select 1 from person a
-     where a.id = p_actor
-       and a.employment_status = 'ACTIVE'
-       and a.superseded_by is null
-       and a.id <> p_person
-       and (a.app_role = 'ADMIN'
-            or coalesce(a.department,'') in ('Human Resources','Business Excellence')
-            or exists (select 1 from person t
-                        where t.id = p_person and t.manager_id = a.id)));
+  select coalesce(perf_rel(p_actor, p_person) in ('manage','admin'), false)
 $function$
 ;
 
@@ -953,6 +849,24 @@ begin
     'lastFiled', (select max(e.as_of) from perf_entry e where e.assignment_id = a.id),
     'parts', parts, 'team', team);
 end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_rel(p_actor uuid, p_person uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select case
+    when p_actor is null or p_person is null then null
+    when p_actor = p_person then 'self'
+    when exists (select 1 from person a
+                  where a.id = p_actor and a.app_role = 'ADMIN'
+                    and a.employment_status = 'ACTIVE' and a.superseded_by is null) then 'admin'
+    else (select case when l.depth = 1 then 'manage' else 'watch' end
+            from perf_line(p_actor) l where l.person_id = p_person)
+  end
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_reminder_sweep(p_on date DEFAULT CURRENT_DATE)
@@ -1104,6 +1018,27 @@ begin
            || c.period_start || ' ' || case when current_date <= c.assign_closes
               then 'is open until ' || c.assign_closes else 'closed on ' || c.assign_closes end || '.'
       else null end);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_tree_for(p_actor uuid, p_person uuid, p_cycle uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_rel text; v_out jsonb;
+begin
+  v_rel := perf_rel(p_actor, p_person);
+  if v_rel is null then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line. You see your own team, and the progress of everyone below them.');
+  end if;
+  v_out := perf_tree(p_person, p_cycle);
+  if jsonb_typeof(v_out) = 'object' then
+    v_out := v_out || jsonb_build_object('rel', v_rel, 'maySet', v_rel in ('self','manage','admin'));
+  end if;
+  return v_out;
 end $function$
 ;
 
@@ -3077,6 +3012,16 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.plb_sheet_rel(p_actor uuid, p_sheet uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select perf_rel(p_actor, s.person_id) from plb_goal_sheet s where s.id = p_sheet
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_unseated()
  RETURNS jsonb
  LANGUAGE sql
@@ -3371,83 +3316,6 @@ AS $function$
     from ppl p
     join pms_cycle cy on cy.person_id = p.person_id and cy.period = p_period
     cross join lateral pms_cycle_score(cy.id, false) s
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_weighting_for(p_person uuid, p_on date DEFAULT CURRENT_DATE)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare w pms_weighting; v_next date; v_scope text;
-begin
-  select * into w from pms_weighting
-   where person_id = p_person and effective_from <= p_on
-   order by effective_from desc limit 1;
-  if w.id is not null then v_scope := 'you'; end if;
-
-  if w.id is null then
-    select pw.* into w from pms_weighting pw
-     where pw.chair_id is not null and pw.effective_from <= p_on
-       and exists (select 1 from chair_holder h
-                    where h.person_id = p_person and h.chair_id = pw.chair_id
-                      and (h.to_date is null or h.to_date >= p_on))
-     order by pw.effective_from desc limit 1;
-    if w.id is not null then v_scope := 'your chair'; end if;
-  end if;
-
-  if w.id is null then
-    select * into w from pms_weighting
-     where scope_all and effective_from <= p_on
-     order by effective_from desc limit 1;
-    if w.id is not null then v_scope := 'everybody'; end if;
-  end if;
-
-  if w.id is not null then
-    return jsonb_build_object(
-      'applies', true, 'scope', v_scope,
-      'kpiPercent', w.kpi_percent, 'attrPercent', w.attr_percent,
-      'effectiveFrom', w.effective_from,
-      'note', 'A monthly score is ' || w.kpi_percent || '% of the KPI score and '
-              || w.attr_percent || '% of the Attribute score, both out of ten.');
-  end if;
-
-  select min(pw2.effective_from) into v_next from pms_weighting pw2
-   where pw2.effective_from > p_on
-     and (pw2.scope_all or pw2.person_id = p_person
-          or exists (select 1 from chair_holder h
-                      where h.person_id = p_person and h.chair_id = pw2.chair_id));
-
-  return jsonb_build_object(
-    'applies', false, 'scope', null,
-    'kpiPercent', null, 'attrPercent', null,
-    'startsOn', v_next,
-    'note', case when v_next is null
-                 then 'No KPI/Attribute split has been set, so no monthly score can be worked out. '
-                      || 'Admin or HR sets one on the Performance screen.'
-                 else 'The scheme starts on ' || to_char(v_next, 'FMDD Month YYYY')
-                      || '. Nothing is scored before then.' end);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_window_may_open(p_person uuid, p_period date)
- RETURNS boolean
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  select not exists (
-    select 1
-    from chair_holder ch
-    join chair c on c.id = ch.chair_id
-    join chair_holder sub_h on true
-    join chair sub on sub.id = sub_h.chair_id and sub.parent_id = c.id
-    left join pms_cycle pc on pc.person_id = sub_h.person_id and pc.period = p_period
-    where ch.person_id = p_person and ch.to_date is null and sub_h.to_date is null
-      and coalesce(pc.state, 'PENDING') <> 'CLOSED'
-  )
-  or not (select coalesce(value, 'Yes') like 'Y%' from app_setting where key = 'pms_bottom_up');
 $function$
 ;
 

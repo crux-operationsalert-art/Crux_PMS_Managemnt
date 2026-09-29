@@ -8,110 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.matrix_scope_branches(p_person uuid)
- RETURNS TABLE(branch_id uuid)
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select b.id from branch b
-   where exists (select 1 from person p where p.id = p_person and p.app_role = 'ADMIN')
-  union
-  select distinct b.id
-    from coverage_rule r
-    cross join lateral coverage_resolve(r) cr(branch_id)
-    join branch b on b.id = cr.branch_id
-   where r.person_id = p_person
-     and (r.effective_to is null or r.effective_to >= current_date);
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.matrix_send(p_person uuid, p_client uuid, p_period date, p_to text[], p_note text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  pack jsonb; v_view text; v_period date; d matrix_dispatch;
-  body text; b jsonb; lv jsonb; again boolean := false;
-begin
-  v_view := matrix_client_view(p_person);
-  if v_view not in ('matrix','full') then
-    return jsonb_build_object('error','read_only',
-      'reason','Operations owns the matrix. Your function may read it and not send it.');
-  end if;
-
-  v_period := date_trunc('month', p_period)::date;
-  pack := matrix_pack(p_person, p_client, v_period);
-  if pack ? 'error' then return pack; end if;
-  if (pack->>'ready')::int = 0 then
-    return jsonb_build_object('error','nothing_complete', 'reason', pack->>'says');
-  end if;
-  if p_to is null or array_length(p_to, 1) is null then
-    return jsonb_build_object('error','no_recipient',
-      'reason','Nobody was named to send it to. The client''s contacts are on the pack; pick at least one.');
-  end if;
-
-  body := 'Escalation matrix for ' || (pack#>>'{client,name}') || ' -- '
-       || to_char(v_period, 'FMMonth YYYY') || E'\n\n';
-  for b in select jsonb_array_elements(pack->'branches') loop
-    body := body || (b->>'name') || ' (' || coalesce(b->>'code','') || ')' || E'\n';
-    for lv in select jsonb_array_elements(b->'levels') loop
-      body := body || '  L' || (lv->>'level') || '  ' || coalesce(lv->>'levelName','')
-           || ' -- ' || coalesce(lv->>'name','')
-           || case when coalesce(lv->>'mobile','') <> '' then ', ' || (lv->>'mobile') else '' end
-           || case when coalesce(lv->>'email','')  <> '' then ', ' || (lv->>'email')  else '' end
-           || E'\n';
-    end loop;
-    body := body || E'\n';
-  end loop;
-  if (pack->>'incomplete')::int > 0 then
-    body := body || 'Not included this month, because a level is still blank:' || E'\n';
-    for b in select jsonb_array_elements(pack->'heldBack') loop
-      body := body || '  ' || (b->>'name') || ' (' || coalesce(b->>'code','') || ') -- '
-           || (b->>'missing') || ' level(s) missing' || E'\n';
-    end loop;
-    body := body || E'\n';
-  end if;
-  if coalesce(btrim(p_note),'') <> '' then body := body || p_note || E'\n'; end if;
-
-  select * into d from matrix_dispatch where client_id = p_client and period = v_period;
-  again := d.id is not null and d.sent_at is not null;
-
-  insert into matrix_dispatch (client_id, period, snapshot, branch_count, held_back,
-                               recipients, prepared_by, sent_at, note)
-  values (p_client, v_period, pack, (pack->>'ready')::int, (pack->>'incomplete')::int,
-          p_to, p_person, now(), p_note)
-  on conflict (client_id, period) do update
-    set snapshot = excluded.snapshot, branch_count = excluded.branch_count,
-        held_back = excluded.held_back, recipients = excluded.recipients,
-        prepared_by = excluded.prepared_by, sent_at = now(), note = excluded.note
-  returning * into d;
-
-  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
-  values (p_person, case when again then 'MATRIX_RESENT' else 'MATRIX_SENT' end,
-          'client', p_client::text, null,
-          jsonb_build_object('period', v_period, 'to', to_jsonb(p_to),
-                             'branches', (pack->>'ready')::int,
-                             'heldBack', (pack->>'incomplete')::int));
-
-  return jsonb_build_object('ok', true, 'dispatchId', d.id, 'period', v_period,
-    'subject', 'Escalation matrix -- ' || (pack#>>'{client,name}') || ' -- '
-               || to_char(v_period, 'FMMonth YYYY'),
-    'body', body, 'to', to_jsonb(p_to),
-    'branches', (pack->>'ready')::int, 'heldBack', (pack->>'incomplete')::int,
-    'note', case when again
-      then 'Sent again for ' || to_char(v_period, 'FMMonth YYYY')
-           || '. The earlier send is in the trail; this one replaces the snapshot.'
-      else (pack->>'ready') || ' branch(es) sent to ' || array_length(p_to,1) || ' recipient(s).'
-      end
-      || case when (pack->>'incomplete')::int > 0
-              then ' ' || (pack->>'incomplete') || ' held back and named in the letter.'
-              else '' end);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.may_edit_penalty_rule(p_person uuid)
  RETURNS boolean
  LANGUAGE sql
@@ -3774,6 +3670,210 @@ begin
                 severity     = excluded.severity
   returning id into v_id;
   return v_id;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ops_alert_resolve(p_dedupe_key text, p_note text DEFAULT NULL::text)
+ RETURNS integer
+ LANGUAGE sql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  with done as (
+    update ops_alert set resolved_at = now(), resolved_note = p_note
+     where dedupe_key = p_dedupe_key and resolved_at is null
+    returning 1)
+  select count(*)::int from done
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_chair(p_code text)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select jsonb_build_object(
+    'code', c.code, 'title', c.title, 'sg', c.sg_level,
+    'function', c.function_name, 'band', c.band, 'purpose', c.purpose,
+    'parent', (select p.title from chair p where p.id = c.parent_id),
+    'reports', coalesce((select jsonb_agg(k.title order by k.title)
+                         from chair k where k.parent_id = c.id), '[]'::jsonb),
+    'track', t.name,
+    'knowledge_test', t.knowledge_test,
+    'unlock', t.unlock,
+    'headcount', (select count(distinct person_id) from chair_holder ch
+                   where ch.chair_id = c.id and ch.to_date is null),
+    'seatings', coalesce((select jsonb_agg(jsonb_build_object(
+                   'scope', cs.scope_label, 'holder', cs.holder_text, 'note', cs.note,
+                   'people', coalesce((select jsonb_agg(pe.full_name order by pe.full_name)
+                              from chair_holder ch join person pe on pe.id = ch.person_id
+                              where ch.seating_id = cs.id and ch.to_date is null), '[]'::jsonb))
+                   order by cs.scope_label nulls first)
+                 from chair_seating cs where cs.chair_id = c.id), '[]'::jsonb),
+    -- the places this chair has, so a missing one can be chosen rather than typed
+    'places', coalesce((select jsonb_agg(jsonb_build_object(
+                   'id', cs.id, 'scope', coalesce(cs.scope_label, 'No particular place'))
+                   order by cs.scope_label nulls first)
+                 from chair_seating cs where cs.chair_id = c.id), '[]'::jsonb),
+    'unplaced', coalesce((select jsonb_agg(jsonb_build_object(
+                   'holder', ch.id, 'name', pe.full_name) order by pe.full_name)
+                 from chair_holder ch join person pe on pe.id = ch.person_id
+                 where ch.chair_id = c.id and ch.to_date is null and ch.seating_id is null),
+                 '[]'::jsonb),
+    'accountabilities', coalesce((select jsonb_agg(a.statement order by a.ord)
+                 from chair_accountability a where a.chair_id = c.id), '[]'::jsonb),
+    'measures', coalesce((select jsonb_agg(m.statement order by m.ord)
+                 from chair_measure m where m.chair_id = c.id), '[]'::jsonb),
+    'decides', coalesce((select jsonb_agg(a.statement order by a.ord)
+                 from chair_authority a where a.chair_id = c.id and a.kind='DECIDE'), '[]'::jsonb),
+    'escalates', coalesce((select jsonb_agg(a.statement order by a.ord)
+                 from chair_authority a where a.chair_id = c.id and a.kind='ESCALATE'), '[]'::jsonb),
+    'tasks', coalesce((select jsonb_agg(jsonb_build_object('task', tk.task,
+                   'subtasks', coalesce((select jsonb_agg(st.statement order by st.ord)
+                                from chair_subtask st where st.task_id = tk.id), '[]'::jsonb))
+                   order by tk.ord)
+                 from chair_task tk where tk.chair_id = c.id), '[]'::jsonb),
+    'owns', coalesce((select jsonb_agg(jsonb_build_object('ref', x.ref, 'name', x.name) order by x.ref)
+                 from process x where x.owner_chair_id = c.id), '[]'::jsonb),
+    'parts', coalesce((select jsonb_agg(jsonb_build_object(
+                   'part', pp.part, 'ref', x.ref, 'name', x.name) order by pp.part, x.ref)
+                 from process_party pp join process x on x.id = pp.process_id
+                 where pp.chair_id = c.id), '[]'::jsonb),
+    'receives', coalesce((select jsonb_agg(jsonb_build_object(
+                   'what', pi.what, 'from', fc.title, 'for', x.name) order by pi.what)
+                 from process_input pi
+                 join process x on x.id = pi.process_id
+                 join chair fc on fc.id = pi.from_chair_id
+                 where x.owner_chair_id = c.id), '[]'::jsonb),
+    'supplies', coalesce((select jsonb_agg(jsonb_build_object(
+                   'what', pi.what, 'to', oc.title, 'for', x.name) order by pi.what)
+                 from process_input pi
+                 join process x on x.id = pi.process_id
+                 join chair oc on oc.id = x.owner_chair_id
+                 where pi.from_chair_id = c.id), '[]'::jsonb),
+    'levels', coalesce((select jsonb_agg(jsonb_build_object(
+                   'level', l.level, 'name', l.level_name, 'requirement', l.requirement,
+                   'qualification', l.qualification, 'experience', l.experience,
+                   'certification', l.certification, 'test', l.test_score, 'evidence', l.evidence)
+                   order by l.level)
+                 from capability_level l where l.track_id = t.id), '[]'::jsonb),
+    'topics', coalesce((select jsonb_agg(k.topic order by k.ord)
+                 from capability_topic k where k.track_id = t.id), '[]'::jsonb),
+    'psychometric', coalesce((select jsonb_agg(jsonb_build_object(
+                   'instrument', ps.instrument, 'standard', ps.standard) order by ps.ord)
+                 from capability_psychometric ps where ps.track_id = t.id), '[]'::jsonb)
+  )
+  from chair c
+  left join capability_track t on t.id = c.capability_track_id
+  where c.code = p_code;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_chart()
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select jsonb_build_object(
+    'stats', jsonb_build_object(
+      'seats',     (select count(*) from chair),
+      'seatings',  (select count(*) from chair_seating),
+      'processes', (select count(*) from process),
+      'tracks',    (select count(*) from capability_track),
+      'people',    (select count(distinct person_id) from chair_holder where to_date is null)
+    ),
+    'seats', coalesce((
+      select jsonb_agg(s order by s->>'sg' desc, s->>'title')
+      from (
+        select jsonb_build_object(
+          'code',     c.code,
+          'title',    c.title,
+          'sg',       c.sg_level,
+          'function', c.function_name,
+          'band',     c.band,
+          'purpose',  c.purpose,
+          'parent',   p.code,
+          'track',    t.name,
+          'owns',     (select count(*) from process x where x.owner_chair_id = c.id),
+          'does',     (select count(*) from process_party x where x.chair_id = c.id and x.part='R'),
+          'advises',  (select count(*) from process_party x where x.chair_id = c.id and x.part='C'),
+          'informed', (select count(*) from process_party x where x.chair_id = c.id and x.part='I'),
+          -- the places this seat is held, each with the people placed there
+          'seatings', coalesce((
+             select jsonb_agg(jsonb_build_object(
+                      'scope',      cs.scope_label,
+                      'holder',     cs.holder_text,
+                      'note',       cs.note,
+                      'reports_to', rp.code,
+                      'people',     coalesce((
+                         select jsonb_agg(pe.full_name order by pe.full_name)
+                         from chair_holder ch join person pe on pe.id = ch.person_id
+                         where ch.seating_id = cs.id and ch.to_date is null), '[]'::jsonb))
+                    order by cs.scope_label nulls first)
+             from chair_seating cs
+             left join chair rp on rp.id = cs.reports_to_chair_id
+             where cs.chair_id = c.id), '[]'::jsonb),
+          -- people on this chair whom the document did not place
+          'holders', coalesce((
+             select jsonb_agg(jsonb_build_object('name', pe.full_name, 'email', pe.work_email)
+                    order by pe.full_name)
+             from chair_holder ch join person pe on pe.id = ch.person_id
+             where ch.chair_id = c.id and ch.to_date is null and ch.seating_id is null), '[]'::jsonb),
+          'headcount', (select count(distinct person_id) from chair_holder ch
+                         where ch.chair_id = c.id and ch.to_date is null)
+        ) as s
+        from chair c
+        left join chair p on p.id = c.parent_id
+        left join capability_track t on t.id = c.capability_track_id
+      ) q
+    ), '[]'::jsonb)
+  );
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_place_holder(p_actor uuid, p_holder uuid, p_seating uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_role role_kind; h chair_holder; s chair_seating; v_name text;
+begin
+  select app_role into v_role from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if v_role is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_admin',
+      'reason','Recording where a chair is held is an administrator''s to do.');
+  end if;
+
+  select * into h from chair_holder where id = p_holder;
+  if h.id is null then return jsonb_build_object('error','no_such_holder'); end if;
+
+  if p_seating is null then
+    update chair_holder set seating_id = null where id = p_holder;
+    return jsonb_build_object('ok', true, 'place', null);
+  end if;
+
+  select * into s from chair_seating where id = p_seating;
+  if s.id is null then return jsonb_build_object('error','no_such_place'); end if;
+  if s.chair_id <> h.chair_id then
+    return jsonb_build_object('error','wrong_chair',
+      'reason','That place belongs to a different chair. Change the chair first.');
+  end if;
+
+  update chair_holder set seating_id = p_seating where id = p_holder;
+
+  select full_name into v_name from person where id = h.person_id;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor, 'CHAIR_HOLDER_PLACED', 'chair_holder', p_holder::text,
+          jsonb_build_object('seating_id', h.seating_id),
+          jsonb_build_object('seating_id', p_seating, 'person', v_name,
+                             'place', s.scope_label));
+
+  return jsonb_build_object('ok', true, 'person', v_name,
+    'place', coalesce(s.scope_label, 'No particular place'));
 end $function$
 ;
 
