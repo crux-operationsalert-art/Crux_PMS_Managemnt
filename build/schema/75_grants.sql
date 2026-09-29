@@ -628,6 +628,7 @@ grant execute on function public.perf_node(p_assignment uuid, p_depth integer) t
 grant execute on function public.perf_rel(p_actor uuid, p_person uuid) to service_role;
 grant execute on function public.perf_reminder_sweep(p_on date) to service_role;
 grant execute on function public.perf_roll_forward(p_day date, p_centre text) to service_role;
+grant execute on function public.perf_seed_from_registry(p_actor uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_tree(p_person uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_tree_for(p_actor uuid, p_person uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_value(p_assignment uuid, p_depth integer) to service_role;
