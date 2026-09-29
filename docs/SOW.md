@@ -532,7 +532,87 @@ seating tree carrying weight it could not carry before.
 
 ## 3 · "You have not pre uploaded the KPIs"
 
-In progress. See the status table below for where this stands.
+Correct, and the shape of it is worth being exact about, because two
+different things get called "the KPIs":
+
+| | | |
+|---|---|---|
+| `kpi_definition` | **173 rows across 42 chairs** | the **registry** — what a *chair* is measured on. Loaded, and has been. |
+| `perf_assignment` | **0** | what one **person** is measured on, this cycle, with a target |
+| `kpi_target` | 0 | |
+| `plb_goal_sheet` | 0 | |
+
+So the registry was there and not one person had been given anything out of
+it. Everybody opened Performance to an empty screen, and the screen was
+telling the truth.
+
+### What the Constitution already said to do — migration 221
+
+This is not a new policy. The PLB Constitution issues a goal sheet by day 10
+and has a **day-15 backstop: where no sheet has been issued, the chair's
+standard sheet applies.** `perf_seed_from_registry(actor, cycle)` is that
+backstop written down — every seated person gets the measures their own chair
+is measured on.
+
+**The target arrives blank, deliberately.** A KPI without a target is a
+person who knows what they are measured on and is waiting to agree how much.
+A KPI with a target nobody agreed is a person held to a figure they never
+saw, and at the end of the quarter that figure is multiplied into their pay.
+The first is an honest starting point; the second is the failure the whole
+scheme exists to prevent, and it would be the tool that caused it.
+
+`weight_pct` **is** filled, because it is not a judgement: the registry's own
+rule, the one `/registry` has always shown, is equal weighting across a
+chair's measures — `round(100 / count, 2)`.
+
+Run on the live database, for September and for October:
+
+> **364 measures given to 101 people, both months. Nobody left without a
+> measure set. Targets blank. 10 of them climb into a manager's.**
+
+Only ten climb, and that is reported rather than hidden: the registry names
+measures per chair, so a Branch Manager's "Cases closed" and a Zonal
+Manager's are two different rows. The link is matched on **name and unit**,
+not on `kpi_id` — matching on the id linked *nothing at all*, which is what
+`build/test/test_seed.sql` caught before it reached the live database.
+
+### One thing that will look like a fault and is not
+
+`perf_due` returns **nothing for anybody today**. That is correct. Every one
+of the 173 registry measures has cadence `MONTHLY`, and a monthly measure
+falls due on the cycle's own closing date — **7 October** for September, when
+every person has between four and six things to file. There is not one
+`DAILY` measure in the registry. If a daily rhythm is wanted, that is a
+change to the registry's cadences, not to the engine.
+
+## 4 · Five tables open to the publishable key — found, not reported
+
+Found by the project's own security advisor while working on defect 3.
+
+`perf_cycle`, `perf_assignment`, `perf_entry`, `matrix_dispatch` and
+`person_document` had **row level security off**. Every other table here —
+156 of them — has it on, and `build/schema/70_rls.sql` says why in its own
+header: the tool reaches the database through `SECURITY DEFINER` functions
+and the service role, so RLS on with no policy is closed to `anon` and to
+`authenticated`, which is what it should be. These five were created after
+that convention settled and did not get it.
+
+**This is defect 1 again, through a different door.** The publishable key is
+in the public repository on purpose; it grants nothing *because* every table
+is closed to it. These five were open, so
+`/rest/v1/perf_assignment` would have returned every person's KPIs and every
+number they had filed, to anybody, with no sign-in, bypassing `perf_line`,
+`perf_rel` and every gate migration 218 put in.
+
+Two things kept it from being a live breach: those tables were empty, and the
+application makes no PostgREST call at all — `index.html` contains zero
+`/rest/v1` references. The first stops being true the moment the KPIs are
+seeded, which is defect 3. **So migration 220 went first, before 221.**
+
+Migration 220 turns RLS on for all five and adds no policy, which is the
+intent and is checked rather than assumed. It also ends with an assertion, so
+a later migration that turns one back off fails the rebuild rather than
+waiting for the advisor to notice again.
 
 ---
 
@@ -563,7 +643,33 @@ In progress. See the status table below for where this stands.
 | Index of the design | **built — 34 sections, 474,875 bytes, counted** |
 | Tab mapping | **confirmed — all 20 routes present** |
 | Tabs audited | 1 of 34 — Performance |
-| Awaiting | nothing — Performance is audited, the fix is next |
+| Defect 1 · over-broad visibility | **closed** — 218 · 5,579 pairs → 478 · 97 people → 13 |
+| Defect 2 · the unplaced org chart | **closed** — 219 · 82 → 0, `org_unplaced()` returns nothing |
+| Defect 3 · the KPIs not pre-uploaded | **closed** — 221 · 364 measures to 101 people, two months |
+| Defect 4 · five tables open to anon | **closed** — 220 · found by the advisor, not reported |
+| Outstanding | **the `plb` Edge Function redeploy** — see below |
+
+### The one thing not done
+
+**`plb` is still running v5.** Migration 218 put the gate in the database and
+the repository's `plb/routes/plb.ts` is updated to call it, but the deploy was
+refused at the approval gate twice in a row and I stopped retrying rather than
+hammer it.
+
+What that leaves open, precisely: `GET /perf/tree`, `GET /perf/history` and
+`GET /perf/score` still call the ungated `perf_tree`, `perf_history` and
+`perf_kpi_score` rather than the `_for` wrappers, so a signed-in person who
+knows another person's id can still read their performance through those three
+routes. `GET /sheet/:id` still uses the old HR-or-administrator test.
+
+Everything else from 218 is live and enforcing, because it is in the database
+rather than in a route: `kpi_subtree_people`, `perf_may_set`, `perf_line` and
+`perf_rel` are what `kpi_save`, `kpi_retire`, `task_assign`, `perf_assign` and
+`perf_carry_forward` ask, and those are all closed now.
+
+The files to send are exactly the three in `build/supabase/functions/plb/`,
+and `index.ts` and `shim.ts` are byte-identical to the running v5 (verified
+against `git diff 1ba9656~1`), so only `routes/plb.ts` differs.
 
 ## Change log
 
@@ -571,3 +677,10 @@ In progress. See the status table below for where this stands.
 |---|---|---|
 | 2026-09-28 | New SOW; previous one archived | The method changed: whole-tool claims replaced by one screen at a time |
 | 2026-09-28 | Blueprint indexed into 34 measured sections | "Not matching the design" cannot be worked on until the design is enumerable |
+| 2026-09-29 | Performance routes moved to a sixth front door, `perf` | `plb` computes pay and deploys all-or-none; three new routes are not worth risking the quarterly scheme |
+| 2026-09-29 | Visibility is the reporting line, not the chair tree | The chair tree put every branch manager one step below every zonal manager, and the place filter that narrowed it opened itself for four in five people |
+| 2026-09-29 | HR and Business Excellence lose the blanket over every person | The rule as given has no room for it. Running the scheme is a different act and is untouched |
+| 2026-09-29 | A person sits where their manager sits | 69 of 82 unplaced holders were on chairs with no seat at all, so no amount of coverage data would have placed them |
+| 2026-09-29 | Vrunda Potdar seated with the place left open | She covers four regions and the chart has no seat that means four. Being in the line matters more than the label |
+| 2026-09-29 | RLS turned on for five tables the convention missed | Found by the advisor. Had to go before the KPI seed, which would have filled two of them |
+| 2026-09-29 | Targets seeded blank, on purpose | A target nobody agreed is multiplied into somebody's pay at the end of the quarter |
