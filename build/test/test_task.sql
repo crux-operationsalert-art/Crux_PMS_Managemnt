@@ -148,6 +148,28 @@ begin
     then raise notice 'PASS  the release dial matches, floor and all';
     else raise exception 'FAIL  the release dial does not match the Scorecard Guide'; end if;
 
+  -- ------------------------------------------------ which split applies to me
+  -- The Constitution is effective 1 October 2026. Asked before that, the answer
+  -- is "it has not started", not a blank and not an invented split.
+  if not (pms_weighting_for(v_a, date '2026-09-29')->>'applies')::boolean
+     and (pms_weighting_for(v_a, date '2026-09-29')->>'startsOn') = '2026-10-01'
+    then raise notice 'PASS  before it starts, the split says when it starts';
+    else raise exception 'FAIL  a split applied before its own effective date'; end if;
+
+  if (pms_weighting_for(v_a, date '2026-10-01')->>'kpiPercent')::numeric = 75
+     and (pms_weighting_for(v_a, date '2026-10-01')->>'scope') = 'everybody'
+    then raise notice 'PASS  and from that day the company-wide rule applies';
+    else raise exception 'FAIL  the split did not resolve on the day it starts'; end if;
+
+  -- A rule about one person beats the rule about everybody.
+  insert into pms_weighting (scope_all, person_id, kpi_percent, attr_percent, effective_from)
+  values (false, v_a, 60, 40, date '2026-10-01');
+  if (pms_weighting_for(v_a, date '2026-10-01')->>'kpiPercent')::numeric = 60
+     and (pms_weighting_for(v_a, date '2026-10-01')->>'scope') = 'you'
+     and (pms_weighting_for(v_b, date '2026-10-01')->>'kpiPercent')::numeric = 75
+    then raise notice 'PASS  a rule about you beats the rule about everybody, and only for you';
+    else raise exception 'FAIL  precedence between a personal and a company rule is wrong'; end if;
+
   -- the Constitution's own five worked examples, on its own base case
   if round(50000 * plb_payout_factor(100)/100.0 * plb_consistency(8.0), 2) = 44000
  and round(50000 * plb_payout_factor(78) /100.0 * plb_consistency(9.0), 2) = 36000
