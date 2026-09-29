@@ -167,5 +167,19 @@ insert into public.access_department_level (department, level) values
   ('MIS', 'analytics')
 on conflict do nothing;
 
+insert into public.pms_weighting (id, scope_all, chair_id, person_id, kpi_percent, attr_percent, effective_from, set_by) values
+  ('af1e1457-6cbb-4532-bbe1-7a67ef23c467', 'true', null, null, '75', '25', '2026-10-01', null)
+on conflict do nothing;
+
+insert into public.pms_curve_band (id, effective_fy, rank, label, share_pct) values
+  ('26458bcc-7819-421a-ad61-0acec664edea', '2026-27', '2', 'Exceeds', '15'),
+  ('a354bd5c-029f-4cf0-9438-0e0d541d1f05', '2026-27', '3', 'Meets', '60'),
+  ('ab73f187-abd3-4fee-b3eb-94b222aa45e2', '2026-27', '4', 'Below', '15'),
+  ('d34b70a5-6ecb-4b84-8cd6-a77923b662ca', '2026-27', '5', 'Unsatisfactory', '5'),
+  ('ff007538-af51-4277-810a-1ecdb9f85b55', '2026-27', '1', 'Outstanding', '5')
+on conflict do nothing;
+
+-- pms_impact is empty
+
 
 
