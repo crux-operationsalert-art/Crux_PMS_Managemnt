@@ -8,21 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.next_ref(p_prefix text, p_width integer DEFAULT 5)
- RETURNS text
- LANGUAGE plpgsql
- SET search_path TO 'public'
-AS $function$
-declare v bigint;
-begin
-  insert into ref_counter (prefix, last_no) values (p_prefix, 0)
-    on conflict (prefix) do nothing;
-  update ref_counter set last_no = last_no + 1
-   where prefix = p_prefix returning last_no into v;
-  return p_prefix || '-' || lpad(v::text, p_width, '0');
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_actions(p_assignment uuid, p_person uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3964,6 +3949,56 @@ begin
    where id = p_id;
   insert into delivery (outbox_id, channel, recipient, state, error, at)
   select p_id, 'EMAIL', recipient, 'FAILED', p_error, now() from outbox where id = p_id;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.outbox_mirror_to_whatsapp()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_policy text; v_mobile text; v_text text;
+begin
+  v_policy := coalesce(nullif((select value from app_setting where key='whatsapp_mirror'),''), 'all');
+  if v_policy = 'off' then return new; end if;
+  if v_policy <> 'all'
+     and position(new.template_key in v_policy) = 0 then
+    return new;
+  end if;
+
+  select p.mobile into v_mobile
+    from person p
+   where p.superseded_by is null
+     and lower(p.work_email) = lower(new.recipient)
+     and p.mobile is not null
+   limit 1;
+  if v_mobile is null then return new; end if;
+
+  -- WhatsApp has no subject line, and a body written for e-mail carries
+  -- markup. Give the reader the subject, then the text, laid out as it read.
+  v_text := regexp_replace(new.body, '</(p|div|tr|li|h[1-6])>', E'\n', 'gi');
+  v_text := regexp_replace(v_text, '<br\s*/?>', E'\n', 'gi');
+  v_text := regexp_replace(v_text, '<[^>]+>', '', 'g');
+  v_text := replace(replace(replace(replace(replace(v_text,
+              '&amp;','&'), '&lt;','<'), '&gt;','>'), '&nbsp;',' '), '&quot;','"');
+  v_text := btrim(regexp_replace(v_text, '[ \t]*\n[ \t]*', E'\n', 'g'));
+  v_text := regexp_replace(v_text, '\n{3,}', E'\n\n', 'g');
+  v_text := new.subject || E'\n\n' || v_text;
+
+  if length(v_text) > 900 then
+    v_text := left(v_text, 880) || E'\n\n[...] See the e-mail for the rest.';
+  end if;
+
+  perform wa_enqueue(
+    new.template_key, v_mobile, v_text,
+    new.entity_type, new.entity_id, new.not_before,
+    'mirror:' || new.idempotency_key);
+
+  return new;
+exception when others then
+  -- a mirror must never be the reason an e-mail fails to queue
+  return new;
 end $function$
 ;
 

@@ -8,56 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.outbox_mirror_to_whatsapp()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_policy text; v_mobile text; v_text text;
-begin
-  v_policy := coalesce(nullif((select value from app_setting where key='whatsapp_mirror'),''), 'all');
-  if v_policy = 'off' then return new; end if;
-  if v_policy <> 'all'
-     and position(new.template_key in v_policy) = 0 then
-    return new;
-  end if;
-
-  select p.mobile into v_mobile
-    from person p
-   where p.superseded_by is null
-     and lower(p.work_email) = lower(new.recipient)
-     and p.mobile is not null
-   limit 1;
-  if v_mobile is null then return new; end if;
-
-  -- WhatsApp has no subject line, and a body written for e-mail carries
-  -- markup. Give the reader the subject, then the text, laid out as it read.
-  v_text := regexp_replace(new.body, '</(p|div|tr|li|h[1-6])>', E'\n', 'gi');
-  v_text := regexp_replace(v_text, '<br\s*/?>', E'\n', 'gi');
-  v_text := regexp_replace(v_text, '<[^>]+>', '', 'g');
-  v_text := replace(replace(replace(replace(replace(v_text,
-              '&amp;','&'), '&lt;','<'), '&gt;','>'), '&nbsp;',' '), '&quot;','"');
-  v_text := btrim(regexp_replace(v_text, '[ \t]*\n[ \t]*', E'\n', 'g'));
-  v_text := regexp_replace(v_text, '\n{3,}', E'\n\n', 'g');
-  v_text := new.subject || E'\n\n' || v_text;
-
-  if length(v_text) > 900 then
-    v_text := left(v_text, 880) || E'\n\n[...] See the e-mail for the rest.';
-  end if;
-
-  perform wa_enqueue(
-    new.template_key, v_mobile, v_text,
-    new.entity_type, new.entity_id, new.not_before,
-    'mirror:' || new.idempotency_key);
-
-  return new;
-exception when others then
-  -- a mirror must never be the reason an e-mail fails to queue
-  return new;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.outbox_requeue()
  RETURNS integer
  LANGUAGE plpgsql
@@ -409,7 +359,7 @@ begin
 end $function$
 ;
 
-CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text)
+CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text, p_kind text)
  RETURNS uuid
  LANGUAGE plpgsql
  STABLE SECURITY DEFINER
@@ -427,6 +377,7 @@ begin
      where a.cycle_id = p_cycle and a.person_id = v_up and a.part_of_id is null
        and perf_family(a.unit) = p_family
        and perf_direction(a.unit) = p_direction
+       and perf_accrual_kind(a.kpi_id, a.unit) = p_kind
      order by a.id limit 1;
     if v_into is not null then return v_into; end if;
   end loop;
@@ -843,6 +794,45 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_org_rollup(p_actor uuid, p_cycle uuid, p_person uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_who uuid; v_rel text;
+begin
+  v_who := coalesce(p_person, p_actor);
+  v_rel := perf_rel(p_actor, v_who);
+  if v_rel is null then
+    return jsonb_build_object('error','not_permitted','reason','That person is not in your line.');
+  end if;
+  return jsonb_build_object(
+    'rel', v_rel,
+    'person', (select jsonb_build_object('personId', p.id, 'name', p.full_name,
+                        'employeeNo', p.employee_no, 'department', p.department)
+                 from person p where p.id = v_who),
+    'teamSize', (select count(*) from perf_line(v_who)),
+    'measures', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'assignmentId', a.id, 'name', a.name, 'unit', a.unit,
+               'family', perf_family(a.unit), 'direction', perf_direction(a.unit),
+               'kind', perf_accrual_kind(a.kpi_id, a.unit),
+               'target', a.target_value, 'targetSource', a.target_source,
+               'value', perf_value(a.id),
+               'pct', case when coalesce(a.target_value,0) = 0 then null
+                           else round(100.0 * perf_value(a.id) / a.target_value, 1) end,
+               'feeders', (select count(*) from perf_assignment c where c.rolls_into_id = a.id),
+               'filedToday', exists (select 1 from perf_entry e
+                                      where e.assignment_id = a.id and e.as_of = current_date),
+               'lastFiled', (select max(e.as_of) from perf_entry e where e.assignment_id = a.id))
+             order by a.name)
+        from perf_assignment a
+       where a.person_id = v_who and a.cycle_id = p_cycle and a.part_of_id is null),
+      '[]'::jsonb));
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_rel(p_actor uuid, p_person uuid)
  RETURNS text
  LANGUAGE sql
@@ -883,22 +873,19 @@ begin
 
   for r in
     select a.id, a.person_id, perf_family(a.unit) as fam,
-           perf_direction(a.unit) as dir, m.parent_family as mapped
+           perf_direction(a.unit) as dir,
+           perf_accrual_kind(a.kpi_id, a.unit) as kind,
+           m.parent_family as mapped
       from perf_assignment a
       left join perf_rollup_map m on m.child_family = perf_family(a.unit)
                                  and m.parent_family <> perf_family(a.unit)
      where a.cycle_id = p_cycle and a.part_of_id is null
        and perf_family(a.unit) is not null
   loop
-    -- SAME family first: a Team Leader's D3 into a Branch Manager's D3,
-    -- two levels, one code, no map row wanted. Looking at the map first
-    -- sent that one past its own parent to a grandparent's D8.
-    -- MAPPED family second, only when nobody above carries the same one.
-    v_into := perf_climb(p_cycle, r.person_id, r.fam, r.dir);
+    v_into := perf_climb(p_cycle, r.person_id, r.fam, r.dir, r.kind);
     if v_into is null and r.mapped is not null then
-      v_into := perf_climb(p_cycle, r.person_id, r.mapped, r.dir);
+      v_into := perf_climb(p_cycle, r.person_id, r.mapped, r.dir, r.kind);
     end if;
-
     if v_into is null then v_top := v_top + 1;
     else
       update perf_assignment set rolls_into_id = v_into where id = r.id;
@@ -911,8 +898,7 @@ begin
           jsonb_build_object('linked', v_linked, 'cleared', v_cleared, 'topOfAChain', v_top));
 
   return jsonb_build_object('ok', true, 'linked', v_linked, 'cleared', v_cleared,
-    'topOfAChain', v_top,
-    'note', v_linked || ' measure(s) now climb. ' || v_top || ' are the top of their own chain, which is where a number stops.');
+    'topOfAChain', v_top);
 end $function$
 ;
 
@@ -1146,6 +1132,60 @@ begin
     'note', v_made || ' measure(s) given to ' || v_people || ' people for '
             || c.period_start || ', with the targets blank. '
             || v_linked || ' of them climb into a manager''s.');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_seed_targets(p_actor uuid, p_cycle uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_role role_kind; r record;
+  v_set int := 0; v_kept int := 0; v_daily int := 0; v_moved int := 0;
+  v_target numeric; v_stated numeric; u text;
+begin
+  select app_role into v_role from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if v_role is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_admin',
+      'reason','Seeding the company''s targets is an administrator''s.');
+  end if;
+  update perf_assignment set cadence = 'DAILY'::kpi_cadence
+   where cycle_id = p_cycle and coalesce(cadence::text,'') <> 'DAILY';
+  get diagnostics v_daily = row_count;
+  for r in
+    select a.id, a.unit, a.target_value, a.target_source,
+           perf_accrual_kind(a.kpi_id, a.unit) as kind
+      from perf_assignment a
+     where a.cycle_id = p_cycle and a.part_of_id is null order by a.id
+  loop
+    if r.target_source = 'MANUAL' or r.target_value is not null then
+      v_kept := v_kept + 1; continue;
+    end if;
+    u := lower(coalesce(r.unit, ''));
+    v_stated := nullif(substring(u from 'target (?:below |above )?([0-9]+(?:\.[0-9]+)?)'), '')::numeric;
+    if u like '%target zero%' then v_stated := 0; end if;
+    if v_stated is not null then v_target := v_stated;
+    elsif r.kind = 'LEVEL' then
+      if perf_direction(r.unit) = 'CEILING' then v_target := 5; else v_target := 90; end if;
+    else v_target := 100; end if;
+    update perf_assignment set target_value = v_target, target_source = 'SEEDED' where id = r.id;
+    v_set := v_set + 1;
+  end loop;
+  for r in
+    select a.id from perf_assignment a
+     where a.cycle_id = p_cycle and a.rolls_into_id is null and a.part_of_id is null
+       and exists (select 1 from perf_assignment c where c.rolls_into_id = a.id)
+  loop
+    v_moved := v_moved + perf_cascade(r.id);
+  end loop;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor, 'PERF_TARGETS_SEEDED', 'perf_cycle', p_cycle::text,
+          jsonb_build_object('set', v_set, 'kept', v_kept, 'madeDaily', v_daily, 'sharesMoved', v_moved));
+  return jsonb_build_object('ok', true, 'set', v_set, 'kept', v_kept,
+    'madeDaily', v_daily, 'sharesMoved', v_moved);
 end $function$
 ;
 
@@ -3468,54 +3508,5 @@ AS $function$
        from app_setting where key = p_key),
     p_default)
 $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_cycle_score(p_cycle uuid, p_include_team boolean DEFAULT true)
- RETURNS TABLE(kpi numeric, attr numeric, final numeric, own numeric, cut numeric, held numeric, floored boolean, team_avg numeric)
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare
-  st record;
-  cy record;
-  w_kpi numeric := pms_cfg('pms_wkpi', 70);
-  share numeric := pms_cfg('pms_team_share', 50) / 100.0;
-  floor_score numeric := pms_cfg('pms_probation', 5);
-  has_base boolean;
-begin
-  select * into cy from pms_cycle c where c.id = p_cycle;
-  if not found then return; end if;
-  select * into st from pms_cycle_state(p_cycle);
-
-  select exists (select 1 from pms_component where cycle_id = p_cycle
-                  and kind in ('KPI','ATTRIBUTE')) into has_base;
-  if not has_base then
-    kpi := null; attr := null; final := null; own := null;
-    cut := st.cut; held := st.held; floored := false; team_avg := null;
-    return next; return;
-  end if;
-
-  kpi := st.kpi; own := st.attr; cut := st.cut; held := st.held;
-  team_avg := null;
-
-  if p_include_team then
-    team_avg := pms_team_average(cy.person_id, cy.period);
-    if team_avg is not null then
-      attr := own * (1 - share) + team_avg * share;
-    else
-      attr := own;
-    end if;
-  else
-    attr := own;
-  end if;
-
-  attr := greatest(0, least(10, attr));
-  final := (kpi * w_kpi + attr * (100 - w_kpi)) / 100.0;
-
-  floored := cy.on_probation and final < floor_score;
-  if floored then final := floor_score; end if;
-  return next;
-end $function$
 ;
 

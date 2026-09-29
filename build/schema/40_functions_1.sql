@@ -2917,3 +2917,18 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.next_ref(p_prefix text, p_width integer DEFAULT 5)
+ RETURNS text
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+declare v bigint;
+begin
+  insert into ref_counter (prefix, last_no) values (p_prefix, 0)
+    on conflict (prefix) do nothing;
+  update ref_counter set last_no = last_no + 1
+   where prefix = p_prefix returning last_no into v;
+  return p_prefix || '-' || lpad(v::text, p_width, '0');
+end $function$
+;
+
