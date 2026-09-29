@@ -185,13 +185,21 @@ comment on function perf_direction(text) is
   'the same quantity even where the registry gives them one family code.';
 
 -- ----------------------------------------------------------- the climb
+-- Three things have to agree before one measure climbs into another:
+-- the FAMILY, the DIRECTION, and the KIND. Each of the three was added
+-- after the one before it let something meaningless through, and the last
+-- one was found on the live data rather than in a test: a Branch
+-- Manager's "% of cases within TAT" was climbing into the Managing
+-- Director's "branches operational against plan", and the count cascading
+-- back down had given sixty-three executives a target of 1.61.
+--
 -- The nearest person above this one, in the reporting line, who carries
 -- this measure family. Nearest, not the direct manager: a level that does
 -- not carry a family has to be climbed past rather than stopped at, and
 -- stopping at the direct manager is what left 354 of 364 measures
 -- climbing nowhere.
 create or replace function perf_climb(p_cycle uuid, p_person uuid, p_family text,
-                                     p_direction text)
+                                     p_direction text, p_kind text)
 returns uuid
 language plpgsql
 stable security definer
@@ -213,13 +221,14 @@ begin
        and a.part_of_id is null
        and perf_family(a.unit) = p_family
        and perf_direction(a.unit) = p_direction
+       and perf_accrual_kind(a.kpi_id, a.unit) = p_kind
      order by a.id limit 1;
     if v_into is not null then return v_into; end if;
   end loop;
   return null;
 end $function$;
 
-comment on function perf_climb(uuid,uuid,text) is
+comment on function perf_climb(uuid,uuid,text,text,text) is
   'The assignment this one should climb into: the nearest person above in '
   'the reporting line who carries the named measure family, or nothing if '
   'the chain runs out.';
@@ -256,7 +265,9 @@ begin
 
   for r in
     select a.id, a.person_id, perf_family(a.unit) as fam,
-           perf_direction(a.unit) as dir, m.parent_family as mapped
+           perf_direction(a.unit) as dir,
+           perf_accrual_kind(a.kpi_id, a.unit) as kind,
+           m.parent_family as mapped
       from perf_assignment a
       left join perf_rollup_map m on m.child_family = perf_family(a.unit)
                                  and m.parent_family <> perf_family(a.unit)
@@ -278,9 +289,9 @@ begin
     -- therefore climb through several levels of itself and change code
     -- once at the top, which is how the registry is actually written.
     v_into := null;
-    v_into := perf_climb(p_cycle, r.person_id, r.fam, r.dir);
+    v_into := perf_climb(p_cycle, r.person_id, r.fam, r.dir, r.kind);
     if v_into is null and r.mapped is not null then
-      v_into := perf_climb(p_cycle, r.person_id, r.mapped, r.dir);
+      v_into := perf_climb(p_cycle, r.person_id, r.mapped, r.dir, r.kind);
     end if;
 
     if v_into is null then
@@ -423,7 +434,8 @@ comment on function perf_target_set(uuid,uuid,numeric,boolean) is
 
 revoke all on function perf_family(text)                        from public, anon, authenticated;
 revoke all on function perf_direction(text)                     from public, anon, authenticated;
-revoke all on function perf_climb(uuid,uuid,text,text)          from public, anon, authenticated;
+drop function if exists perf_climb(uuid,uuid,text,text);
+revoke all on function perf_climb(uuid,uuid,text,text,text)     from public, anon, authenticated;
 revoke all on function perf_relink(uuid,uuid)                   from public, anon, authenticated;
 revoke all on function perf_cascade(uuid,int)                   from public, anon, authenticated;
 revoke all on function perf_target_set(uuid,uuid,numeric,boolean) from public, anon, authenticated;

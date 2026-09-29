@@ -45,7 +45,12 @@ begin
     (c_tl, 'Daily target achievement',       'cases · D3',             true, true,  1, 'MONTHLY','ADDS'),
     (c_tl, 'Error rate',                     '% of work returned · D21',true, false, 2, 'MONTHLY','REPLACES'),
     (c_bm, 'Cases completed within TAT',     'cases · D3',             true, true,  1, 'MONTHLY','ADDS'),
-    (c_bm, 'Branch quality score',           '% score · D21',          true, false, 2, 'MONTHLY','REPLACES');
+    (c_bm, 'Branch quality score',           '% score · D21',          true, false, 2, 'MONTHLY','REPLACES'),
+    -- Same family, same direction, DIFFERENT kind. The registry really does
+    -- this: "% of cases within TAT" at a branch and "branches operational
+    -- against plan" at the top are both D3-shaped and one is a percentage
+    -- while the other is a count. Nothing may climb between them.
+    (c_bm, 'Branches operational against plan','count against plan · D8',true, false, 3, 'MONTHLY','ADDS');
 
   insert into person (full_name, work_email, app_role)
     values ('FL Admin','fl.admin@example.invalid','ADMIN') returning id into p_adm;
@@ -135,6 +140,19 @@ begin
   if (select rolls_into_id from perf_assignment where id = a_bm) is null
     then raise notice 'PASS  the top of a chain climbs nowhere, which is where a number stops';
     else raise exception 'FAIL  the top of the chain climbs somewhere'; end if;
+
+  -- --------------------------------------- a chain stops at a change of kind
+  -- The branch's own D3 is a count of cases. Its D8 is a count of
+  -- branches. The lead's D3 is a count too, so THAT climbs; but a
+  -- percentage never climbs into a count, whatever the family says.
+  if (select count(*) from perf_assignment a
+       where a.cycle_id = cyc and a.rolls_into_id =
+             (select id from perf_assignment where person_id = p_bm
+               and cycle_id = cyc and unit like '%D8%')) = 0
+    then raise notice 'PASS  nothing climbs into the branches count -- a percentage is not a count';
+    else raise exception 'FAIL  % measures climbed into a count of branches',
+      (select count(*) from perf_assignment a where a.cycle_id = cyc and a.rolls_into_id =
+        (select id from perf_assignment where person_id = p_bm and cycle_id = cyc and unit like '%D8%')); end if;
 
   -- ========================================================= the target
   o := perf_seed_targets(p_adm, cyc);
