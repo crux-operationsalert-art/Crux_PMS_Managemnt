@@ -13,7 +13,9 @@ begin;
 
 
 do $seed$
-declare v_head uuid; v_seat uuid; v_boss uuid; v_a uuid; v_b uuid; v_c uuid; v_out uuid;
+declare
+  v_head uuid; v_seat uuid; v_boss uuid; v_a uuid; v_b uuid; v_c uuid; v_out uuid;
+  s_head uuid; s_seat uuid; s_out uuid;
 begin
   insert into chair (code, title, level) values ('TSK_HEAD','Test head','function')
     returning id into v_head;
@@ -22,14 +24,27 @@ begin
   insert into chair (code, title, level) values ('TSK_OTHER','Test elsewhere','function')
     returning id into v_out;
 
+  -- Migration 218 stopped reach being a chair-tree walk. A chair is a seat;
+  -- a seating is that seat in a place; who reports to whom is the seating
+  -- tree. Without these three rows the boss below is nobody's manager, and
+  -- this file used to pass only because the chair tree let him task every
+  -- holder of a chair beneath his own anywhere in the country.
+  insert into chair_seating (chair_id, scope_label) values (v_head, null)
+    returning id into s_head;
+  insert into chair_seating (chair_id, scope_label, reports_to_seating_id)
+    values (v_seat, null, s_head) returning id into s_seat;
+  insert into chair_seating (chair_id, scope_label) values (v_out, null)
+    returning id into s_out;
+
   insert into person (full_name, work_email, app_role) values
     ('TSK Boss',   'tsk.boss@example.invalid',   'VIEWER') returning id into v_boss;
   insert into person (full_name, work_email) values ('TSK Aaa','tsk.a@example.invalid') returning id into v_a;
   insert into person (full_name, work_email) values ('TSK Bbb','tsk.b@example.invalid') returning id into v_b;
   insert into person (full_name, work_email) values ('TSK Ccc','tsk.c@example.invalid') returning id into v_c;
 
-  insert into chair_holder (chair_id, person_id, is_primary) values
-    (v_head, v_boss, true), (v_seat, v_a, true), (v_seat, v_b, true), (v_out, v_c, true);
+  insert into chair_holder (chair_id, seating_id, person_id, is_primary) values
+    (v_head, s_head, v_boss, true), (v_seat, s_seat, v_a, true),
+    (v_seat, s_seat, v_b, true),    (v_out,  s_out,  v_c, true);
 end $seed$;
 
 do $t$

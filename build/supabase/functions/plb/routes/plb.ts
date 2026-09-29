@@ -26,6 +26,11 @@ const r = Router();
 // Running the scheme is HR's and Business Excellence's; being measured by
 // it is everybody's. The screen is told which so it renders the difference
 // rather than offering a button that will be refused.
+//
+// This says who may RUN the scheme -- issue, lock, certify, publish, decide
+// a dispute. Migration 218 stopped it also meaning "may read and set any
+// one person's numbers": that is perf_rel, asked of the database, and the
+// answer is the reporting line and nothing else.
 const maySetUp = (req: any) =>
   req.person.app_role === "ADMIN" ||
   (req.person.department || "") === "Human Resources" ||
@@ -91,16 +96,31 @@ r.get("/quarter", async (req: any, res: any) => {
 
 // One sheet in full — the manager's view of somebody else's.
 r.get("/sheet/:id", async (req: any, res: any) => {
-  const o = await one(`select plb_sheet($1) as s`, [req.params.id]);
-  if (!o?.s?.sheetId) return res.status(404).json({ error: "no_such_sheet" });
-  const mine = o.s.personId === req.person.id;
-  if (!mine && !maySetUp(req)) {
+  // Ask first, read second. Until migration 218 this read the sheet and
+  // then let through the employee themselves or anyone at all in HR,
+  // Business Excellence or administration -- so a manager could not open
+  // their own report's sheet and an HR executive could open the chief
+  // executive's. The relationship is the database's to state.
+  const rel = await one(`select plb_sheet_rel($1,$2) as rel`,
+    [req.person.id, req.params.id]);
+  if (rel?.rel == null) {
+    const exists = await one(`select 1 as yes from plb_goal_sheet where id = $1`,
+      [req.params.id]);
+    if (!exists) return res.status(404).json({ error: "no_such_sheet" });
     return res.status(403).json({
       error: "not_permitted",
-      reason: "A goal sheet is the employee's and their manager's.",
+      reason: "A goal sheet is the employee's and the line above them.",
     });
   }
-  return res.json({ sheet: o.s, mine, maySetUp: maySetUp(req) });
+  const o = await one(`select plb_sheet($1) as s`, [req.params.id]);
+  if (!o?.s?.sheetId) return res.status(404).json({ error: "no_such_sheet" });
+  return res.json({
+    sheet: o.s,
+    mine: rel.rel === "self",
+    rel: rel.rel,
+    maySet: rel.rel === "manage" || rel.rel === "admin",
+    maySetUp: maySetUp(req),
+  });
 });
 
 // The registry, so a manager can see what a chair is measured on before
@@ -330,8 +350,14 @@ r.get("/perf/tree", async (req: any, res: any) => {
   const who = req.query.get("person") || req.person.id;
   const cycle = req.query.get("cycle");
   if (!cycle) return res.status(400).json({ error: "missing_cycle" });
-  const o = await one(`select perf_tree($1,$2) as o`, [who, cycle]);
-  return res.json(o.o);
+  // perf_tree_for, not perf_tree. This route took ?person= off the query
+  // string and passed it straight through, so anyone who could sign in
+  // could read anyone's performance by knowing their id. The wrapper
+  // refuses a person outside the caller's line and says which relationship
+  // it is, so the screen knows whether to draw an input or a number.
+  const o = await one(`select perf_tree_for($1,$2,$3) as o`,
+    [req.person.id, who, cycle]);
+  return out(res, o.o);
 });
 
 // What is due from me today. The cadence decides, and the working-day
@@ -352,23 +378,44 @@ r.post("/perf/file", async (req: any, res: any) => {
 
 // ------------------------------------------------------------ setting
 
-// Who I may set KPIs for. A manager's own reports, and for HR or an
-// administrator everybody -- asked of the database rather than decided
-// here, so the list and the gate cannot disagree.
+// My team, and the line below it. Depth 1 is mine to set; deeper is mine
+// to watch and nothing more. Both come back in one list with the depth on
+// each row, because the screen has to draw the difference and asking twice
+// is how the list and the gate start disagreeing.
 r.get("/perf/team", async (req: any, res: any) => {
   const people = await many(
     `select p.id as "personId", p.full_name as name, p.employee_no as "employeeNo",
-            p.department,
+            p.department, l.depth,
+            l.depth = 1 as "maySet",
             (select ch.title from chair_holder h join chair ch on ch.id = h.chair_id
               where h.person_id = p.id and h.to_date is null
               order by h.is_primary desc, ch.title limit 1) as chair
-       from person p
+       from perf_line($1) l
+       join person p on p.id = l.person_id
       where p.superseded_by is null and p.employment_status = 'ACTIVE'
         and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
-        and perf_may_set($1, p.id)
-      order by p.full_name`,
+      order by l.depth, p.full_name`,
     [req.person.id],
   );
+  // An administrator is not in anybody's reporting line and still has to be
+  // able to work. Named here rather than folded into perf_line, so the line
+  // stays a statement about the organisation and not about the tool.
+  if (people.length === 0 && req.person.app_role === "ADMIN") {
+    const all = await many(
+      `select p.id as "personId", p.full_name as name, p.employee_no as "employeeNo",
+              p.department, 1 as depth, true as "maySet",
+              (select ch.title from chair_holder h join chair ch on ch.id = h.chair_id
+                where h.person_id = p.id and h.to_date is null
+                order by h.is_primary desc, ch.title limit 1) as chair
+         from person p
+        where p.superseded_by is null and p.employment_status = 'ACTIVE'
+          and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+          and p.id <> $1
+        order by p.full_name`,
+      [req.person.id],
+    );
+    return res.json({ people: all, asAdministrator: true });
+  }
   return res.json({ people });
 });
 
@@ -451,19 +498,21 @@ r.post("/perf/carry", async (req: any, res: any) => {
 
 // The six months behind a measure, so a target is set against what happened.
 r.get("/perf/history", async (req: any, res: any) => {
-  const o = await one(`select perf_history($1,$2,$3,$4) as o`,
-    [req.query.get("person") || req.person.id,
+  const o = await one(`select perf_history_for($1,$2,$3,$4,$5) as o`,
+    [req.person.id,
+     req.query.get("person") || req.person.id,
      req.query.get("name"), req.query.get("kpi"),
      Number(req.query.get("months") || 6)]);
+  if (o.o?.error) return out(res, o.o);
   return res.json({ history: o.o });
 });
 
 r.get("/perf/score", async (req: any, res: any) => {
   const cycle = req.query.get("cycle");
   if (!cycle) return res.status(400).json({ error: "missing_cycle" });
-  const o = await one(`select perf_kpi_score($1,$2) as o`,
-    [req.query.get("person") || req.person.id, cycle]);
-  return res.json(o.o);
+  const o = await one(`select perf_kpi_score_for($1,$2,$3) as o`,
+    [req.person.id, req.query.get("person") || req.person.id, cycle]);
+  return out(res, o.o);
 });
 
 export default r;

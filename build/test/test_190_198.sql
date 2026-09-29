@@ -53,7 +53,7 @@ on conflict (day) do nothing;
 
 do $$
 declare
-  hr uuid; boss uuid; rep uuid; other uuid;
+  hr uuid; boss uuid; rep uuid; other uuid; adm uuid;
   ch_bm uuid; ch_fe uuid;
   cl uuid; br1 uuid; br2 uuid;
 begin
@@ -77,6 +77,14 @@ begin
                       app_role, employment_status)
   values (gen_random_uuid(), 'EMP-XX01', 'Otto Nobody', 'xx@crux.test',
           'Operations', 'VIEWER', 'ACTIVE') returning id into other;
+
+  -- The tool's administrator, who is the one exception migration 218 keeps.
+  -- Before 218 the fixture used Hema Rao in Human Resources for this,
+  -- because being in that department was itself a licence over everybody.
+  insert into person (id, employee_no, full_name, work_email, department,
+                      app_role, employment_status)
+  values (gen_random_uuid(), 'EMP-AD01', 'Asha Deshmukh', 'admin@crux.test',
+          'Business Excellence', 'ADMIN', 'ACTIVE') returning id into adm;
 
   -- chairs, so perf_node can name one
   insert into chair (id, code, title, level) values (gen_random_uuid(), 'BM', 'Branch Manager', 'BRANCH')
@@ -120,7 +128,7 @@ begin
          (ch_fe, 'Count marked replaces', 'cases', true, false, 4, 'MONTHLY', 'REPLACES');
 
   create temp table who (nm text primary key, id uuid);
-  insert into who values ('hr',hr),('boss',boss),('rep',rep),('other',other),
+  insert into who values ('hr',hr),('boss',boss),('rep',rep),('other',other),('adm',adm),
                          ('ch_bm',ch_bm),('ch_fe',ch_fe),('cl',cl),('br1',br1),('br2',br2);
 end $$;
 
@@ -153,15 +161,27 @@ end $$;
 
 -- ===================================================== 194: who may set
 do $$
-declare boss uuid; rep uuid; hr uuid; other uuid;
+declare boss uuid; rep uuid; hr uuid; other uuid; adm uuid;
 begin
   select id into boss from who where nm ='boss'; select id into rep from who where nm ='rep';
   select id into hr   from who where nm ='hr';   select id into other from who where nm ='other';
+  select id into adm  from who where nm ='adm';
   perform t_ok('a manager may set for their report',      perf_may_set(boss, rep));
-  perform t_ok('HR may set for anybody',                  perf_may_set(hr, rep));
   perform t_ok('nobody may set their own',            not perf_may_set(rep, rep));
   perform t_ok('a stranger may not set',              not perf_may_set(other, rep));
   perform t_ok('a report may not set their manager''s', not perf_may_set(rep, boss));
+  perform t_ok('an administrator may set for anybody',    perf_may_set(adm, rep));
+  -- Until migration 218 this read `perf_may_set(hr, rep)` and asserted
+  -- true: a department was a licence over every person in the company.
+  -- The rule now is the reporting line and nothing else -- running the
+  -- scheme, which HR still does below, is a different act from setting one
+  -- named person's numbers.
+  perform t_ok('being in Human Resources is not a licence over a stranger',
+                                                      not perf_may_set(hr, rep));
+  perform t_ok('and does not let them read one either',
+                                                      not perf_may_see(hr, rep));
+  perform t_ok('a manager sees two steps down without setting there',
+               perf_may_see(boss, rep) and perf_rel(boss, rep) = 'manage');
 end $$;
 
 -- ======================================== 194: assigning, and the roll-up
@@ -183,10 +203,19 @@ begin
   perform t_ok('a manager cannot set their own KPI',
                o->>'error' = 'not_permitted', o::text);
 
+  -- The manager's own KPI is set from above him. Before migration 218 this
+  -- was Hema Rao in Human Resources; she is now a stranger to him, so it is
+  -- the administrator, who is the exception 218 keeps.
   o := perf_assign((select id from who where nm ='hr'),
          jsonb_build_object('personId', boss, 'cycleId', cyc,
            'kpiId', k_bcase, 'target', '500', 'weight', '60', 'cadence', 'DAILY'));
-  perform t_ok('HR can set the manager''s KPI', (o->>'ok')::boolean, o::text);
+  perform t_ok('HR can no longer set a stranger''s KPI',
+               o->>'error' = 'not_permitted', o::text);
+
+  o := perf_assign((select id from who where nm ='adm'),
+         jsonb_build_object('personId', boss, 'cycleId', cyc,
+           'kpiId', k_bcase, 'target', '500', 'weight', '60', 'cadence', 'DAILY'));
+  perform t_ok('an administrator can set the manager''s KPI', (o->>'ok')::boolean, o::text);
   a_boss := (o->>'assignmentId')::uuid;
 
   o := perf_assign(boss, jsonb_build_object('personId', rep, 'cycleId', cyc,
