@@ -12,6 +12,11 @@
 // PLB permission model is "your own sheet, or you run the scheme", which is
 // not a coverage question, and carrying a scope nothing reads would only
 // invite somebody to start reading it.
+//
+// verify_jwt is OFF and must stay off. The page sends x-crux-token and no
+// Authorization header at all, so the gateway would refuse every request
+// before this file ran. Leaving it on once is what ejected everybody from
+// #plb, and the MCP deploy tool defaults it back to true every time.
 // =====================================================================
 import { CORS, Req, Res, one } from "./shim.ts";
 

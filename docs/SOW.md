@@ -647,29 +647,29 @@ waiting for the advisor to notice again.
 | Defect 2 · the unplaced org chart | **closed** — 219 · 82 → 0, `org_unplaced()` returns nothing |
 | Defect 3 · the KPIs not pre-uploaded | **closed** — 221 · 364 measures to 101 people, two months |
 | Defect 4 · five tables open to anon | **closed** — 220 · found by the advisor, not reported |
-| Outstanding | **the `plb` Edge Function redeploy** — see below |
+| The `plb` redeploy | **done** — v7, verify_jwt off. See the note below |
 
-### The one thing not done
+### The `plb` redeploy — landed, with one scare
 
-**`plb` is still running v5.** Migration 218 put the gate in the database and
-the repository's `plb/routes/plb.ts` is updated to call it, but the deploy was
-refused at the approval gate twice in a row and I stopped retrying rather than
-hammer it.
+`plb` is now **v7** and the three ungated reads go through the wrappers.
+`GET /perf/tree`, `/perf/history` and `/perf/score` call `perf_tree_for`,
+`perf_history_for` and `perf_kpi_score_for`, which take the asker as their
+first argument and refuse a person outside their line. `GET /sheet/:id` asks
+`plb_sheet_rel` instead of the old HR-or-administrator test, which fixes both
+halves of it: a manager can now open their own report's sheet, and an HR
+executive can no longer open the chief executive's. `GET /perf/team` returns
+the line with `depth` and `maySet` on every row, so the screen can draw the
+difference between somebody I manage and somebody I only watch.
 
-What that leaves open, precisely: `GET /perf/tree`, `GET /perf/history` and
-`GET /perf/score` still call the ungated `perf_tree`, `perf_history` and
-`perf_kpi_score` rather than the `_for` wrappers, so a signed-in person who
-knows another person's id can still read their performance through those three
-routes. `GET /sheet/:id` still uses the old HR-or-administrator test.
-
-Everything else from 218 is live and enforcing, because it is in the database
-rather than in a route: `kpi_subtree_people`, `perf_may_set`, `perf_line` and
-`perf_rel` are what `kpi_save`, `kpi_retire`, `task_assign`, `perf_assign` and
-`perf_carry_forward` ask, and those are all closed now.
-
-The files to send are exactly the three in `build/supabase/functions/plb/`,
-and `index.ts` and `shim.ts` are byte-identical to the running v5 (verified
-against `git diff 1ba9656~1`), so only `routes/plb.ts` differs.
+**The scare, recorded because it will happen again.** The MCP deploy tool's
+`verify_jwt` parameter defaults to `true`, and I omitted it. v6 went out with
+the gateway demanding a JWT — and `call()` in the page sends `x-crux-token`
+and **no Authorization header at all**, so every request to `plb` would have
+been refused with 401 before the function ran. That is exactly the incident
+this project has already had once ("plb and hr redeployed with verify_jwt
+off, which is what was ejecting people on #plb"). v7 went out about two and a
+half minutes later with `verify_jwt: false`, and `plb/index.ts` now carries a
+comment saying so at the top, where the next person to deploy it will read it.
 
 ## Change log
 
