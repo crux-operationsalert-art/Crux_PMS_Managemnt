@@ -8,29 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ops_alert_raise(p_kind text, p_title text, p_dedupe_key text, p_severity text DEFAULT 'WARN'::text, p_detail text DEFAULT NULL::text, p_action_hint text DEFAULT NULL::text, p_retry_at timestamp with time zone DEFAULT NULL::timestamp with time zone, p_entity_type text DEFAULT NULL::text, p_entity_id uuid DEFAULT NULL::uuid, p_for_role text DEFAULT 'ADMIN'::text)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_id uuid;
-begin
-  insert into ops_alert (kind, severity, title, detail, action_hint, for_role,
-                         entity_type, entity_id, dedupe_key, retry_at)
-  values (p_kind, p_severity, p_title, p_detail, p_action_hint, p_for_role,
-          p_entity_type, p_entity_id, p_dedupe_key, p_retry_at)
-  on conflict (dedupe_key) where resolved_at is null
-  do update set last_seen_at = now(),
-                occurrences  = ops_alert.occurrences + 1,
-                detail       = coalesce(excluded.detail, ops_alert.detail),
-                retry_at     = coalesce(excluded.retry_at, ops_alert.retry_at),
-                severity     = excluded.severity
-  returning id into v_id;
-  return v_id;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ops_alert_resolve(p_dedupe_key text, p_note text DEFAULT NULL::text)
  RETURNS integer
  LANGUAGE sql
@@ -3395,6 +3372,63 @@ AS $function$
     join pms_cycle cy on cy.person_id = p.person_id and cy.period = p_period
     cross join lateral pms_cycle_score(cy.id, false) s
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.pms_weighting_for(p_person uuid, p_on date DEFAULT CURRENT_DATE)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare w pms_weighting; v_next date; v_scope text;
+begin
+  select * into w from pms_weighting
+   where person_id = p_person and effective_from <= p_on
+   order by effective_from desc limit 1;
+  if w.id is not null then v_scope := 'you'; end if;
+
+  if w.id is null then
+    select pw.* into w from pms_weighting pw
+     where pw.chair_id is not null and pw.effective_from <= p_on
+       and exists (select 1 from chair_holder h
+                    where h.person_id = p_person and h.chair_id = pw.chair_id
+                      and (h.to_date is null or h.to_date >= p_on))
+     order by pw.effective_from desc limit 1;
+    if w.id is not null then v_scope := 'your chair'; end if;
+  end if;
+
+  if w.id is null then
+    select * into w from pms_weighting
+     where scope_all and effective_from <= p_on
+     order by effective_from desc limit 1;
+    if w.id is not null then v_scope := 'everybody'; end if;
+  end if;
+
+  if w.id is not null then
+    return jsonb_build_object(
+      'applies', true, 'scope', v_scope,
+      'kpiPercent', w.kpi_percent, 'attrPercent', w.attr_percent,
+      'effectiveFrom', w.effective_from,
+      'note', 'A monthly score is ' || w.kpi_percent || '% of the KPI score and '
+              || w.attr_percent || '% of the Attribute score, both out of ten.');
+  end if;
+
+  select min(pw2.effective_from) into v_next from pms_weighting pw2
+   where pw2.effective_from > p_on
+     and (pw2.scope_all or pw2.person_id = p_person
+          or exists (select 1 from chair_holder h
+                      where h.person_id = p_person and h.chair_id = pw2.chair_id));
+
+  return jsonb_build_object(
+    'applies', false, 'scope', null,
+    'kpiPercent', null, 'attrPercent', null,
+    'startsOn', v_next,
+    'note', case when v_next is null
+                 then 'No KPI/Attribute split has been set, so no monthly score can be worked out. '
+                      || 'Admin or HR sets one on the Performance screen.'
+                 else 'The scheme starts on ' || to_char(v_next, 'FMDD Month YYYY')
+                      || '. Nothing is scored before then.' end);
+end $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.pms_window_may_open(p_person uuid, p_period date)

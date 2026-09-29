@@ -2658,3 +2658,90 @@ exception when others then
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.matrix_pack(p_person uuid, p_client uuid, p_period date DEFAULT CURRENT_DATE)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_view text; v_period date; c client%rowtype;
+  branches jsonb; held jsonb; n_ok int; n_held int; d matrix_dispatch;
+begin
+  v_view := matrix_client_view(p_person);
+  if v_view is null or v_view = 'none' then
+    return jsonb_build_object('error','no_client_view',
+      'reason','Your function does not see client data, so it does not see the matrix either.');
+  end if;
+
+  v_period := date_trunc('month', p_period)::date;
+  select * into c from client where id = p_client;
+  if c.id is null then return jsonb_build_object('error','no_such_client'); end if;
+
+  with mine as (
+    select b.id, b.code, b.name
+      from branch b
+      join matrix_scope_branches(p_person) s on s.branch_id = b.id
+     where b.client_id = p_client and b.status = 'ACTIVE'
+  ),
+  lv as (
+    select m.id as branch_id, m.code, m.name,
+           coalesce(jsonb_agg(jsonb_build_object(
+             'level', e.level, 'levelName', e.level_name, 'name', e.name,
+             'mobile', case when v_view = 'contacts' then null else e.mobile end,
+             'email',  case when v_view = 'contacts' then null else e.email end,
+             'inherited', e.inherited) order by e.level)
+             filter (where e.level is not null), '[]'::jsonb) as levels,
+           count(*) filter (
+             where e.name is not null and btrim(e.name) <> ''
+               and (coalesce(btrim(e.mobile),'') <> '' or coalesce(btrim(e.email),'') <> '')
+           ) as complete,
+           bool_or(e.inherited) as using_default
+      from mine m
+      left join branch_effective_matrix e on e.branch_id = m.id
+     group by m.id, m.code, m.name
+  )
+  select
+    coalesce(jsonb_agg(jsonb_build_object(
+      'branchId', branch_id, 'code', code, 'name', name,
+      'levels', levels, 'complete', complete,
+      'usingClientDefault', coalesce(using_default, false))
+      order by name) filter (where complete = 5), '[]'::jsonb),
+    coalesce(jsonb_agg(jsonb_build_object(
+      'branchId', branch_id, 'code', code, 'name', name,
+      'complete', complete, 'missing', 5 - complete)
+      order by name) filter (where complete < 5), '[]'::jsonb),
+    count(*) filter (where complete = 5),
+    count(*) filter (where complete < 5)
+    into branches, held, n_ok, n_held
+  from lv;
+
+  select * into d from matrix_dispatch
+   where client_id = p_client and period = v_period;
+
+  return jsonb_build_object(
+    'client', jsonb_build_object('clientId', c.id, 'code', c.code, 'name', c.name),
+    'period', v_period,
+    'view', v_view,
+    'branches', branches, 'heldBack', held,
+    'ready', n_ok, 'incomplete', n_held,
+    'recipients', coalesce((
+      select jsonb_agg(jsonb_build_object('kind', k.kind, 'name', k.name, 'email', k.email)
+             order by k.kind, k.email)
+        from client_contact k where k.client_id = p_client), '[]'::jsonb),
+    'dispatch', case when d.id is null then null else jsonb_build_object(
+      'dispatchId', d.id, 'sentAt', d.sent_at, 'recipients', to_jsonb(d.recipients),
+      'branchCount', d.branch_count, 'heldBack', d.held_back) end,
+    'says', case
+      when n_ok = 0 and n_held = 0 then
+        'You cover no active branch of this client, so there is nothing to send.'
+      when n_ok = 0 then
+        'Every branch you cover is missing a level, so there is nothing that can be sent. '
+        || 'A matrix with a gap in it reads as complete, which is worse than no matrix.'
+      when n_held > 0 then
+        n_ok || ' branch(es) are ready. ' || n_held || ' are held back until their '
+        || 'missing levels are filled, and are named below rather than sent with a gap.'
+      else 'All ' || n_ok || ' branch(es) are complete.' end);
+end $function$
+;
+
