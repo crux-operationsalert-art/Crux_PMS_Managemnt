@@ -109,6 +109,18 @@ jobs:
             || { echo "::error::The access policy is missing, or its values are not in column order."; exit 1; }
           grep -q "^  ('Branch Manager', 'branch')," build/schema/95_access_policy.sql \
             || { echo "::error::access_chair_level is not (chair_title, level)."; exit 1; }
+          # How a month is scored travels with the baseline too (215). Without
+          # the split a rebuilt Crux computes no monthly score and says nothing
+          # about why, which is the failure this whole file exists to prevent.
+          grep -q "'75', '25'" build/schema/95_access_policy.sql \
+            || { echo "::error::The Constitution's 75/25 split is not in the policy file."; exit 1; }
+          grep -q "'Outstanding'" build/schema/95_access_policy.sql \
+            || { echo "::error::The appraisal bands are not in the policy file."; exit 1; }
+          # It promises to carry nobody's name. A uuid in a set_by position
+          # would mean the generator stopped nulling person references.
+          grep -qE "^  \('[0-9a-f-]{36}', 'true', null, null, '75', '25', '[0-9-]+', null\)" \
+            build/schema/95_access_policy.sql \
+            || { echo "::error::The company-wide weighting row is not shaped as expected, or carries a person."; exit 1; }
 
       - name: Commit it if it changed
         run: |
