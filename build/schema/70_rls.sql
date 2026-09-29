@@ -108,6 +108,7 @@ alter table public.perf_cycle enable row level security;
 alter table public.perf_entry enable row level security;
 alter table public.perf_month enable row level security;
 alter table public.perf_revenue enable row level security;
+alter table public.perf_rollup_map enable row level security;
 alter table public.person enable row level security;
 alter table public.person_document enable row level security;
 alter table public.person_event enable row level security;

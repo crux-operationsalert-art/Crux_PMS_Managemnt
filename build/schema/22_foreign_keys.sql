@@ -192,6 +192,7 @@ alter table public.perf_revenue add constraint perf_revenue_client_id_fkey FOREI
 alter table public.perf_revenue add constraint perf_revenue_loaded_by_fkey FOREIGN KEY (loaded_by) REFERENCES person(id);
 alter table public.perf_revenue add constraint perf_revenue_op_node_fk FOREIGN KEY (op_node_id) REFERENCES op_node(id);
 alter table public.perf_revenue add constraint perf_revenue_owner_person_id_fkey FOREIGN KEY (owner_person_id) REFERENCES person(id);
+alter table public.perf_rollup_map add constraint perf_rollup_map_set_by_fkey FOREIGN KEY (set_by) REFERENCES person(id);
 alter table public.person add constraint person_designation_id_fkey FOREIGN KEY (designation_id) REFERENCES designation(id);
 alter table public.person add constraint person_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES person(id);
 alter table public.person add constraint person_superseded_by_fkey FOREIGN KEY (superseded_by) REFERENCES person(id);

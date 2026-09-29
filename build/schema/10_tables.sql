@@ -1117,7 +1117,8 @@ create table if not exists public.perf_assignment (
   state text default 'ISSUED'::text not null,
   carried_from_id uuid,
   note text,
-  cadence kpi_cadence
+  cadence kpi_cadence,
+  target_source text default 'SEEDED'::text not null
 );
 
 create table if not exists public.perf_collection (
@@ -1187,6 +1188,14 @@ create table if not exists public.perf_revenue (
   source_ref text,
   loaded_by uuid,
   loaded_at timestamp with time zone default now() not null
+);
+
+create table if not exists public.perf_rollup_map (
+  child_family text not null,
+  parent_family text not null,
+  note text not null,
+  set_by uuid,
+  set_at timestamp with time zone default now() not null
 );
 
 create table if not exists public.person (

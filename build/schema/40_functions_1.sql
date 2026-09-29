@@ -2827,3 +2827,93 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.may_edit_penalty_rule(p_person uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select coalesce(
+    (select department in ('Human Resources','Finance & Accounts') or app_role = 'ADMIN'
+     from person where id = p_person), false);
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.my_desk(p_person uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare p person%rowtype; cyc uuid;
+begin
+  select * into p from person where id = p_person;
+  if p.id is null then return jsonb_build_object('error','no_such_person'); end if;
+  select id into cyc from perf_cycle
+   where period_kind = 'MONTH' and period_start = date_trunc('month', current_date)::date;
+
+  return jsonb_build_object(
+    'person', jsonb_build_object('personId', p.id, 'name', p.full_name),
+
+    'employment', jsonb_build_array(
+      jsonb_build_object('label','Employee number', 'value', p.employee_no, 'field', null),
+      jsonb_build_object('label','Chair', 'value',
+        (select string_agg(ch.title, ' · ' order by h.is_primary desc, ch.title)
+           from chair_holder h join chair ch on ch.id = h.chair_id
+          where h.person_id = p.id and h.to_date is null), 'field', null),
+      jsonb_build_object('label','Reports to', 'value',
+        (select m.full_name || coalesce(' (' || m.employee_no || ')','')
+           from person m where m.id = p.manager_id), 'field', null),
+      jsonb_build_object('label','Department', 'value', p.department, 'field','department'),
+      jsonb_build_object('label','Date of joining', 'value',
+        case when p.joined_on is null then null else to_char(p.joined_on,'FMDD FMMon YYYY') end,
+        'field', null),
+      jsonb_build_object('label','Employment type', 'value',
+        coalesce(p.employee_type,'EMPLOYEE'), 'field', null)),
+
+    'contact', jsonb_build_array(
+      jsonb_build_object('label','Mobile', 'value', p.mobile, 'field','mobile'),
+      jsonb_build_object('label','Work e-mail', 'value', p.work_email, 'field','work_email'),
+      jsonb_build_object('label','Address', 'value', p.address, 'field','address'),
+      jsonb_build_object('label','Emergency contact', 'value', p.emergency_contact,
+        'field','emergency_contact')),
+
+    'documents', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'kind', k.kind, 'label', k.label,
+               'state', d.state, 'note', d.note,
+               'updatedAt', d.updated_at) order by k.n), '[]'::jsonb)
+        from (values (1,'ID_PROOF','ID proof'), (2,'ADDRESS_PROOF','Address proof'),
+                     (3,'QUALIFICATION','Qualification'), (4,'BANK_DETAILS','Bank details'))
+               as k(n, kind, label)
+        left join person_document d on d.person_id = p.id and d.kind = k.kind),
+
+    'raised', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'ref', rz.ref, 'department', rz.department, 'body', rz.body,
+               'raisedAt', rz.created_at, 'dueAt', t.due_at,
+               'actionedAt', t.actioned_at, 'strikes', t.strike_count,
+               'responder', w.full_name) order by rz.created_at desc), '[]'::jsonb)
+        from raisable rz
+        join request_task t on t.raisable_id = rz.id
+        join person w on w.id = t.responder_id
+       where rz.raised_by = p_person and rz.kind = 'ASSISTANCE'),
+
+    'onMe', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+               'taskId', t.id, 'ref', rz.ref, 'department', rz.department,
+               'body', rz.body, 'from', f.full_name, 'raisedAt', rz.created_at,
+               'dueAt', t.due_at, 'strikes', t.strike_count,
+               'overdue', now() > t.due_at) order by t.due_at), '[]'::jsonb)
+        from request_task t
+        join raisable rz on rz.id = t.raisable_id
+        join person f on f.id = rz.raised_by
+       where t.responder_id = p_person and t.actioned_at is null),
+
+    'dueToday', case when cyc is null then '[]'::jsonb else perf_due(p_person) end,
+
+    'says', 'Edits are not live. HR approves, then the record changes, and your old '
+         || 'and new values sit side by side on their task until it does.');
+end $function$
+;
+

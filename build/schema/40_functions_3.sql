@@ -8,98 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.org_unplaced()
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'holder', ch.id, 'name', pe.full_name,
-           'chair', c.code, 'title', c.title,
-           'places', coalesce((select jsonb_agg(jsonb_build_object(
-                        'id', cs.id, 'scope', coalesce(cs.scope_label, 'No particular place'))
-                        order by cs.scope_label nulls first)
-                      from chair_seating cs where cs.chair_id = c.id), '[]'::jsonb))
-         order by c.code, pe.full_name), '[]'::jsonb)
-  from chair_holder ch
-  join person pe on pe.id = ch.person_id
-  join chair c on c.id = ch.chair_id
-  where ch.to_date is null and ch.seating_id is null
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.otp_gate(p_mobile text)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare p person%rowtype;
-begin
-  select * into p from person where mobile = p_mobile and employment_status = 'ACTIVE';
-  if not found then
-    raise exception 'No active person holds that number.'
-      using hint = 'The number must match the people master exactly. HR corrects it.';
-  end if;
-  return p.id;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.outbox_claim(p_limit integer DEFAULT 50)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_sent int; v_cap int; v_room int; v_msgs jsonb;
-begin
-  insert into mail_budget (day, recipients_sent) values (current_date, 0)
-    on conflict (day) do nothing;
-  select recipients_sent, coalesce(cap,1500) into v_sent, v_cap
-    from mail_budget where day = current_date;
-  v_room := greatest(0, v_cap - coalesce(v_sent,0));
-  if v_room = 0 then
-    return jsonb_build_object('held','daily_cap_reached','cap',v_cap,'messages','[]'::jsonb);
-  end if;
-
-  with claimed as (
-    select id from outbox
-     where state = 'QUEUED' and not_before <= now()
-     order by not_before
-     for update skip locked
-     limit least(p_limit, v_room)
-  ), bumped as (
-    update outbox o set attempts = o.attempts + 1
-      from claimed c where o.id = c.id
-    returning o.id, o.template_key, o.recipient, o.cc_addr, o.subject, o.body,
-              o.entity_type, o.entity_id, o.attempts
-  )
-  select coalesce(jsonb_agg(to_jsonb(b)), '[]'::jsonb) into v_msgs from bumped b;
-
-  return jsonb_build_object('messages', v_msgs, 'room', v_room);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.outbox_failed(p_id uuid, p_error text)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_attempts int;
-begin
-  select attempts into v_attempts from outbox where id = p_id;
-  update outbox set
-    state = case when v_attempts >= 6 then 'ABANDONED'::outbox_state else 'DEFERRED'::outbox_state end,
-    not_before = now() + (least(v_attempts, 6) * interval '10 minutes'),
-    last_error = p_error
-   where id = p_id;
-  insert into delivery (outbox_id, channel, recipient, state, error, at)
-  select p_id, 'EMAIL', recipient, 'FAILED', p_error, now() from outbox where id = p_id;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.outbox_mirror_to_whatsapp()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -462,6 +370,70 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_cascade(p_assignment uuid, p_depth integer DEFAULT 0)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a perf_assignment; kind text; r record;
+  v_pinned numeric := 0; v_free int := 0; v_each numeric; v_n int := 0;
+begin
+  if p_depth > 12 then return 0; end if;
+  select * into a from perf_assignment where id = p_assignment;
+  if a.id is null or a.target_value is null then return 0; end if;
+  kind := perf_accrual_kind(a.kpi_id, a.unit);
+
+  select coalesce(sum(case when c.target_source = 'MANUAL'
+                           then coalesce(c.target_value,0) else 0 end), 0),
+         count(*) filter (where c.target_source <> 'MANUAL')
+    into v_pinned, v_free
+    from perf_assignment c where c.rolls_into_id = a.id;
+  if v_free = 0 then return 0; end if;
+
+  if kind = 'SUM' then
+    v_each := round((a.target_value - v_pinned) / v_free, 2);
+    if v_each < 0 then v_each := 0; end if;
+  else
+    v_each := a.target_value;
+  end if;
+
+  for r in select c.id from perf_assignment c
+            where c.rolls_into_id = a.id and c.target_source <> 'MANUAL'
+  loop
+    update perf_assignment set target_value = v_each, target_source = 'SHARED' where id = r.id;
+    v_n := v_n + 1 + perf_cascade(r.id, p_depth + 1);
+  end loop;
+  return v_n;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_up uuid := p_person; v_hops int := 0; v_into uuid;
+begin
+  if p_family is null then return null; end if;
+  loop
+    select manager_id into v_up from person
+     where id = v_up and manager_id is not null and manager_id <> id;
+    exit when v_up is null or v_hops >= 12;
+    v_hops := v_hops + 1;
+    select a.id into v_into from perf_assignment a
+     where a.cycle_id = p_cycle and a.person_id = v_up and a.part_of_id is null
+       and perf_family(a.unit) = p_family
+       and perf_direction(a.unit) = p_direction
+     order by a.id limit 1;
+    if v_into is not null then return v_into; end if;
+  end loop;
+  return null;
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_cycle_open(p_actor uuid, p_period date, p_kind text DEFAULT 'MONTH'::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -496,6 +468,17 @@ begin
     'note', 'KPIs may be set until ' || c.assign_closes ||
             '. Numbers may be filed until ' || c.entry_closes || '.');
 end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_direction(p_unit text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+  select case when lower(coalesce(p_unit, ''))
+                   ~ 'below|variance|returned|escalat|attrition|error|vacant|dso|days to'
+              then 'CEILING' else 'FLOOR' end
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_due(p_person uuid, p_on date DEFAULT CURRENT_DATE)
@@ -567,6 +550,15 @@ begin
   end if;
   return new;
 end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_family(p_unit text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+  select nullif(btrim(split_part(coalesce(p_unit, ''), '·', 2)), '')
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_file(p_actor uuid, p_assignment uuid, p_as_of date, p_value numeric, p_note text DEFAULT NULL::text)
@@ -869,6 +861,61 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_relink(p_actor uuid, p_cycle uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_role role_kind; r record; v_into uuid;
+  v_linked int := 0; v_cleared int := 0; v_top int := 0;
+begin
+  select app_role into v_role from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if v_role is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_admin','reason','Rebuilding the roll-up is an administrator''s.');
+  end if;
+
+  update perf_assignment set rolls_into_id = null
+   where cycle_id = p_cycle and rolls_into_id is not null;
+  get diagnostics v_cleared = row_count;
+
+  for r in
+    select a.id, a.person_id, perf_family(a.unit) as fam,
+           perf_direction(a.unit) as dir, m.parent_family as mapped
+      from perf_assignment a
+      left join perf_rollup_map m on m.child_family = perf_family(a.unit)
+                                 and m.parent_family <> perf_family(a.unit)
+     where a.cycle_id = p_cycle and a.part_of_id is null
+       and perf_family(a.unit) is not null
+  loop
+    -- SAME family first: a Team Leader's D3 into a Branch Manager's D3,
+    -- two levels, one code, no map row wanted. Looking at the map first
+    -- sent that one past its own parent to a grandparent's D8.
+    -- MAPPED family second, only when nobody above carries the same one.
+    v_into := perf_climb(p_cycle, r.person_id, r.fam, r.dir);
+    if v_into is null and r.mapped is not null then
+      v_into := perf_climb(p_cycle, r.person_id, r.mapped, r.dir);
+    end if;
+
+    if v_into is null then v_top := v_top + 1;
+    else
+      update perf_assignment set rolls_into_id = v_into where id = r.id;
+      v_linked := v_linked + 1;
+    end if;
+  end loop;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor, 'PERF_ROLLUP_REBUILT', 'perf_cycle', p_cycle::text,
+          jsonb_build_object('linked', v_linked, 'cleared', v_cleared, 'topOfAChain', v_top));
+
+  return jsonb_build_object('ok', true, 'linked', v_linked, 'cleared', v_cleared,
+    'topOfAChain', v_top,
+    'note', v_linked || ' measure(s) now climb. ' || v_top || ' are the top of their own chain, which is where a number stops.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_reminder_sweep(p_on date DEFAULT CURRENT_DATE)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1099,6 +1146,51 @@ begin
     'note', v_made || ' measure(s) given to ' || v_people || ' people for '
             || c.period_start || ', with the targets blank. '
             || v_linked || ' of them climb into a manager''s.');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_target_set(p_actor uuid, p_assignment uuid, p_value numeric, p_manual boolean DEFAULT true)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a perf_assignment; v_was numeric; v_moved int;
+begin
+  select * into a from perf_assignment where id = p_assignment;
+  if a.id is null then return jsonb_build_object('error','no_such_assignment'); end if;
+
+  if not perf_may_set(p_actor, a.person_id) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A target is set by the person''s own manager. You see the progress of everyone below them; you set only your own team''s.');
+  end if;
+
+  v_was := a.target_value;
+  update perf_assignment
+     set target_value = p_value,
+         target_source = case when p_manual then 'MANUAL' else 'SHARED' end
+   where id = p_assignment;
+
+  v_moved := perf_cascade(p_assignment);
+
+  -- A hand-typed share changes what is left for the others, so the parent
+  -- divides again around it. Not upwards: a manager's own target is not
+  -- moved by what they gave somebody.
+  if p_manual and a.rolls_into_id is not null then
+    v_moved := v_moved + perf_cascade(a.rolls_into_id);
+  end if;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor, 'PERF_TARGET_SET', 'perf_assignment', p_assignment::text,
+          jsonb_build_object('target', v_was, 'source', a.target_source),
+          jsonb_build_object('target', p_value,
+                             'source', case when p_manual then 'MANUAL' else 'SHARED' end,
+                             'sharesMoved', v_moved));
+
+  return jsonb_build_object('ok', true, 'target', p_value, 'sharesMoved', v_moved,
+    'note', case when v_moved = 0
+      then 'Set. Nobody reports into this measure, so there was nothing to divide.'
+      else 'Set, and divided across ' || v_moved || ' measure(s) below it. Anything typed by hand was left alone.' end);
 end $function$
 ;
 
@@ -2753,6 +2845,20 @@ end $function$
 CREATE OR REPLACE FUNCTION public.plb_quarter(p_quarter date)
  RETURNS jsonb
  LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select jsonb_build_object(
+    'error', 'no_actor',
+    'reason', 'The quarter is read as somebody. Call plb_quarter(quarter, actor) so the answer can be narrowed to the sheets that person may see.',
+    'quarter', date_trunc('quarter', p_quarter)::date,
+    'sheets', '[]'::jsonb, 'inScheme', '[]'::jsonb);
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_quarter(p_quarter date, p_actor uuid)
+ RETURNS jsonb
+ LANGUAGE sql
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
@@ -2763,6 +2869,8 @@ AS $function$
                'sheetId', s.id, 'person', p.full_name, 'personId', p.id,
                'employeeNo', p.employee_no,
                'chair', ch.title, 'status', s.status, 'targetPlb', s.target_plb_inr,
+               'rel', perf_rel(p_actor, p.id),
+               'maySet', perf_rel(p_actor, p.id) in ('manage','admin'),
                'acknowledged', s.acknowledged_at is not null,
                'monthsScored', (select count(*) from plb_month_score ms
                                  where ms.sheet_id = s.id and ms.kpi_points is not null),
@@ -2784,11 +2892,13 @@ AS $function$
         from plb_goal_sheet s
         join person p on p.id = s.person_id
         join chair ch on ch.id = s.chair_id
-       where s.quarter = date_trunc('quarter', p_quarter)::date), '[]'::jsonb),
+       where s.quarter = date_trunc('quarter', p_quarter)::date
+         and perf_rel(p_actor, p.id) is not null), '[]'::jsonb),
     'inScheme', coalesce((
       select jsonb_agg(jsonb_build_object(
                'personId', p.id, 'person', p.full_name, 'employeeNo', p.employee_no,
                'chair', ch.title, 'chairCode', ch.code,
+               'rel', perf_rel(p_actor, p.id),
                'kpiCount', (select count(*) from kpi_definition k
                              where k.chair_id = ch.id and k.active and k.position < 100),
                'hasSheet', exists (select 1 from plb_goal_sheet s
@@ -2800,7 +2910,8 @@ AS $function$
         join chair ch on ch.id = h.chair_id
        where h.to_date is null
          and exists (select 1 from kpi_definition k
-                      where k.chair_id = ch.id and k.active and k.position < 100)), '[]'::jsonb));
+                      where k.chair_id = ch.id and k.active and k.position < 100)
+         and perf_rel(p_actor, p.id) is not null), '[]'::jsonb));
 $function$
 ;
 
@@ -3028,6 +3139,31 @@ AS $function$
       end)
   from s, c, fence, k, a, m left join r on true;
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_sheet_for(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_rel text; v_out jsonb;
+begin
+  v_rel := plb_sheet_rel(p_actor, p_sheet);
+  if v_rel is null then
+    if not exists (select 1 from plb_goal_sheet where id = p_sheet) then
+      return jsonb_build_object('error','no_such_sheet');
+    end if;
+    return jsonb_build_object('error','not_permitted',
+      'reason','A goal sheet is the employee''s and the line above them.');
+  end if;
+  v_out := plb_sheet(p_sheet);
+  if jsonb_typeof(v_out) = 'object' then
+    v_out := v_out || jsonb_build_object(
+      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin'));
+  end if;
+  return v_out;
+end $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.plb_sheet_issue(p_actor uuid, p_person uuid, p_quarter date, p_target numeric, p_targets jsonb DEFAULT '[]'::jsonb, p_default boolean DEFAULT false)
@@ -3381,58 +3517,5 @@ begin
   if floored then final := floor_score; end if;
   return next;
 end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_cycle_state(p_cycle uuid)
- RETURNS TABLE(attr numeric, kpi numeric, cut numeric, held numeric)
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare rec record;
-begin
-  attr := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'ATTRIBUTE'), 0);
-  kpi  := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'KPI'), 0);
-  cut  := 0;
-  held := coalesce((select sum(abs(a.points)) from pms_adjustment a
-                     where a.cycle_id = p_cycle and not a.applied), 0);
-
-  for rec in select a.points as pts, a.half as hf from pms_adjustment a
-              where a.cycle_id = p_cycle and a.applied
-              order by a.at, a.id loop
-    if rec.hf = 'ATTRIBUTE' then
-      attr := greatest(0, least(10, attr + rec.pts));
-    else
-      if rec.pts < 0 then cut := cut - rec.pts; end if;
-      kpi := greatest(0, least(10, kpi + rec.pts));
-    end if;
-  end loop;
-  return next;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_team_average(p_person uuid, p_period date)
- RETURNS numeric
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  with recursive my_chair as (
-    select ch.chair_id from chair_holder ch
-     where ch.person_id = p_person and ch.to_date is null
-  ), below as (
-    select c.id from chair c join my_chair m on c.parent_id = m.chair_id
-    union all
-    select c.id from chair c join below b on c.parent_id = b.id
-  ), ppl as (
-    select distinct h.person_id from chair_holder h
-      join below b on b.id = h.chair_id
-     where h.to_date is null
-  )
-  select avg(s.final)
-    from ppl p
-    join pms_cycle cy on cy.person_id = p.person_id and cy.period = p_period
-    cross join lateral pms_cycle_score(cy.id, false) s
-$function$
 ;
 

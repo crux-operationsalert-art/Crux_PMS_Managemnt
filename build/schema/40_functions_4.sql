@@ -8,6 +8,59 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.pms_cycle_state(p_cycle uuid)
+ RETURNS TABLE(attr numeric, kpi numeric, cut numeric, held numeric)
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+declare rec record;
+begin
+  attr := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'ATTRIBUTE'), 0);
+  kpi  := coalesce((select raw from pms_component where cycle_id = p_cycle and kind = 'KPI'), 0);
+  cut  := 0;
+  held := coalesce((select sum(abs(a.points)) from pms_adjustment a
+                     where a.cycle_id = p_cycle and not a.applied), 0);
+
+  for rec in select a.points as pts, a.half as hf from pms_adjustment a
+              where a.cycle_id = p_cycle and a.applied
+              order by a.at, a.id loop
+    if rec.hf = 'ATTRIBUTE' then
+      attr := greatest(0, least(10, attr + rec.pts));
+    else
+      if rec.pts < 0 then cut := cut - rec.pts; end if;
+      kpi := greatest(0, least(10, kpi + rec.pts));
+    end if;
+  end loop;
+  return next;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.pms_team_average(p_person uuid, p_period date)
+ RETURNS numeric
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  with recursive my_chair as (
+    select ch.chair_id from chair_holder ch
+     where ch.person_id = p_person and ch.to_date is null
+  ), below as (
+    select c.id from chair c join my_chair m on c.parent_id = m.chair_id
+    union all
+    select c.id from chair c join below b on c.parent_id = b.id
+  ), ppl as (
+    select distinct h.person_id from chair_holder h
+      join below b on b.id = h.chair_id
+     where h.to_date is null
+  )
+  select avg(s.final)
+    from ppl p
+    join pms_cycle cy on cy.person_id = p.person_id and cy.period = p_period
+    cross join lateral pms_cycle_score(cy.id, false) s
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.pms_weighting_for(p_person uuid, p_on date DEFAULT CURRENT_DATE)
  RETURNS jsonb
  LANGUAGE plpgsql

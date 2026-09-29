@@ -108,6 +108,7 @@ alter table public.perf_cycle add constraint perf_cycle_pkey PRIMARY KEY (id);
 alter table public.perf_entry add constraint perf_entry_pkey PRIMARY KEY (id);
 alter table public.perf_month add constraint perf_month_pkey PRIMARY KEY (id);
 alter table public.perf_revenue add constraint perf_revenue_pkey PRIMARY KEY (id);
+alter table public.perf_rollup_map add constraint perf_rollup_map_pkey PRIMARY KEY (child_family);
 alter table public.person add constraint person_pkey PRIMARY KEY (id);
 alter table public.person_document add constraint person_document_pkey PRIMARY KEY (id);
 alter table public.person_event add constraint person_event_pkey PRIMARY KEY (id);
