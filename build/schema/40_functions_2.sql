@@ -3877,3 +3877,91 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.org_seat_from_the_line(p_actor uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_role role_kind; r record;
+  v_pass int := 0; v_moved int; v_placed int := 0; v_made int := 0;
+  v_seat uuid; v_detail jsonb := '[]'::jsonb; v_left jsonb := '[]'::jsonb;
+begin
+  select app_role into v_role from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if v_role is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_admin',
+      'reason','Seating the org chart is an administrator''s to do.');
+  end if;
+
+  loop
+    v_pass := v_pass + 1; v_moved := 0;
+    for r in
+      select h.id as holder_id, h.chair_id, pe.full_name, c.code as chair_code,
+             ms.id as mgr_seating, ms.scope_label as place, mp.full_name as mgr_name
+        from chair_holder h
+        join person pe on pe.id = h.person_id
+        join chair  c  on c.id  = h.chair_id
+        join person mp on mp.id = pe.manager_id and mp.id <> pe.id
+        join chair_holder mh on mh.person_id = mp.id and mh.to_date is null
+        join chair_seating ms on ms.id = mh.seating_id
+       where h.to_date is null and h.seating_id is null
+         and pe.employment_status = 'ACTIVE' and pe.superseded_by is null
+       order by c.code, pe.full_name
+    loop
+      select s.id into v_seat from chair_seating s
+       where s.chair_id = r.chair_id
+         and s.scope_label is not distinct from r.place
+       order by s.id limit 1;
+
+      if v_seat is null then
+        insert into chair_seating (chair_id, scope_label, reports_to_seating_id, note)
+        values (r.chair_id, r.place, r.mgr_seating,
+                'Made by migration 219 from the reporting line, not from the '
+                || 'source chart: ' || r.full_name || ' reports to ' || r.mgr_name
+                || ', who sits in ' || coalesce(r.place, 'no particular place')
+                || ', and this chair had no seat there.')
+        returning id into v_seat;
+        v_made := v_made + 1;
+      end if;
+
+      update chair_holder set seating_id = v_seat where id = r.holder_id;
+      v_placed := v_placed + 1; v_moved := v_moved + 1;
+      v_detail := v_detail || jsonb_build_object(
+        'person', r.full_name, 'chair', r.chair_code,
+        'place', coalesce(r.place, 'No particular place'), 'from', r.mgr_name);
+    end loop;
+    exit when v_moved = 0 or v_pass >= 12;
+  end loop;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'person', q.full_name, 'chair', q.code, 'why', q.why)
+         order by q.code, q.full_name), '[]'::jsonb)
+    into v_left
+    from (
+      select pe.full_name, c.code,
+             case
+               when pe.manager_id is null then 'no manager on record to sit beside'
+               when not exists (select 1 from chair_holder mh
+                                 where mh.person_id = pe.manager_id and mh.to_date is null)
+                 then 'their manager holds no chair'
+               else 'their manager has no place either'
+             end as why
+        from chair_holder h
+        join person pe on pe.id = h.person_id
+        join chair  c  on c.id  = h.chair_id
+       where h.to_date is null and h.seating_id is null
+         and pe.employment_status = 'ACTIVE' and pe.superseded_by is null) q;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor, 'CHAIR_HOLDERS_SEATED_FROM_LINE', 'chair_holder', 'bulk',
+          jsonb_build_object('passes', v_pass, 'placed', v_placed,
+                             'seatings_made', v_made, 'left', jsonb_array_length(v_left)));
+
+  return jsonb_build_object(
+    'passes', v_pass, 'placed', v_placed, 'seatingsMade', v_made,
+    'detail', v_detail, 'unplaced', jsonb_array_length(v_left), 'left', v_left);
+end $function$
+;
+

@@ -590,6 +590,7 @@ grant execute on function public.ops_alert_resolve(p_dedupe_key text, p_note tex
 grant execute on function public.org_chair(p_code text) to service_role;
 grant execute on function public.org_chart() to service_role;
 grant execute on function public.org_place_holder(p_actor uuid, p_holder uuid, p_seating uuid) to service_role;
+grant execute on function public.org_seat_from_the_line(p_actor uuid) to service_role;
 grant execute on function public.org_unplaced() to service_role;
 grant execute on function public.otp_gate(p_mobile text) to service_role;
 grant execute on function public.outbox_claim(p_limit integer) to service_role;
