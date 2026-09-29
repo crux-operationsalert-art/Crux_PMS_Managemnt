@@ -358,15 +358,25 @@ One latent trap closed on the way past: `build/app/*.js` was **not** in the
 publish workflow's trigger paths, so changing a screen the build reads from the
 repository did not republish — the change sat in git looking applied.
 
-## Still to do on this tab
+## Still to do on this tab — closed 2026-09-29
 
-**The `plb` Edge Function is not yet redeployed.** The screen's new sections
-call `/weighting`, `/task/*` and `/perf/filed`; those routes are written and
-committed but the deployed function is still v5, so they answer 404 until it
-goes out. The screen degrades rather than breaks — the chips fall back to "no
-split has been set", and the fortnight strip and task lists render as nothing —
-but Assign a task will not work until the deploy lands. It is the first thing
-in the next pass.
+The three routes the screen's new sections call are deployed. They did **not**
+go into `plb`. `plb` computes what people are paid and deploys all-or-none, so
+adding three routes meant re-uploading the whole quarterly scheme — issue,
+acknowledge, lock, score, certify, publish, disputes — to gain a task list. A
+slip anywhere in that upload takes the scheme down for a feature nobody is
+waiting on.
+
+So the decision `build-tool.py` patch 8 recorded for the despatch, made again
+for the same reason: a **sixth front door**. `perf` carries `GET /filed`,
+`GET|POST /weighting` and the six `/task/*`, and is deployed as v1.
+`plb/routes/plb.ts` went back byte-for-byte to the running v5
+(sha256 `09207a9e…`), so the repository and the deployed function agree again.
+Patch 11 defines `PERF` and `perfApi` beside `PACK` and `packApi`, anchored on
+patch 7/8's line, which is why it is last in the list. The screen calls
+`perfApi` for the eleven calls that moved and `plb` for the eleven that did not.
+
+Published at 460,624 bytes.
 
 ## Status
 
@@ -375,9 +385,154 @@ in the next pass.
 | Audited | yes — 11 sections, 20 buttons, element by element |
 | Both open questions | answered, and written into the design above |
 | Built | 214 the task engine · 215 the baseline carries the split · 216 whose split applies · 217 the fortnight · the screen itself |
-| Published | yes — 460,432 bytes, parses, every patch assertion passed |
-| Tests | 190 passed, 0 failed, on a database rebuilt from `build/schema` alone |
-| Blocking | the `plb` redeploy |
+| Published | yes — 460,624 bytes, parses, every patch assertion passed |
+| Tests | 220 passed, 0 failed, on a database rebuilt from `build/schema` alone |
+| Blocking | nothing |
+
+---
+
+# The three defects reported 2026-09-29
+
+## 1 · "People are seeing the team of other people"
+
+> *"One should only be able to see and update things for his team and see the
+> details and progress from level 2 and below. So 1st layer/level I work as a
+> manager and below my level I just see and see the progress performance etc."*
+
+**This was the most serious thing found in this project so far, and it was
+worse than reported.**
+
+`kpi_subtree_people(actor)` walked the **chair** tree. There is one Branch
+Manager chair held in thirty-nine places, so walking chairs puts every branch
+manager in the country one step below every zonal manager. The only narrowing
+was a place filter that opened itself whenever the actor had no place on record
+— true for eighty-two of the hundred and one seated holders.
+
+Measured on the live database before the fix:
+
+| | |
+|---|---|
+| (actor, person) pairs visible | **5,579** |
+| people who could see somebody | **97** |
+
+An Executive on SG1 with no reports — ABHIJEET KORI, and sixty others like him
+— came back with sixty-two people. A Team Leader got seventy-one. A Branch
+Manager got eighty-two.
+
+That function is also the **write** gate in `kpi_save`, `kpi_retire` and
+`task_assign`, so an SG1 Executive could define and retire KPIs for sixty-two
+colleagues and assign them tasks.
+
+Three read routes were worse still. `GET /perf/tree`, `GET /perf/history` and
+`GET /perf/score` took `?person=` off the query string and passed it straight
+through to a `SECURITY DEFINER` function. **Anyone who could sign in could read
+anyone's performance by knowing their id.**
+
+### What is true now — migration 218
+
+`perf_line(actor) → (person_id, depth)` over the **reporting line**, which is
+the union of two edges that both mean "A manages B":
+
+* the **seating tree** — `chair_seating.reports_to_seating_id`, place-aware, and
+  what the org chart draws; and
+* `person.manager_id`.
+
+The union is deliberate. Neither is complete alone: the seating tree supplied
+three of the hundred and two edges before defect 2 was fixed, and manager_id
+supplied the rest. Dropping either would blank somebody's team for a reason
+that has nothing to do with who they manage.
+
+| depth | what it means |
+|---|---|
+| 1 | my team — **seen and set** |
+| 2 and beyond | below my team — **seen only** |
+| absent | nothing at all. Not their name, not their numbers. |
+
+After, measured the same way: **478 pairs visible, 102 of them updatable, 13
+people able to see somebody.** ABHIJEET KORI 62 → 0. Parag Mayekar 82 → 0.
+ROOPA R 71 → 0. Aniket Chalke keeps his 42 direct reports.
+
+### Deliberately removed
+
+`perf_may_set` said yes to anyone whose `department` is `Human Resources` or
+`Business Excellence`, for **every person in the company**. Two people hold
+that today. The rule as given has no room for it — setting a score for somebody
+who does not report to you is the thing being complained about. Running the
+scheme (issue, lock, certify, publish, decide a dispute) is a different act and
+is untouched; `maySetUp` keeps that meaning and loses the other one.
+
+An administrator still sees and sets everything. That is the tool's
+administrator, not a department, and there are two.
+
+### A performance defect found by the fix
+
+The first `kpi_subtree_people` was written `and perf_may_set(p_actor, p.id)`,
+which reads better and walks the reporting line **once per person in the
+company** — 635 recursive walks for one screen. It took a verification query
+past a sixty-second timeout on the live database. It is now an uncorrelated
+`in (select …)`, evaluated once, with the administrator case lifted out. Same
+rule, one walk.
+
+## 2 · The ~100 people the org chart cannot seat
+
+The real count was **82 of the 101 seated holders**, and the report's own
+headline reason was the smaller half of it:
+
+| why | how many |
+|---|---|
+| the chair has no seating at all | **69** |
+| no coverage to place them by | 11 |
+| coverage in a place the chart has no seat for | 1 |
+| coverage spans four regions | 1 |
+
+Sixty-nine were not a missing-data problem. Seven chairs — `EXECUTIVE` (63
+holders), `CEO_MD`, `VP_FINANCE`, `HEAD_HR_OPERATIONS`,
+`HEAD_FINANCE_OPERATIONS`, `HR_EXECUTIVE`, `SALES_MANAGER` — have no row in
+`chair_seating` at all. There was no seat to put anybody in, and migration 114
+places a holder into a seating the chart already drew, so it could only ever
+report that.
+
+Since 218 this stopped being a gap on a drawing: the seating tree is half the
+reporting line, so an unplaced holder is a person **in nobody's team with no
+team of their own**. 218 fails closed, which is the right way round, and 219 is
+the other half of it.
+
+### The rule — migration 219
+
+**A person sits where their manager sits**, unless their own coverage already
+said otherwise (114 runs first and decides that). It is not a guess: of the
+thirteen holders on chairs that do have seats, eight resolve to a place their
+own chair already has, and the sixty-three Executives resolve to the place
+their own Team Leader sits in.
+
+Where the manager's place has no seat on the person's chair, **the seat is made
+rather than the person left out**, and every made seat carries a note saying it
+came from the reporting line and not from the chart. Three Branch Manager and
+Location Partner holders report to the West zonal manager, and the chart draws
+branch seats as cities and never as zones; a Location Partner who reports to
+the West zone is a fact about the company whether or not the chart drew a box
+for it.
+
+It runs in **passes** because Ashwini Reddy's manager is SHASHIKALA BHASKAR K,
+who is herself unplaced until this runs — one pass would leave Ashwini behind
+for a reason that has nothing to do with Ashwini. Twelve at most, so a loop in
+the manager chain cannot spin.
+
+**Vrunda Potdar is deliberately not decided.** She is a Zonal Manager covering
+four of the chart's regions, and the chart gives Zonal Manager one seat per
+zone and none that means four of them. She is seated with the place left open
+and a note saying which four, rather than assigned to whichever region sorted
+first. She is then in the reporting line — the thing that was actually broken —
+and the label stays a question for whoever owns the chart.
+
+Run on the live database: **5 passes, 81 placed, 12 seats made, none left.**
+`org_unplaced()` returns zero for the first time. The reporting line grew from
+478 visible pairs to 494 and from 102 first-level pairs to 119, which is the
+seating tree carrying weight it could not carry before.
+
+## 3 · "You have not pre uploaded the KPIs"
+
+In progress. See the status table below for where this stands.
 
 ---
 
