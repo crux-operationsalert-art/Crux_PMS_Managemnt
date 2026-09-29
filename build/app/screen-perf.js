@@ -88,8 +88,8 @@ async function vPerf(){
      page shows all three. Asked together because they are drawn together —
      a chip that arrives after the table it belongs to reads as a bug.     */
   var side = await Promise.all([
-    plb("/weighting"),
-    plb("/plb/task/mine?period=" + PF.period.slice(0,7)),
+    perfApi("/perf/weighting"),
+    perfApi("/perf/task/mine?period=" + PF.period.slice(0,7)),
     plb("/plb/mine")
   ]);
   PF.weighting = side[0] || {};
@@ -105,7 +105,7 @@ async function pfLoadMine(){
     plb("/plb/perf/tree?cycle=" + PF.cycle.id),
     plb("/plb/perf/due"),
     plb("/plb/perf/score?cycle=" + PF.cycle.id),
-    plb("/plb/perf/filed?days=14"),
+    perfApi("/perf/filed?days=14"),
   ]);
   PF.tree = r[0]; PF.due = (r[1] || {}).due || []; PF.score = r[2] || null;
   PF.filed = r[3] || null;
@@ -909,7 +909,7 @@ function pfWire(){
       var picked = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; });
       if (picked.length) body.people = picked; else body.allReports = true;
     }
-    var o = await plb("/plb/task/assign", { method:"POST", body: body });
+    var o = await perfApi("/perf/task/assign", { method:"POST", body: body });
     PF.busy = false;
     if (o.error) {
       PF.says = msg("bad", o.reason || o.error);
@@ -920,7 +920,7 @@ function pfWire(){
         (refused ? ". " + refused + " refused: " + (o.refused || []).join(", ") + ". " + (o.note || "") : "."));
     }
     PF.taskForm = null;
-    PF.tasks = await plb("/plb/task/mine?period=" + PF.period.slice(0,7));
+    PF.tasks = await perfApi("/perf/task/mine?period=" + PF.period.slice(0,7));
     pfRender();
   };
 
@@ -928,7 +928,7 @@ function pfWire(){
     b.onclick = async function(){
       if (PF.busy) return;
       PF.busy = true; b.disabled = true;
-      var o = await plb("/plb/task/close", { method:"POST",
+      var o = await perfApi("/perf/task/close", { method:"POST",
         body:{ id: b.getAttribute("data-pfdone") } });
       PF.busy = false;
       PF.says = o.error ? msg("bad", o.reason || o.error)
@@ -936,7 +936,7 @@ function pfWire(){
             o.status === "LATE"
               ? "Closed, but after " + day(o.dueOn) + ", so it stands as late."
               : "Closed on time.");
-      PF.tasks = await plb("/plb/task/mine?period=" + PF.period.slice(0,7));
+      PF.tasks = await perfApi("/perf/task/mine?period=" + PF.period.slice(0,7));
       pfRender();
     };
   });
@@ -947,11 +947,11 @@ function pfWire(){
       var why = prompt("Why is this being called off? It goes on the record.");
       if (why === null) return;
       PF.busy = true; b.disabled = true;
-      var o = await plb("/plb/task/cancel", { method:"POST",
+      var o = await perfApi("/perf/task/cancel", { method:"POST",
         body:{ id: b.getAttribute("data-pfcancel"), why: why } });
       PF.busy = false;
       PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", "Called off.");
-      PF.tasks = await plb("/plb/task/mine?period=" + PF.period.slice(0,7));
+      PF.tasks = await perfApi("/perf/task/mine?period=" + PF.period.slice(0,7));
       pfRender();
     };
   });
@@ -977,11 +977,11 @@ function pfWire(){
   if (el("pfweightsave")) el("pfweightsave").onclick = async function(){
     if (PF.busy) return;
     PF.busy = true; el("pfweightsave").disabled = true;
-    var o = await plb("/weighting", { method:"POST", body: PF.weightForm });
+    var o = await perfApi("/perf/weighting", { method:"POST", body: PF.weightForm });
     PF.busy = false;
     PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note);
     PF.weightForm = null;
-    PF.weighting = await plb("/weighting");
+    PF.weighting = await perfApi("/perf/weighting");
     pfRender();
   };
 

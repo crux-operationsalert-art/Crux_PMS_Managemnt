@@ -596,6 +596,33 @@ PATCHES.append((
       '  if (lvl === "admin") return true;', 1)],
 ))
 
+# ------------------------- 11. PERFORMANCE GETS ITS OWN FRONT DOOR TOO
+# The Performance screen grew three things the scheme service had no room
+# for: the day you filed, the tasks somebody asked you to do, and the
+# monthly weighting. `plb` is the payroll-adjacent service -- it computes
+# what people are paid -- and it is at the size where a deploy carries
+# every file or none. Adding three routes to it means re-uploading the
+# whole of the quarterly scheme to add a task list, and a slip anywhere in
+# that upload takes the scheme down.
+#
+# So the same decision patch 8 made for the despatch: a sixth front door,
+# `perf`, carrying only the new routes. `plb` stays exactly as deployed.
+# One more URL, and nothing that already runs is touched.
+#
+# The anchor is patch 7/8's packApi line, which is why this is last: on a
+# page that has never had either, patch 7 defines it; on the page as
+# published, patch 8 does. Either way it is there by the time this runs.
+PATCHES.append((
+    "performance has its own door",
+    "var perfApi =",
+    [('var PACK = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/pack";\n'
+      'var packApi = function(p,o){ return call(PACK, p, o); };',
+      'var PACK = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/pack";\n'
+      'var packApi = function(p,o){ return call(PACK, p, o); };\n'
+      'var PERF = "https://oxpwqfbtbxlvuqpztbwg.supabase.co/functions/v1/perf";\n'
+      'var perfApi = function(p,o){ return call(PERF, p, o); };', 1)],
+))
+
 print("%d patches to consider." % len(PATCHES))
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
