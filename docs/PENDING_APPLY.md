@@ -11,6 +11,17 @@ Nothing in the tool is broken while they wait. The reminders keep going out
 exactly as they did before — the change makes them better, it does not fix
 something that is currently failing.
 
+**The test suite reads `447 passed, 1 failed` until step 1 is done, and that
+is not a regression.** The one failure is `test_mail.sql` saying
+
+    ERROR:  function app_link(unknown) does not exist
+
+`build/schema` is regenerated from the LIVE database, so a function that is
+not live is not in the baseline, and a test written for it cannot pass. The
+count returns to zero failures the first time the snapshot workflow runs
+after migration 235 is applied. Anybody reading that failure and assuming
+the test is wrong would be about to delete a correct test.
+
 ## 1 · Apply migration 235
 
     build/migration/235_a_reminder_that_carries_the_way_to_act_on_it.sql
