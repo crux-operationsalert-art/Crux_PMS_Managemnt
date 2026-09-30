@@ -8,6 +8,19 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.pms_cfg(p_key text, p_default numeric)
+ RETURNS numeric
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select coalesce(
+    (select nullif(regexp_replace(value, '[^0-9.]', '', 'g'), '')::numeric
+       from app_setting where key = p_key),
+    p_default)
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.pms_cycle_score(p_cycle uuid, p_include_team boolean DEFAULT true)
  RETURNS TABLE(kpi numeric, attr numeric, final numeric, own numeric, cut numeric, held numeric, floored boolean, team_avg numeric)
  LANGUAGE plpgsql

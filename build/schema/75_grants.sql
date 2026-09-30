@@ -622,6 +622,7 @@ grant execute on function public.perf_file(p_actor uuid, p_assignment uuid, p_as
 grant execute on function public.perf_filed_days(p_person uuid, p_days integer, p_to date) to anon;
 grant execute on function public.perf_filed_days(p_person uuid, p_days integer, p_to date) to authenticated;
 grant execute on function public.perf_filed_days(p_person uuid, p_days integer, p_to date) to service_role;
+grant execute on function public.perf_handover(p_actor uuid, p_cycle uuid, p_person uuid) to service_role;
 grant execute on function public.perf_history(p_person uuid, p_name text, p_kpi uuid, p_months integer) to service_role;
 grant execute on function public.perf_history_for(p_actor uuid, p_person uuid, p_name text, p_kpi uuid, p_months integer) to service_role;
 grant execute on function public.perf_kpi_score(p_person uuid, p_cycle uuid) to service_role;
@@ -633,6 +634,7 @@ grant execute on function public.perf_node(p_assignment uuid, p_depth integer) t
 grant execute on function public.perf_org_rollup(p_actor uuid, p_cycle uuid, p_person uuid) to anon;
 grant execute on function public.perf_org_rollup(p_actor uuid, p_cycle uuid, p_person uuid) to authenticated;
 grant execute on function public.perf_org_rollup(p_actor uuid, p_cycle uuid, p_person uuid) to service_role;
+grant execute on function public.perf_quarter_value(p_person uuid, p_kpi uuid, p_quarter date) to service_role;
 grant execute on function public.perf_rel(p_actor uuid, p_person uuid) to service_role;
 grant execute on function public.perf_relink(p_actor uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_reminder_sweep(p_on date) to service_role;
@@ -661,6 +663,7 @@ grant execute on function public.person_normalise_email() to service_role;
 grant execute on function public.person_options() to service_role;
 grant execute on function public.person_without_number() to service_role;
 grant execute on function public.plb_acknowledge(p_actor uuid, p_sheet uuid) to service_role;
+grant execute on function public.plb_actual_from_perf(p_actor uuid, p_sheet uuid) to service_role;
 grant execute on function public.plb_actual_set(p_actor uuid, p_sheet uuid, p_kpi uuid, p_actual numeric) to service_role;
 grant execute on function public.plb_attr_decide(p_actor uuid, p_sheet uuid, p_kpi uuid, p_approve boolean, p_note text) to service_role;
 grant execute on function public.plb_attr_overlap(p_sheet uuid, p_text text) to service_role;
@@ -686,6 +689,7 @@ grant execute on function public.plb_payout_factor(p_achievement numeric) to ser
 grant execute on function public.plb_publish(p_actor uuid, p_sheet uuid) to service_role;
 grant execute on function public.plb_quarter(p_quarter date) to service_role;
 grant execute on function public.plb_quarter(p_quarter date, p_actor uuid) to service_role;
+grant execute on function public.plb_quarter_cycles(p_quarter date) to service_role;
 grant execute on function public.plb_score_lock(p_actor uuid, p_sheet uuid, p_month date) to service_role;
 grant execute on function public.plb_score_month(p_actor uuid, p_sheet uuid, p_month date, p_kpi numeric, p_attr numeric, p_reason text) to service_role;
 grant execute on function public.plb_self_eval(p_actor uuid, p_sheet uuid, p_month date, p_kpi numeric, p_attr numeric) to service_role;

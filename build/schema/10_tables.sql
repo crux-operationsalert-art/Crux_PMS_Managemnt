@@ -1195,7 +1195,8 @@ create table if not exists public.perf_rollup_map (
   parent_family text not null,
   note text not null,
   set_by uuid,
-  set_at timestamp with time zone default now() not null
+  set_at timestamp with time zone default now() not null,
+  priority integer default 1 not null
 );
 
 create table if not exists public.person (

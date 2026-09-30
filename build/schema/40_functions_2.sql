@@ -8,129 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_actions(p_assignment uuid, p_person uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  a assignment%rowtype; v_role role_kind; v_acts jsonb := '[]'::jsonb;
-  v_is_assignee boolean; v_is_assignor boolean; v_waiting int; v_disp uuid; arb jsonb;
-  v_unreported int;
-begin
-  select * into a from assignment where id = p_assignment;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-  select app_role into v_role from person where id = p_person;
-  v_is_assignee := a.allocated_to_id = p_person;
-  v_is_assignor := a.assignor_id = p_person;
-
-  select count(*) into v_waiting from repeat_point_decision
-   where assignment_id = p_assignment and decision is null;
-
-  if v_waiting > 0 then
-    return jsonb_build_object('state', a.current_state, 'open_request', a.open_request_type,
-      'decisions_waiting', v_waiting, 'unreported_points', null,
-      'actions', jsonb_build_array(jsonb_build_object('kind','decide',
-        'label', v_waiting || ' repeated Point ID' || case when v_waiting = 1 then '' else 's' end
-                 || ' to decide first')));
-  end if;
-
-  select count(*) into v_unreported from case_verification_requirement
-   where case_id = a.case_id and status in ('PENDING','IN_PROGRESS');
-
-  v_acts := coalesce((select jsonb_agg(jsonb_build_object('kind','transition','to', to_state,
-              'label', initcap(replace(to_state,'_',' '))) order by to_state)
-              from ogl_transition_rule
-             where from_state = a.current_state
-               and to_state not in ('SUBMITTED','COMPLETED')
-               and not (from_state = 'UNDER_REVIEW' and to_state = 'CLOSED')), '[]'::jsonb);
-
-  if a.current_state = 'DRAFT' and (v_is_assignor or v_role = 'ADMIN') then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','submit','label','Submit it'));
-  end if;
-
-  if (v_is_assignor or v_role = 'ADMIN')
-     and a.current_state in ('DRAFT','SUBMITTED','ASSIGNED','REOPENED') then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','allocate',
-      'label', case when a.allocated_to_id is null then 'Allocate it' else 'Re-allocate it' end));
-  end if;
-
-  -- the assignee's own work: say what was found, then deliver it
-  if (v_is_assignee or v_role = 'ADMIN') and a.current_state in ('IN_PROGRESS','REWORK') then
-    if v_unreported > 0 then
-      v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','report',
-        'label','Record what you found (' || v_unreported || ' left)'));
-    else
-      v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','complete',
-        'label','Complete and share the report'));
-    end if;
-  end if;
-
-  if v_is_assignee and a.current_state in ('IN_PROGRESS','REWORK') and a.open_request_type is null then
-    v_acts := v_acts
-      || jsonb_build_array(jsonb_build_object('kind','request','type','RFI',
-           'label','Ask for information'))
-      || case when a.delay_count < 3 then
-           jsonb_build_array(jsonb_build_object('kind','request','type','DELAY',
-             'label','Report a delay'))
-         else '[]'::jsonb end;
-  end if;
-
-  if (v_is_assignor or v_role = 'ADMIN') and a.current_state = 'UNDER_REVIEW' then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','accept',
-      'label','Accept the report and close'));
-  end if;
-
-  if v_is_assignor and a.current_state = 'UNDER_REVIEW' then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','request','type','DISPUTE',
-      'label', case when a.dispute_count >= 2 then 'Dispute - this one goes to arbitration'
-                    else 'Dispute the report' end));
-  end if;
-
-  if (v_is_assignor or v_role = 'ADMIN') and a.open_request_type is null
-     and a.current_state not in ('CLOSED','CANCELLED','COMPLETED','UNDER_REVIEW','DRAFT') then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','request','type','HOLD',
-      'label','Place on hold'));
-  end if;
-
-  if a.open_request_type is not null and (v_is_assignor or v_role = 'ADMIN') then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','resolve',
-      'type', a.open_request_type, 'label','Answer the open ' || a.open_request_type,
-      'request', (select q.id from assignment_request q
-                   where q.assignment_id = p_assignment and q.resolved_at is null
-                     and q.request_type <> 'DISPUTE' limit 1)));
-  end if;
-
-  select q.id into v_disp from assignment_request q
-   where q.assignment_id = p_assignment and q.request_type = 'DISPUTE'
-     and q.resolved_at is null limit 1;
-  if v_disp is not null and (v_is_assignor or v_role in ('ADMIN','MANAGER')) then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','classify',
-      'request', v_disp, 'label','Classify the dispute'));
-  end if;
-
-  if a.current_state = 'ARBITRATION' then
-    arb := ogl_arbiter(p_assignment);
-    if (arb->>'person_id')::uuid = p_person or v_role = 'ADMIN' then
-      v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','arbitrate',
-        'label','Decide the arbitration'));
-    end if;
-  end if;
-
-  if (v_is_assignor or v_role = 'ADMIN')
-     and a.current_state not in ('CLOSED','CANCELLED') then
-    v_acts := v_acts || jsonb_build_array(jsonb_build_object('kind','lend',
-      'label','Lend someone access'));
-  end if;
-
-  return jsonb_build_object('state', a.current_state, 'open_request', a.open_request_type,
-    'decisions_waiting', 0, 'unreported_points', v_unreported,
-    'arbiter', case when a.current_state = 'ARBITRATION' then ogl_arbiter(p_assignment) end,
-    'actions', v_acts);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_addr_match(a text, b text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3999,6 +3876,35 @@ begin
 exception when others then
   -- a mirror must never be the reason an e-mail fails to queue
   return new;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.outbox_requeue()
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare n int;
+begin
+  update outbox set state = 'QUEUED'
+   where state = 'DEFERRED' and not_before <= now();
+  get diagnostics n = row_count;
+  return n;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.outbox_sent(p_id uuid, p_ref text DEFAULT NULL::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  update outbox set state = 'SENT', sent_at = now(), last_error = null where id = p_id;
+  insert into delivery (outbox_id, channel, recipient, state, provider_ref, at)
+  select p_id, 'EMAIL', recipient, 'SENT', p_ref, now() from outbox where id = p_id;
+  update mail_budget set recipients_sent = recipients_sent + 1 where day = current_date;
 end $function$
 ;
 
