@@ -20,6 +20,7 @@ var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            /* the blueprint's other sections: the split, the fortnight, the
               tasks, the quarter, and the forms that write to them. */
            weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
+           org:null, tgt:null, tgtFor:null,
            taskForm:null, weightForm:null, elig:false };
 
 function pfMonth(d){ d = d || new Date();
@@ -106,9 +107,12 @@ async function pfLoadMine(){
     plb("/plb/perf/due"),
     plb("/plb/perf/score?cycle=" + PF.cycle.id),
     perfApi("/perf/filed?days=14"),
+    /* My own measures with everything below me already added in. The
+       same call the Org end reads, asked about myself. */
+    perfApi("/perf/org?cycle=" + PF.cycle.id),
   ]);
   PF.tree = r[0]; PF.due = (r[1] || {}).due || []; PF.score = r[2] || null;
-  PF.filed = r[3] || null;
+  PF.filed = r[3] || null; PF.org = r[4] || null;
 }
 
 function pfRender(){
@@ -140,6 +144,7 @@ function pfRender(){
     pfMyKpis() +           /* F  my KPIs                                  */
     pfAttributes() +       /* G  attributes                               */
     pfRequests() +         /* H  KPI change requests                      */
+    pfTargets() +          /* H2 the target, and who it divides across     */
     pfTeamSection() +      /* I  my team: targets, tasks and eligibility  */
     pfWeighting() +        /* J  the split, for Admin and HR              */
     pfAppraisal() +        /* K  appraisal, and the quarter behind it     */
@@ -384,6 +389,97 @@ function pfRequests(){
     'holds one yet. Until it does, a target change is raised the way the ' +
     'Constitution says: a Target Change Request before the quarter midpoint, ' +
     'through your Functional Head.</div></div>';
+}
+
+/* ------------------- H2 · the target, and who it divides across
+   The other half of the daily flow. The numbers climb on their own; a
+   target has to be given, and when it is given to me it divides across my
+   team so nobody has to work out their share by hand.
+
+   A count divides -- 600 cases across four people is 150 each. A
+   percentage is copied -- 95% across four is 95 each, not 23.75. The
+   screen says which of the two it is doing before it does it, because the
+   difference between those two sentences is somebody's month.
+
+   Anything typed by hand is pinned and the rest redivide around it. The
+   screen marks a pinned share so a manager can see at a glance which of
+   their team they have actually decided about.                          */
+function pfTargets(){
+  var o = PF.org;
+  if (!o || o.error || !o.measures || !o.measures.length) return "";
+
+  var rows = o.measures.map(function(m){
+    var src = m.targetSource === "MANUAL" ? '<span class="pfpin">agreed</span>'
+            : m.targetSource === "SHARED" ? '<span class="mute">a share from above</span>'
+            : '<span class="pfseed">a starting number, nobody has agreed it</span>';
+    var open = PF.tgtFor === m.assignmentId;
+    return '<tr>' +
+      '<td><b>' + esc(m.name) + '</b>' +
+        '<div class="mute">' + esc(m.unit || "") +
+          (m.feeders ? ' · ' + m.feeders + ' below feed it' : ' · nothing feeds it') +
+        '</div></td>' +
+      '<td>' + (m.target === null || m.target === undefined
+                 ? '<span class="mute">none</span>' : esc(pfNum(m.target))) +
+        '<div class="mute">' + src + '</div></td>' +
+      '<td>' + (m.value === null || m.value === undefined
+                 ? '<span class="mute">nothing filed</span>' : esc(pfNum(m.value))) +
+        (m.pct === null || m.pct === undefined ? '' :
+          '<div class="mute">' + esc(m.pct) + '% of target</div>') + '</td>' +
+      '<td class="plact">' + (m.feeders
+        ? '<button class="btn" data-pftgt="' + esc(m.assignmentId) + '">' +
+            (open ? 'Hide' : 'Set and divide') + '</button>'
+        : '<span class="mute">nobody to divide it across</span>') + '</td>' +
+      '</tr>' +
+      (open ? '<tr><td colspan="4">' + pfTargetPanel() + '</td></tr>' : '');
+  }).join("");
+
+  return '<div class="card"><h2>Targets <span class="mute">· mine, and my team&rsquo;s share of them</span></h2>' +
+    '<p class="mute">A target set here divides across everybody whose measure climbs ' +
+    'into it. A count is split; a percentage is carried down whole. A share you type ' +
+    'yourself is kept, and the others divide what is left around it.</p>' +
+    '<div class="scroll"><table><thead><tr>' +
+      '<th>Measure</th><th>Target</th><th>Where it stands</th><th></th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+}
+
+function pfTargetPanel(){
+  var t = PF.tgt;
+  if (!t) return '<p class="mute">Loading&hellip;</p>';
+  if (t.error) return msg("warn", t.reason || t.error);
+
+  var head = '<div class="pfsays">' + esc(t.note || "") + '</div>' +
+    '<p><label>Set this measure to ' +
+      '<input id="pftgtval" type="number" step="any" value="' +
+        esc(t.measure && t.measure.target !== null ? t.measure.target : "") + '"></label> ' +
+      '<button class="btn primary" id="pftgtsave">Set and divide</button></p>';
+
+  if (!t.team || !t.team.length) {
+    return head + '<div class="empty">Nothing climbs into this measure, so there is ' +
+      'nothing to divide.</div>';
+  }
+
+  var rows = t.team.map(function(x){
+    return '<tr><td>' + esc(x.name) +
+        (x.employeeNo ? ' <span class="mute">' + esc(x.employeeNo) + '</span>' : '') +
+        (x.feeders ? '<div class="mute">' + x.feeders + ' below them</div>' : '') +
+      '</td>' +
+      '<td>' + (x.target === null || x.target === undefined
+                 ? '<span class="mute">none</span>' : esc(pfNum(x.target))) + '</td>' +
+      '<td>' + (x.pinned
+                 ? '<span class="pfpin">pinned &mdash; a later divide leaves it alone</span>'
+                 : '<span class="mute">a share</span>') + '</td>' +
+      '<td class="plact">' + (x.maySet
+        ? '<input class="pfin" data-pfshare="' + esc(x.assignmentId) + '" type="number" ' +
+            'step="any" placeholder="pin a number">'
+        : '<span class="mute">not yours to set</span>') + '</td></tr>';
+  }).join("");
+
+  return head +
+    '<div class="scroll"><table><thead><tr>' +
+      '<th>Whose</th><th>Their share</th><th></th><th>Pin one</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    '<p><button class="btn" id="pfpinsave">Pin what I have typed</button> ' +
+    '<span class="mute">The rest redivide around it. Blank boxes are left alone.</span></p>';
 }
 
 /* ------------------------- I · my team: targets, tasks and eligibility */
@@ -850,6 +946,52 @@ function pfWire(){
      The blueprint submits a day, not a row. Everything filled in goes at
      once; a blank is left alone rather than filed as a zero, because a zero
      you meant and a box you did not reach are different facts.            */
+  /* ------------------------------------------------ the target and its shares */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pftgt]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-pftgt");
+      if (PF.tgtFor === id) { PF.tgtFor = null; PF.tgt = null; pfRender(); return; }
+      PF.tgtFor = id; PF.tgt = null; pfRender();
+      PF.tgt = await perfApi("/perf/target/team?assignment=" + encodeURIComponent(id));
+      pfRender();
+    };
+  });
+
+  if (el("pftgtsave")) el("pftgtsave").onclick = async function(){
+    var v = el("pftgtval").value;
+    if (v === "") { PF.says = "A target needs a number."; pfRender(); return; }
+    if (PF.busy) return;
+    PF.busy = true; el("pftgtsave").disabled = true;
+    var o = await perfApi("/perf/target", { method:"POST",
+      body: { assignmentId: PF.tgtFor, target: v } });
+    PF.busy = false;
+    PF.says = o && o.error ? (o.reason || o.error) : (o && o.note) || "Set.";
+    PF.tgt = await perfApi("/perf/target/team?assignment=" + encodeURIComponent(PF.tgtFor));
+    await pfLoadMine();
+    pfRender();
+  };
+
+  if (el("pfpinsave")) el("pfpinsave").onclick = async function(){
+    var boxes = Array.prototype.slice.call(el("view").querySelectorAll("[data-pfshare]"))
+      .filter(function(x){ return x.value !== ""; });
+    if (!boxes.length) { PF.says = "Nothing typed, so nothing pinned."; pfRender(); return; }
+    if (PF.busy) return;
+    PF.busy = true; el("pfpinsave").disabled = true;
+    var done = 0, bad = null;
+    for (var i = 0; i < boxes.length; i++) {
+      var o = await perfApi("/perf/target", { method:"POST", body: {
+        assignmentId: boxes[i].getAttribute("data-pfshare"),
+        target: boxes[i].value, manual: true } });
+      if (o && o.error) { bad = o.reason || o.error; } else { done++; }
+    }
+    PF.busy = false;
+    PF.says = bad ? (done + " pinned, and one was refused: " + bad)
+                  : done + " share(s) pinned. The rest divided around them.";
+    PF.tgt = await perfApi("/perf/target/team?assignment=" + encodeURIComponent(PF.tgtFor));
+    await pfLoadMine();
+    pfRender();
+  };
+
   if (el("pfsubmitday")) el("pfsubmitday").onclick = async function(){
     if (PF.busy) return;
     var boxes = Array.prototype.slice.call(el("view").querySelectorAll("[data-pffile]"))

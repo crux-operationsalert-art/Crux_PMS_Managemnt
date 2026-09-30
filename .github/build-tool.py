@@ -332,6 +332,11 @@ PATCHES.append((
       '.pftask.ok td{background:var(--green-bg)}\n'
       '.pftask.warn td{background:var(--gold-bg)}\n'
       '.pftask.bad td{background:var(--terra-bg)}\n'
+      # A target somebody agreed, and one nobody has yet. The difference
+      # matters enough to be visible without reading the words.
+      '.pfpin{color:var(--green);font-weight:600}\n'
+      '.pfseed{color:var(--gold-ink)}\n'
+      '.pfsays{margin:0 0 8px;font-size:13px;color:var(--body)}\n'
       '.pftree{padding:2px 0 8px}\n'
       '.pfrow{display:flex;align-items:center;gap:8px;padding:7px 15px;\n'
       '  border-top:1px solid var(--line3);font-size:13px}\n'
