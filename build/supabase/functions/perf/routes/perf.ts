@@ -343,6 +343,49 @@ r.post("/team/move", async (req: any, res: any) => {
 });
 
 // =====================================================================
+// The + on a tile (migration 234).
+//
+// It offers two different things and they are not the same thing: moving
+// somebody who already works here, which the manager owns outright, and
+// asking for somebody who does not, which only HR can finish because it
+// makes an account. /team/add says which of the two this person may do
+// and hands over the lists each one needs.
+// =====================================================================
+
+r.get("/team/add", async (req: any, res: any) => {
+  const under = req.query.get("under");
+  if (!under) return res.status(400).json({ error: "missing_person" });
+  const o = await one(`select org_add_options($1,$2::uuid) as o`,
+    [req.person.id, under]);
+  return out(res, o.o);
+});
+
+// The manager's ask. It writes a request and never a person -- the reply
+// carries a requestId, not a personId, and that difference is the point.
+r.post("/team/request", async (req: any, res: any) => {
+  const o = await one(`select person_request_open($1,$2::jsonb) as o`,
+    [req.person.id, JSON.stringify(req.body || {})]);
+  return out(res, o.o);
+});
+
+r.get("/team/requests", async (req: any, res: any) => {
+  const o = await one(`select person_request_list($1,$2) as o`,
+    [req.person.id, req.query.get("state") || null]);
+  return out(res, o.o);
+});
+
+// HR turns the ask into an account, or refuses it with a reason. The
+// approval runs person_add again under HR, so a validation failure comes
+// back as person_add's own field-by-field errors rather than a shrug.
+r.post("/team/request/decide", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.requestId) return res.status(400).json({ error: "missing_request" });
+  const o = await one(`select person_request_decide($1,$2::uuid,$3,$4::jsonb) as o`,
+    [req.person.id, b.requestId, b.decision || "", JSON.stringify(b.fields || {})]);
+  return out(res, o.o);
+});
+
+// =====================================================================
 // One target, several clients (migration 230).
 //
 // The parts are ordinary assignments with a part_of_id, so everything
