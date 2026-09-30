@@ -18,7 +18,8 @@
    and every drop is refused or allowed by org_move_person.             */
 
 var TM = { tree:null, cycle:null, shut:{}, sel:null, drag:null, over:null,
-           busy:false, says:"", detail:null, detailFor:null, addTo:null };
+           busy:false, says:"", detail:null, detailFor:null, addTo:null,
+           conduct:null, conductFor:null, form:null };
 
 async function vPeople(){
   el("view").innerHTML = '<p class="mute">Loading&hellip;</p>';
@@ -165,10 +166,9 @@ function tmPanel(){
         '<button class="btn" data-tmgo="score">Monthly review and score</button>' +
         '<button class="btn" data-tmgo="quarter">Quarterly scorecard</button>' +
         '<button class="btn" data-tmgo="task">Ask them for something</button>' +
-      '</div>' +
-      '<p class="mute tmsoon">Not built yet, and not drawn as though it were: ' +
-      'a formal warning, a PIP with its planned reviews, and raising an ' +
-      'escalation about a person rather than a case.</p>'
+        '<button class="btn" data-tmform="warn">Issue a warning</button>' +
+        '<button class="btn" data-tmform="pip">Put on a PIP</button>' +
+      '</div>'
     : '<p class="mute">You can see how ' + esc(p.name.split(" ")[0]) +
       ' is doing. Setting their targets and scoring them belongs to the ' +
       'person they report to.</p>';
@@ -186,6 +186,7 @@ function tmPanel(){
         : 'No measures are set for them this month.') +
     '</p>' +
     acts +
+    tmConduct() +
     '<h3 class="tmh3">Measure by measure</h3>' +
     (det === null
       ? '<p class="mute">' +
@@ -210,6 +211,130 @@ function tmMeasures(d){
           ? '<span class="mute">nothing filed</span>' : pfNum(m.value)) + '</td>' +
         '<td style="min-width:150px">' + pfMeter(m.value, m.target, m.direction) + '</td></tr>';
     }).join("") + '</tbody></table></div>';
+}
+
+
+/* ------------------------------------- warnings, and the plan if there is one
+   Two different shapes, drawn differently on purpose. A warning is a
+   dated line that never changes. A plan is a live thing with reviews
+   that are either held or overdue, and the overdue ones are the whole
+   point of booking them as rows.                                       */
+function tmConduct(){
+  var c = TM.conductFor === TM.sel ? TM.conduct : null;
+  if (!c) {
+    return '<p class="tmsoon"><button class="btn" id="tmconduct">' +
+      'Warnings and improvement plan</button></p>';
+  }
+  if (c.error) return msg("warn", c.reason || c.error);
+
+  var ws = c.warnings || [];
+  var warn = !ws.length
+    ? '<p class="mute">No warning has been issued.</p>'
+    : '<ul class="tmwarn">' + ws.map(function(w){
+        return '<li><span class="tmlvl ' + esc((w.level||"").toLowerCase()) + '">' +
+          esc(w.level) + '</span> <b>' + esc(w.subject) + '</b>' +
+          '<div class="mute">' + esc((w.issuedAt||"").slice(0,10)) +
+          ' &middot; ' + esc(w.issuedBy || "") + '</div>' +
+          (w.detail ? '<div>' + esc(w.detail) + '</div>' : '') + '</li>';
+      }).join("") + '</ul>';
+
+  var p = c.plan;
+  var plan;
+  if (!p) {
+    plan = '<p class="mute">Not on an improvement plan.</p>';
+  } else {
+    var rs = p.reviews || [];
+    var due = rs.filter(function(r){ return r.overdue; }).length;
+    var held = rs.filter(function(r){ return r.heldAt; }).length;
+    plan = '<div class="tmplan">' +
+      '<div class="tmplanh"><b>' + esc(p.state) + '</b> ' +
+        '<span class="mute">' + esc(p.startsOn) + ' to ' + esc(p.endsOn) + '</span>' +
+        (due ? ' <span class="tmover">' + due + ' review' +
+               (due === 1 ? '' : 's') + ' overdue</span>' : '') +
+      '</div>' +
+      '<p><b>Concern.</b> ' + esc(p.concern) + '</p>' +
+      '<p><b>What improvement looks like.</b> ' + esc(p.expectation) + '</p>' +
+      (p.support ? '<p><b>Support.</b> ' + esc(p.support) + '</p>' : '') +
+      (p.outcome ? '<p><b>Outcome.</b> ' + esc(p.outcome) + '</p>' : '') +
+      '<div class="scroll"><table><thead><tr>' +
+        '<th>#</th><th>Due</th><th>Held</th><th>Judgement</th><th></th>' +
+      '</tr></thead><tbody>' + rs.map(function(r){
+        return '<tr' + (r.overdue ? ' class="tmoverrow"' : '') + '>' +
+          '<td>' + esc(r.seq) + '</td>' +
+          '<td>' + esc(r.dueOn) + (r.overdue ? ' <span class="tmover">overdue</span>' : '') + '</td>' +
+          '<td>' + (r.heldAt ? esc(r.heldAt.slice(0,10)) : '<span class="mute">not yet</span>') + '</td>' +
+          '<td>' + (r.judgement ? esc(r.judgement.replace(/_/g," ").toLowerCase()) : '') +
+            (r.note ? '<div class="mute">' + esc(r.note) + '</div>' : '') + '</td>' +
+          '<td class="plact">' + (!r.heldAt && c.mayAct
+            ? '<button class="btn" data-tmhold="' + esc(r.id) + '">Hold it</button>' : '') +
+          '</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      (c.mayAct && (p.state === "OPEN" || p.state === "EXTENDED")
+        ? '<p><button class="btn" data-tmform="close">Close the plan</button> ' +
+          '<span class="mute">' + held + ' of ' + rs.length + ' reviews held.</span></p>'
+        : '') +
+      '</div>';
+  }
+
+  return '<h3 class="tmh3">Warnings</h3>' + warn +
+         '<h3 class="tmh3">Improvement plan</h3>' + plan +
+         (TM.form ? tmForm() : '');
+}
+
+/* One form, three shapes. Each field is what the database will refuse
+   without, so the refusal happens here where it costs nothing.        */
+function tmForm(){
+  var f = TM.form;
+  if (f === "warn") {
+    return '<div class="tmfm"><h4>Issue a warning</h4>' +
+      '<p><label>Level <select id="tmwlevel">' +
+        '<option value="VERBAL">Verbal</option>' +
+        '<option value="WRITTEN" selected>Written</option>' +
+        '<option value="FINAL">Final</option></select></label></p>' +
+      '<p><label>What it is about<br><input id="tmwsub" class="pfin" ' +
+        'style="width:100%" placeholder="Numbers not filed for six working days"></label></p>' +
+      '<p><label>Detail<br><textarea id="tmwdet" rows="3" style="width:100%"></textarea></label></p>' +
+      '<p><button class="btn primary" id="tmwsave">Issue it</button> ' +
+      '<button class="btn" id="tmfcancel">Cancel</button> ' +
+      '<span class="mute">A warning is never edited afterwards.</span></p></div>';
+  }
+  if (f === "pip") {
+    return '<div class="tmfm"><h4>Open an improvement plan</h4>' +
+      '<p><label>The concern<br><textarea id="tmpcon" rows="2" style="width:100%" ' +
+        'placeholder="Cases completed has been under half of target for two months"></textarea></label></p>' +
+      '<p><label>What improvement looks like<br><textarea id="tmpexp" rows="2" ' +
+        'style="width:100%" placeholder="At or above 90% of the monthly target for two consecutive months"></textarea></label></p>' +
+      '<p><label>Support offered<br><textarea id="tmpsup" rows="2" style="width:100%"></textarea></label></p>' +
+      '<p><label>Ends on <input id="tmpend" type="date"></label> ' +
+      '<label>Review every <input id="tmpev" class="pfin" type="number" value="14" ' +
+        'style="width:70px"> days</label></p>' +
+      '<p><button class="btn primary" id="tmpsave">Open it</button> ' +
+      '<button class="btn" id="tmfcancel">Cancel</button> ' +
+      '<span class="mute">The reviews are booked now, not remembered later.</span></p></div>';
+  }
+  if (f === "close") {
+    return '<div class="tmfm"><h4>Close the plan</h4>' +
+      '<p><label>Outcome <select id="tmcst">' +
+        '<option value="MET">Met</option>' +
+        '<option value="NOT_MET">Not met</option>' +
+        '<option value="EXTENDED">Extended</option>' +
+        '<option value="WITHDRAWN">Withdrawn</option></select></label></p>' +
+      '<p><label>Why<br><textarea id="tmcnote" rows="3" style="width:100%"></textarea></label></p>' +
+      '<p><button class="btn primary" id="tmcsave">Close it</button> ' +
+      '<button class="btn" id="tmfcancel">Cancel</button> ' +
+      '<span class="mute">Met or not met needs a reason.</span></p></div>';
+  }
+  if (f && f.indexOf("hold:") === 0) {
+    return '<div class="tmfm"><h4>Hold this review</h4>' +
+      '<p><label>How it is going <select id="tmhj">' +
+        '<option value="ON_TRACK">On track</option>' +
+        '<option value="AT_RISK">At risk</option>' +
+        '<option value="OFF_TRACK">Off track</option></select></label></p>' +
+      '<p><label>Note<br><textarea id="tmhnote" rows="3" style="width:100%"></textarea></label></p>' +
+      '<p><button class="btn primary" id="tmhsave">Record it</button> ' +
+      '<button class="btn" id="tmfcancel">Cancel</button></p></div>';
+  }
+  return "";
 }
 
 /* ------------------------------------------------------------- wiring */
@@ -237,6 +362,9 @@ function tmWire(){
     c.onclick = function(){
       TM.sel = TM.sel === id ? null : id;
       TM.detail = null; TM.detailFor = null;
+      /* Somebody else's warnings must not stay on screen under this
+         person's name, and a half-typed form must not follow them. */
+      TM.conduct = null; TM.conductFor = null; TM.form = null;
       tmRender();
     };
 
@@ -266,6 +394,73 @@ function tmWire(){
       await tmMove(moved, id);
     };
   });
+
+  /* ------------------------------------ warnings and the improvement plan */
+  async function tmConductLoad(){
+    TM.conductFor = TM.sel;
+    TM.conduct = await perfApi("/perf/conduct?person=" + encodeURIComponent(TM.sel));
+    tmRender();
+  }
+
+  if (el("tmconduct")) el("tmconduct").onclick = function(){
+    el("tmconduct").disabled = true; tmConductLoad();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmform]"), function(b){
+    b.onclick = function(){
+      TM.form = b.getAttribute("data-tmform");
+      /* Opening a form needs the panel underneath it, so the conduct is
+         loaded first if it has not been. */
+      if (TM.conductFor !== TM.sel) tmConductLoad(); else tmRender();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmhold]"), function(b){
+    b.onclick = function(){ TM.form = "hold:" + b.getAttribute("data-tmhold"); tmRender(); };
+  });
+
+  if (el("tmfcancel")) el("tmfcancel").onclick = function(){ TM.form = null; tmRender(); };
+
+  async function tmSend(path, body, good){
+    if (TM.busy) return;
+    TM.busy = true;
+    var o = await perfApi(path, { method:"POST", body: body });
+    TM.busy = false;
+    if (o && o.error) { TM.says = msg("bad", o.reason || o.error); tmRender(); return; }
+    TM.says = msg("good", (o && o.note) || good);
+    TM.form = null;
+    await tmConductLoad();
+    /* A warning or a plan does not change a number, but the tile's own
+       counts come from the same call, so the tree is refreshed too. */
+    TM.tree = await perfApi("/perf/team/tree");
+    tmRender();
+  }
+
+  if (el("tmwsave")) el("tmwsave").onclick = function(){
+    tmSend("/perf/warn", { personId: TM.sel,
+      level: el("tmwlevel").value, subject: el("tmwsub").value,
+      detail: el("tmwdet").value, aboutKind: "CONDUCT" }, "Issued.");
+  };
+
+  if (el("tmpsave")) el("tmpsave").onclick = function(){
+    tmSend("/perf/pip", { personId: TM.sel,
+      concern: el("tmpcon").value, expectation: el("tmpexp").value,
+      support: el("tmpsup").value,
+      endsOn: el("tmpend").value || null,
+      reviewEveryDays: el("tmpev").value || 14 }, "Opened.");
+  };
+
+  if (el("tmcsave")) el("tmcsave").onclick = function(){
+    var p = TM.conduct && TM.conduct.plan;
+    if (!p) return;
+    tmSend("/perf/pip/close", { planId: p.id,
+      state: el("tmcst").value, note: el("tmcnote").value }, "Closed.");
+  };
+
+  if (el("tmhsave")) el("tmhsave").onclick = function(){
+    tmSend("/perf/pip/review", { reviewId: TM.form.slice(5),
+      judgement: el("tmhj").value, note: el("tmhnote").value }, "Recorded.");
+  };
 
   if (el("tmload")) el("tmload").onclick = async function(){
     el("tmload").disabled = true;

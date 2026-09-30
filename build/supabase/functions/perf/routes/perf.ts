@@ -379,4 +379,51 @@ r.post("/split", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// =====================================================================
+// A warning is a record; a PIP is a plan with dates (migration 233).
+//
+// Two different shapes on purpose. There is no route to edit a warning,
+// because a disciplinary record that can be rewritten afterwards is not
+// evidence of anything -- if one was wrong, the correction is its own
+// record. A plan is edited constantly, and closed with a reason.
+// =====================================================================
+
+r.get("/conduct", async (req: any, res: any) => {
+  const who = req.query.get("person");
+  if (!who) return res.status(400).json({ error: "missing_person" });
+  const o = await one(`select person_conduct($1,$2::uuid) as o`, [req.person.id, who]);
+  return out(res, o.o);
+});
+
+r.post("/warn", async (req: any, res: any) => {
+  const o = await one(`select person_warn($1,$2::jsonb) as o`,
+    [req.person.id, JSON.stringify(req.body || {})]);
+  return out(res, o.o);
+});
+
+r.post("/pip", async (req: any, res: any) => {
+  const o = await one(`select pip_open($1,$2::jsonb) as o`,
+    [req.person.id, JSON.stringify(req.body || {})]);
+  // already_on_one is a state, not a malformed request: somebody is on a
+  // plan and the caller has to decide what to do about that one first.
+  if (o.o?.error === "already_on_one") return res.status(409).json(o.o);
+  return out(res, o.o);
+});
+
+r.post("/pip/review", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.reviewId) return res.status(400).json({ error: "missing_review" });
+  const o = await one(`select pip_review_hold($1,$2::uuid,$3,$4) as o`,
+    [req.person.id, b.reviewId, b.judgement || null, b.note || null]);
+  return out(res, o.o);
+});
+
+r.post("/pip/close", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.planId) return res.status(400).json({ error: "missing_plan" });
+  const o = await one(`select pip_close($1,$2::uuid,$3,$4) as o`,
+    [req.person.id, b.planId, b.state || null, b.note || null]);
+  return out(res, o.o);
+});
+
 export default r;
