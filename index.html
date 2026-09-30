@@ -505,6 +505,12 @@ input.pbtg,input.pbbl{width:92px}
   .pfhand{grid-template-columns:1fr}
   .pfbar{max-width:none}
 }
+.pfsplitq{margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line3)}
+.pfsplit{margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line3)}
+.pfsplit h3{margin:0 0 3px;font-size:13px;color:var(--ink)}
+.pfsplit table{font-size:12.5px}
+.pfsplit label{cursor:pointer}
+.pfsplit input.pfin{width:110px}
 .pftree{padding:2px 0 8px}
 .pfrow{display:flex;align-items:center;gap:8px;padding:7px 15px;
   border-top:1px solid var(--line3);font-size:13px}
@@ -3231,6 +3237,7 @@ var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
               tasks, the quarter, and the forms that write to them. */
            weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
            org:null, tgt:null, tgtFor:null, hand:null, month:null, handOpen:{},
+           split:null, splitFor:null,
            taskForm:null, weightForm:null, elig:false };
 
 function pfMonth(d){ d = d || new Date();
@@ -3906,7 +3913,71 @@ function pfTargetPanel(){
       '<th>Whose</th><th>Their share</th><th></th><th>Pin one</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     '<p><button class="btn" id="pfpinsave">Pin what I have typed</button> ' +
-    '<span class="mute">The rest redivide around it. Blank boxes are left alone.</span></p>';
+    '<span class="mute">The rest redivide around it. Blank boxes are left alone.</span></p>' +
+    pfSplitBlock();
+}
+
+/* ------------------------------------------ one target, several clients
+   A target divides DOWN to a team and ACROSS to the clients it is owed
+   from. Ten lakh of collection is Shantanu's, and it is also five lakh of
+   SBI, three of BOM and two of IDBI. Both divisions use the same rule --
+   a count divides, a percentage is copied -- because they are the same
+   act seen along two axes.
+
+   The split lives here rather than on its own screen because this is
+   already the place a target is decided, and a second screen for the
+   same decision is how two answers to one question get into a tool.   */
+function pfSplitBlock(){
+  var s = PF.split;
+  if (PF.splitFor !== PF.tgtFor) {
+    return '<p class="pfsplitq"><button class="btn" id="pfsplitopen">' +
+      'Split this across clients</button> ' +
+      '<span class="mute">When a target is owed from several banks, it can be ' +
+      'filed per bank and still add up to one number.</span></p>';
+  }
+  if (!s) return '<p class="mute">Loading the split&hellip;</p>';
+  if (s.error) return msg("warn", s.reason || s.error);
+
+  var parts = s.parts || [];
+  var clients = s.clients || [];
+  var chosen = {};
+  parts.forEach(function(p){ chosen[p.clientId] = p; });
+
+  var rows = clients.map(function(c){
+    var p = chosen[c.id];
+    return '<tr>' +
+      '<td><label><input type="checkbox" data-pfsplitc="' + esc(c.id) + '"' +
+        (p ? ' checked' : '') + (s.maySet ? '' : ' disabled') + '> ' +
+        esc(c.name) + '</label></td>' +
+      '<td>' + (s.divides
+        ? '<input class="pfin" data-pfsplitt="' + esc(c.id) + '" type="number" ' +
+          'step="any" value="' + esc(p && p.pinned && p.target !== null ? p.target : "") +
+          '" placeholder="' + (p && p.target !== null ? esc(p.target) : 'even share') + '"' +
+          (s.maySet ? '' : ' disabled') + '>'
+        : '<span class="mute">' + (s.target === null ? '&mdash;' : pfNum(s.target)) +
+          ' &mdash; not divided</span>') + '</td>' +
+      '<td>' + (p
+        ? (p.value === null || p.value === undefined
+            ? '<span class="mute">nothing filed</span>' : pfNum(p.value)) +
+          (p.filings ? ' <span class="mute">(' + p.filings + ')</span>' : '')
+        : '') + '</td></tr>';
+  }).join("");
+
+  return '<div class="pfsplit">' +
+    '<h3>Across clients</h3>' +
+    '<p class="mute">' + esc(s.divides
+      ? "A count, so the target divides. A bank left blank takes an even share of what is left."
+      : "A percentage, so every bank carries the same number. It is not divided.") + '</p>' +
+    '<div class="scroll"><table><thead><tr>' +
+      '<th>Bank</th><th>Their share</th><th>Filed so far</th>' +
+    '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
+    (s.maySet
+      ? '<p><button class="btn primary" id="pfsplitsave">Save the split</button> ' +
+        '<button class="btn" id="pfsplitclear">Remove the split</button> ' +
+        '<span class="mute">Once split, the day&rsquo;s filing asks for each bank ' +
+        'separately and they add back to this measure.</span></p>'
+      : '<p class="mute">Only the person who sets this target may split it.</p>') +
+    '</div>';
 }
 
 /* ------------------------- I · my team: targets, tasks and eligibility */
@@ -4389,12 +4460,68 @@ function pfWire(){
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pftgt]"), function(b){
     b.onclick = async function(){
       var id = b.getAttribute("data-pftgt");
-      if (PF.tgtFor === id) { PF.tgtFor = null; PF.tgt = null; pfRender(); return; }
-      PF.tgtFor = id; PF.tgt = null; pfRender();
+      if (PF.tgtFor === id) {
+        PF.tgtFor = null; PF.tgt = null;
+        PF.split = null; PF.splitFor = null; pfRender(); return; }
+      /* A split belongs to one measure. Carrying it to the next panel
+         would show one measure's banks under another's target. */
+      PF.tgtFor = id; PF.tgt = null; PF.split = null; PF.splitFor = null;
+      pfRender();
       PF.tgt = await perfApi("/perf/target/team?assignment=" + encodeURIComponent(id));
       pfRender();
     };
   });
+
+  /* ------------------------------------------ the split across clients */
+  if (el("pfsplitopen")) el("pfsplitopen").onclick = async function(){
+    el("pfsplitopen").disabled = true;
+    PF.splitFor = PF.tgtFor; PF.split = null; pfRender();
+    PF.split = await perfApi("/perf/split?assignment=" + encodeURIComponent(PF.tgtFor));
+    pfRender();
+  };
+
+  /* Reads the boxes rather than keeping a second copy of them in state:
+     the ticks and the numbers on screen ARE the intent, and a mirror of
+     them is one more thing to fall out of step. */
+  function pfSplitParts(){
+    var parts = [];
+    Array.prototype.forEach.call(
+      el("view").querySelectorAll("[data-pfsplitc]"), function(cb){
+        if (!cb.checked) return;
+        var id = cb.getAttribute("data-pfsplitc");
+        var box = el("view").querySelector('[data-pfsplitt="' + id + '"]');
+        var v = box && box.value !== "" ? box.value : null;
+        parts.push(v === null ? { ref:id } : { ref:id, target:Number(v) });
+      });
+    return parts;
+  }
+
+  async function pfSplitSend(parts){
+    if (PF.busy) return;
+    PF.busy = true;
+    var o = await perfApi("/perf/split", { method:"POST",
+      body:{ assignmentId: PF.tgtFor, parts: parts } });
+    PF.busy = false;
+    if (o && o.error) {
+      PF.says = msg(o.error === "has_filings" ? "warn" : "bad", o.reason || o.error);
+      pfRender(); return;
+    }
+    PF.says = msg("good", (o && o.note) || "Saved.");
+    PF.split = await perfApi("/perf/split?assignment=" + encodeURIComponent(PF.tgtFor));
+    await pfLoadMine();
+    pfRender();
+  }
+
+  if (el("pfsplitsave")) el("pfsplitsave").onclick = function(){
+    var parts = pfSplitParts();
+    if (!parts.length) {
+      PF.says = msg("warn", "Tick the banks to split across, or use Remove the split.");
+      pfRender(); return;
+    }
+    pfSplitSend(parts);
+  };
+
+  if (el("pfsplitclear")) el("pfsplitclear").onclick = function(){ pfSplitSend([]); };
 
   if (el("pftgtsave")) el("pftgtsave").onclick = async function(){
     var v = el("pftgtval").value;
