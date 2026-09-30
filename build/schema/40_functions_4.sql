@@ -8,6 +8,62 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_target_agreement(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare s plb_goal_sheet; v_rows jsonb := '[]'::jsonb; v_off int := 0; r record;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+  if perf_rel(p_actor, s.person_id) is null then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line.');
+  end if;
+
+  for r in
+    select gk.kpi_id, k.name, k.unit, gk.target_value as quarterly,
+           plb_quarter_from_months(s.person_id, gk.kpi_id, s.quarter) as monthly,
+           perf_accrual_kind(k.id, k.unit) as kind
+      from plb_goal_kpi gk join kpi_definition k on k.id = gk.kpi_id
+     where gk.sheet_id = p_sheet
+     order by k.position, k.name
+  loop
+    -- Rounded to two places before comparing: a third of 100 is 33.33
+    -- three times over, and 99.99 against 100 is agreement, not a fault.
+    if r.quarterly is not null and r.monthly is not null
+       and round(r.quarterly, 2) <> round(r.monthly, 2) then
+      v_off := v_off + 1;
+    end if;
+    v_rows := v_rows || jsonb_build_object(
+      'kpiId', r.kpi_id, 'name', r.name, 'unit', r.unit, 'kind', r.kind,
+      'quarterly', r.quarterly, 'monthly', r.monthly,
+      'agrees', case when r.quarterly is null or r.monthly is null then null
+                     else round(r.quarterly,2) = round(r.monthly,2) end,
+      'why', case
+        when r.quarterly is null then 'no quarterly target has been set'
+        when r.monthly is null then 'no monthly target exists for this measure'
+        when round(r.quarterly,2) = round(r.monthly,2) then null
+        when r.kind = 'SUM' then 'the months add to ' || r.monthly ||
+             ' against a quarter of ' || r.quarterly
+        else 'the months average ' || r.monthly ||
+             ' against a quarter of ' || r.quarterly end);
+  end loop;
+
+  return jsonb_build_object(
+    'sheetId', p_sheet, 'quarter', s.quarter,
+    'measures', v_rows, 'disagree', v_off,
+    'mayPhase', perf_may_set(p_actor, s.person_id),
+    'note', case when v_off = 0
+      then 'Every measure''s months agree with its quarter.'
+      else v_off || ' measure(s) are asking for one thing every month and '
+           'promising another for the quarter. Phasing the quarter down '
+           'fixes it, and leaves alone anything a person agreed by hand.' end);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_unseated()
  RETURNS jsonb
  LANGUAGE sql
