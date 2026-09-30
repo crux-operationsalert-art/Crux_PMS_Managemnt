@@ -447,6 +447,64 @@ input.pbtg,input.pbbl{width:92px}
 .pfpin{color:var(--green);font-weight:600}
 .pfseed{color:var(--gold-ink)}
 .pfsays{margin:0 0 8px;font-size:13px;color:var(--body)}
+.pfhero{display:flex;align-items:center;gap:18px;flex-wrap:wrap;
+  padding:4px 0 2px}
+.pfring{flex:0 0 auto;width:92px;height:92px;position:relative}
+.pfring svg{width:92px;height:92px;transform:rotate(-90deg)}
+.pfring .trk{fill:none;stroke:var(--line2);stroke-width:8}
+.pfring .arc{fill:none;stroke-width:8;stroke-linecap:round;
+  transition:stroke-dashoffset .5s ease}
+.pfring b{position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;font-size:21px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.pfheroT{flex:1 1 220px;min-width:0}
+.pfheroT h3{margin:0 0 2px;font-size:17px;color:var(--ink)}
+.pfheroT p{margin:0;font-size:13px;color:var(--mute)}
+.pfrun{display:inline-flex;align-items:baseline;gap:5px;margin-top:7px;
+  padding:3px 9px;border-radius:999px;background:var(--green-bg);
+  color:var(--green);font-size:12.5px;font-weight:600}
+.pfrun.cold{background:var(--line3);color:var(--mute);font-weight:400}
+.pfbar{height:6px;border-radius:4px;background:var(--line2);
+  overflow:hidden;margin:5px 0 3px;max-width:230px}
+.pfbar i{display:block;height:100%;border-radius:4px}
+.pfbar i.good{background:var(--green)}
+.pfbar i.part{background:var(--gold)}
+.pfbar i.short{background:var(--terra)}
+.pfmark{display:inline-flex;align-items:center;gap:5px;font-size:12px;
+  font-weight:600}
+.pfmark.good{color:var(--green)}
+.pfmark.part{color:var(--gold-ink)}
+.pfmark.short{color:var(--terra-ink)}
+.pfmark.none{color:var(--mute);font-weight:400}
+.pfmark s{width:7px;height:7px;border-radius:2px;background:currentColor;
+  flex:0 0 7px}
+.pfhand{display:grid;gap:10px;
+  grid-template-columns:repeat(auto-fill,minmax(232px,1fr));padding:2px 0}
+.pfhcard{border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+  background:var(--panel2)}
+.pfhcard h4{margin:0 0 1px;font-size:13.5px;color:var(--ink)}
+.pfhcard .u{font-size:11.5px;color:var(--mute)}
+.pfhbig{font-size:25px;color:var(--ink);margin:7px 0 0;
+  font-variant-numeric:tabular-nums;line-height:1.1}
+.pfhbig em{font-size:13px;color:var(--mute);font-style:normal;margin-left:5px}
+.pfspread{display:flex;gap:14px;margin-top:7px;font-size:12px;color:var(--mute)}
+.pfspread b{color:var(--body);font-weight:600;
+  font-variant-numeric:tabular-nums}
+.pfmon{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.pfmon .n{font-size:32px;color:var(--ink);font-variant-numeric:tabular-nums;
+  line-height:1}
+.pfmon .of{font-size:14px;color:var(--mute)}
+.pfwork{margin:9px 0 0;padding:0;list-style:none;font-size:12.5px}
+.pfwork li{display:flex;justify-content:space-between;gap:10px;
+  padding:4px 0;border-top:1px solid var(--line3);color:var(--body)}
+.pfwork li:first-child{border-top:0}
+.pfwork li span{color:var(--mute)}
+@media (max-width:560px){
+  .pfring,.pfring svg{width:74px;height:74px}
+  .pfring b{font-size:18px}
+  .pfhand{grid-template-columns:1fr}
+  .pfbar{max-width:none}
+}
 .pftree{padding:2px 0 8px}
 .pfrow{display:flex;align-items:center;gap:8px;padding:7px 15px;
   border-top:1px solid var(--line3);font-size:13px}
@@ -2783,7 +2841,7 @@ var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            /* the blueprint's other sections: the split, the fortnight, the
               tasks, the quarter, and the forms that write to them. */
            weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
-           org:null, tgt:null, tgtFor:null,
+           org:null, tgt:null, tgtFor:null, hand:null, month:null, handOpen:{},
            taskForm:null, weightForm:null, elig:false };
 
 function pfMonth(d){ d = d || new Date();
@@ -2873,9 +2931,16 @@ async function pfLoadMine(){
     /* My own measures with everything below me already added in. The
        same call the Org end reads, asked about myself. */
     perfApi("/perf/org?cycle=" + PF.cycle.id),
+    /* What the people under me filed against measures that are not mine
+       and so cannot climb -- the step a person has to take by reading. */
+    perfApi("/perf/handover?cycle=" + PF.cycle.id),
+    /* This month out of ten, read out of the same filings. A suggestion
+       only: it writes nothing, so it is safe to ask for on every load. */
+    perfApi("/perf/month?on=" + PF.period),
   ]);
   PF.tree = r[0]; PF.due = (r[1] || {}).due || []; PF.score = r[2] || null;
   PF.filed = r[3] || null; PF.org = r[4] || null;
+  PF.hand = r[5] || null; PF.month = r[6] || null;
 }
 
 function pfRender(){
@@ -2900,6 +2965,7 @@ function pfRender(){
   }
 
   el("view").innerHTML = head + pfWindowBanner() +
+    pfToday() +            /* A2 today, as the one headline               */
     pfChips() +            /* A  the three score chips                    */
     pfDaily() +            /* B+D the daily table, and one submission     */
     pfDayNote() +          /* C  anything else about today                */
@@ -2907,7 +2973,9 @@ function pfRender(){
     pfMyKpis() +           /* F  my KPIs                                  */
     pfAttributes() +       /* G  attributes                               */
     pfRequests() +         /* H  KPI change requests                      */
+    pfHandover() +         /* H1 what came up from below, and stopped      */
     pfTargets() +          /* H2 the target, and who it divides across     */
+    pfMonthCard() +        /* K1 the month, read out of the filings        */
     pfTeamSection() +      /* I  my team: targets, tasks and eligibility  */
     pfWeighting() +        /* J  the split, for Admin and HR              */
     pfAppraisal() +        /* K  appraisal, and the quarter behind it     */
@@ -3152,6 +3220,187 @@ function pfRequests(){
     'holds one yet. Until it does, a target change is raised the way the ' +
     'Constitution says: a Target Change Request before the quarter midpoint, ' +
     'through your Functional Head.</div></div>';
+}
+
+/* ------------------------------------------- how a number is doing
+   One rule, used everywhere a number sits beside a target, so the screen
+   never says "good" in one place and shows amber in another.
+
+   A CEILING measure is met by being SMALL -- an error rate, an expense
+   variance -- so the ratio is turned the right way up here rather than in
+   each caller. Getting that wrong rewards a high error rate, which is the
+   kind of mistake a performance system does not recover from.            */
+function pfStand(value, target, direction){
+  if (value === null || value === undefined || !target) return { k:"none", pct:null, say:"nothing filed yet" };
+  var pct = direction === "CEILING"
+    ? (Number(value) === 0 ? 150 : Math.round(1000 * target / value) / 10)
+    : Math.round(1000 * value / target) / 10;
+  if (pct >= 100) return { k:"good",  pct:pct, say:"at or past the target" };
+  if (pct >= 50)  return { k:"part",  pct:pct, say:"part of the way" };
+  return                 { k:"short", pct:pct, say:"short of half way" };
+}
+
+/* A thin bar and a word. Never the colour on its own: somebody reading
+   this in greyscale, or not seeing red and green apart, gets the same
+   answer from the text as everybody else does from the fill.            */
+function pfMeter(value, target, direction){
+  var st = pfStand(value, target, direction);
+  if (st.k === "none") {
+    return '<span class="pfmark none">not filed yet</span>';
+  }
+  var w = Math.max(2, Math.min(100, st.pct));
+  return '<div class="pfbar"><i class="' + st.k + '" style="width:' + w + '%"></i></div>' +
+    '<span class="pfmark ' + st.k + '"><s></s>' + esc(st.pct) + '% &middot; ' + esc(st.say) + '</span>';
+}
+
+/* The one large thing on the screen. A ring is not comparable down a
+   column, which is exactly why there is only one: it answers a single
+   question -- is today done -- and nothing else.                        */
+function pfRingSvg(done, of, kind){
+  var r = 38, c = 2 * Math.PI * r;
+  var frac = of > 0 ? Math.min(1, done / of) : 0;
+  return '<div class="pfring"><svg viewBox="0 0 92 92" aria-hidden="true">' +
+    '<circle class="trk" cx="46" cy="46" r="' + r + '"></circle>' +
+    '<circle class="arc" cx="46" cy="46" r="' + r + '" ' +
+      'stroke="var(--' + kind + ')" ' +
+      'stroke-dasharray="' + c.toFixed(1) + '" ' +
+      'stroke-dashoffset="' + (c * (1 - frac)).toFixed(1) + '"></circle>' +
+    '</svg><b>' + done + '<span style="font-size:13px;color:var(--mute)">/' + of + '</span></b></div>';
+}
+
+/* ------------------------------------------------ A2 · today, as a headline
+   Above everything, because it is the only thing most people open this
+   screen to do. Filed against due, the run of days behind it, and one
+   sentence that is true rather than encouraging.                        */
+function pfToday(){
+  if (!PF.cycle) return "";
+  var due = PF.due || [];
+  if (!due.length && !(PF.filed && PF.filed.run)) return "";
+  var done = due.filter(function(d){ return d.alreadyFiled; }).length;
+  /* Nothing due is not a failure. A day with no measures on it reads
+     green, because the person has nothing outstanding -- colouring it
+     red would be the screen telling somebody off for a holiday. */
+  var kind = done >= due.length ? "green" : done ? "gold" : "terra";
+  var run  = (PF.filed && PF.filed.run) || 0;
+
+  var say = !due.length
+    ? "Nothing is due from you today."
+    : done >= due.length
+      ? "Today is done. Every measure has a number against it."
+      : done
+        ? (due.length - done) + " still to file. The org total moves the moment you do."
+        : "Nothing filed yet today. Each number you file reaches your whole line at once.";
+
+  return '<div class="card"><div class="pfhero">' +
+    pfRingSvg(done, due.length, kind) +
+    '<div class="pfheroT">' +
+      '<h3>' + (done >= due.length && due.length ? "Today is filed" : "Today") + '</h3>' +
+      '<p>' + esc(say) + '</p>' +
+      (run > 0
+        ? '<span class="pfrun">' + run + ' working day' + (run === 1 ? '' : 's') + ' in a row</span>'
+        : '<span class="pfrun cold">no run going yet</span>') +
+    '</div></div></div>';
+}
+
+/* --------------------------- H1 · what came up from below, and stopped
+   Asked for: "if the managers or a layer or chair where the KPI changes
+   there the chair must see the roll up and then update his own."
+
+   A Branch Manager with forty-two executives is handed eighty-six
+   numbers. Eighty-six rows is a wall, not a briefing, so this leads with
+   one card per measure -- where the team stands, how many of them made
+   it, the best and the worst -- and the per-person detail opens
+   underneath only when somebody asks for it.                            */
+function pfHandover(){
+  var h = PF.hand;
+  if (!h || h.error) return "";
+  var sum = h.summary || [];
+  var from = h.from || [];
+  if (!sum.length && !from.length) return "";
+
+  var cards = sum.map(function(m){
+    var st = pfStand(m.team, m.target, m.direction);
+    return '<div class="pfhcard">' +
+      '<h4>' + esc(m.name) + '</h4>' +
+      '<div class="u">' + esc(m.unit || "") + '</div>' +
+      '<p class="pfhbig">' + (m.team === null || m.team === undefined
+          ? '<span class="mute" style="font-size:15px">nothing filed</span>'
+          : esc(pfNum(m.team)) +
+            '<em>' + (m.kind === "SUM" ? "team total" : "team average") + '</em>') + '</p>' +
+      pfMeter(m.team, m.target, m.direction) +
+      '<div class="pfspread">' +
+        '<span><b>' + m.atOrAbove + '</b> of ' + m.people + ' met it</span>' +
+        (m.best === null || m.best === undefined ? '' :
+          '<span>best <b>' + esc(pfNum(m.best)) + '</b></span>') +
+        (m.worst === null || m.worst === undefined ? '' :
+          '<span>lowest <b>' + esc(pfNum(m.worst)) + '</b></span>') +
+      '</div></div>';
+  }).join("");
+
+  var people = from.map(function(p){
+    var open = PF.handOpen[p.personId];
+    var rows = !open ? "" : '<tr><td colspan="2"><div class="scroll"><table>' +
+      (p.measures || []).map(function(m){
+        return '<tr><td><b>' + esc(m.name) + '</b>' +
+          '<div class="mute">' + esc(m.unit || "") + '</div></td>' +
+          '<td>' + (m.value === null || m.value === undefined
+            ? '<span class="mute">nothing filed</span>' : esc(pfNum(m.value))) +
+            '<div>' + pfMeter(m.value, m.target, m.direction) + '</div></td></tr>';
+      }).join("") + '</table></div></td></tr>';
+    return '<tr><td><b>' + esc(p.name) + '</b>' +
+        '<div class="mute">' + esc(p.chair || "no chair") + ' &middot; ' +
+        (p.measures || []).length + ' measure(s) stop here</div></td>' +
+      '<td class="plact"><button class="btn" data-pfhand="' + esc(p.personId) + '">' +
+        (open ? 'Hide' : 'Show theirs') + '</button></td></tr>' + rows;
+  }).join("");
+
+  return '<div class="card"><h2>What came up from below ' +
+      '<span class="mute">&middot; and stops with them</span></h2>' +
+    '<p class="mute">These measure something your own do not, so no arithmetic ' +
+    'can add them into yours. Read them, then file your own number knowing ' +
+    'them &mdash; that is the step the chart cannot take for you.</p>' +
+    (cards ? '<div class="pfhand">' + cards + '</div>' : '') +
+    (people ? '<div class="scroll"><table>' + people + '</table></div>' : '') +
+    '</div>';
+}
+
+/* -------------------------------- K1 · the month, read out of the filings
+   The Constitution gives each KPI two points -- 2.0 landed, 1.0 partly or
+   late, 0.0 not -- and "partly or late" is a person's call about a
+   person. So this shows what the numbers say, and its working, and
+   writes nothing. A manager who disagrees is doing the job, not
+   overriding the tool.
+
+   Named pfMonthCard, not pfMonth: pfMonth() is already the helper that
+   gives the first of a month, and a second declaration of that name would
+   quietly win and turn PF.period into a lump of HTML.                    */
+function pfMonthCard(){
+  var m = PF.month;
+  /* An unanswered call is not a score of nothing. call() hands back the
+     body whatever the status was, so anything that is not recognisably a
+     suggestion -- a 404 from a door that is not open yet, a refusal --
+     shows nothing at all rather than an empty verdict. */
+  if (!m || m.error || !m.measures) return "";
+  var now = m.now || {};
+  var rows = (m.measures || []).map(function(x){
+    return '<li><span>' + esc(x.name) +
+      (x.counted ? ' &middot; ' + esc(x.pct) + '%' : '') + '</span>' +
+      '<b>' + (x.counted ? esc(x.points) + ' of 2' : esc(x.why || "not counted")) + '</b></li>';
+  }).join("");
+
+  return '<div class="card"><h2>This month, out of ten ' +
+      '<span class="mute">&middot; what the filings say</span></h2>' +
+    '<div class="pfmon">' +
+      '<span class="n">' + (m.suggested === null || m.suggested === undefined
+        ? '&mdash;' : esc(m.suggested)) + '</span>' +
+      '<span class="of">suggested, out of 10</span>' +
+      (now.kpiPoints === null || now.kpiPoints === undefined ? '' :
+        '<span class="of">&middot; scored ' + esc(now.kpiPoints) + '</span>') +
+    '</div>' +
+    '<p class="mute" style="margin:7px 0 0">' + esc(m.says || "") + '</p>' +
+    (rows ? '<ul class="pfwork">' + rows + '</ul>' : '') +
+    '<p class="mute" style="margin:9px 0 0;font-size:12px">' + esc(m.note || "") + '</p>' +
+    '</div>';
 }
 
 /* ------------------- H2 · the target, and who it divides across
@@ -3709,6 +3958,18 @@ function pfWire(){
      The blueprint submits a day, not a row. Everything filled in goes at
      once; a blank is left alone rather than filed as a zero, because a zero
      you meant and a box you did not reach are different facts.            */
+  /* ------------------------------------ one person's handover, opened
+     Everything this needs is already in PF.hand, so it re-renders rather
+     than asking the server again -- opening four people in a row should
+     not be four round trips. */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfhand]"), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute("data-pfhand");
+      if (PF.handOpen[id]) delete PF.handOpen[id]; else PF.handOpen[id] = true;
+      pfRender();
+    };
+  });
+
   /* ------------------------------------------------ the target and its shares */
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pftgt]"), function(b){
     b.onclick = async function(){
