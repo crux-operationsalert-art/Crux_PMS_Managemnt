@@ -869,11 +869,13 @@ it is not a failure.
 | Targets down | **built** — divides or copies, a hand edit pins |
 | Dummy targets | **728 seeded** across two months, all marked SEEDED |
 | Screen | **published** — 467,960 bytes, Targets section live |
-| Functions | plb v8, perf v2, both `verify_jwt` off |
-| Tests | 34 in `test_flow.sql`; suite green once the baseline refreshes |
+| Functions | plb v8, **perf v3**, both `verify_jwt` off |
+| Tests | **309 passed, 0 failed** on a clean rebuild from `build/schema` alone |
 | Roll-up map | **corrected** — 7 wrong rows deleted, 3 redundant, 13 stand |
 | Handover | **built** — 239 measures that hand over to a person, not to arithmetic |
-| Day → month → quarter | **built and tested** — 299 passed, 0 failed on a clean rebuild with 226 and 227 applied |
+| Day → month → quarter | **live** — every function matches the repository by MD5 |
+| Reachable by `anon` | **30 → 5**, and the 5 are the RLS helpers and `schema_snapshot`, kept on purpose |
+| Advisor ERRORs | **2 → 0** |
 
 ---
 
