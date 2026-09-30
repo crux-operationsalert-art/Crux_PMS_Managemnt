@@ -4071,3 +4071,17 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.outbox_sent(p_id uuid, p_ref text DEFAULT NULL::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  update outbox set state = 'SENT', sent_at = now(), last_error = null where id = p_id;
+  insert into delivery (outbox_id, channel, recipient, state, provider_ref, at)
+  select p_id, 'EMAIL', recipient, 'SENT', p_ref, now() from outbox where id = p_id;
+  update mail_budget set recipients_sent = recipients_sent + 1 where day = current_date;
+end $function$
+;
+

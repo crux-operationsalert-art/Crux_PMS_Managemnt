@@ -620,6 +620,8 @@ grant execute on function public.perf_reminder_sweep(p_on date) to service_role;
 grant execute on function public.perf_roll_forward(p_day date, p_centre text) to service_role;
 grant execute on function public.perf_seed_from_registry(p_actor uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_seed_targets(p_actor uuid, p_cycle uuid) to service_role;
+grant execute on function public.perf_split_of(p_actor uuid, p_assignment uuid) to service_role;
+grant execute on function public.perf_split_set(p_actor uuid, p_assignment uuid, p_in jsonb) to service_role;
 grant execute on function public.perf_target_set(p_actor uuid, p_assignment uuid, p_value numeric, p_manual boolean) to service_role;
 grant execute on function public.perf_tree(p_person uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_tree_for(p_actor uuid, p_person uuid, p_cycle uuid) to service_role;
