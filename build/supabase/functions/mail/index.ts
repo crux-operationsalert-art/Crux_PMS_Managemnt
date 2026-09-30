@@ -100,9 +100,37 @@ function purposeOf(key: string) {
 // for by name. It earns its keep: a rule under the name, the message, and a
 // footer that says what generated it and where a reply goes. Everything is
 // inline style, because an e-mail client will drop a stylesheet.
+// A URL in the body becomes a real link in the HTML twin.
+//
+// The plain-text half needs nothing: every mail client makes a bare URL
+// clickable. The HTML half escapes the body and turns newlines into <br>,
+// which left the URL sitting there as dead text -- so the twin that exists
+// to look better was the half where the link did not work.
+//
+// Run AFTER escaping, never before, and match only on the escaped form. A
+// URL is matched up to the first character that cannot be in one, and a
+// trailing full stop or bracket is given back to the sentence, because
+// "open https://example.com/x." must not link the stop.
+//
+// http and https only. A body is composed by this system's own functions,
+// but "it is our own data" is what every injection was called first, and
+// javascript: in an href would be a live one.
+function linkify(escaped: string) {
+  return escaped.replace(
+    /\bhttps?:\/\/[^\s<>"']+/g,
+    (u) => {
+      const tail = u.match(/(&(?:amp|quot|lt|gt|#39);|[.,;:!?)\]}]+)$/);
+      const href = tail ? u.slice(0, -tail[0].length) : u;
+      if (!href) return u;
+      return `<a href="${href}" style="color:#0b3d63;text-decoration:underline">` +
+             `${href}</a>${tail ? tail[0] : ""}`;
+    },
+  );
+}
+
 function html(m: Msg, c: Cfg) {
   const paras = m.body.split(/\n{2,}/).map((p) =>
-    `<p style="margin:0 0 14px;line-height:1.6">${esc(p).replace(/\n/g, "<br>")}</p>`
+    `<p style="margin:0 0 14px;line-height:1.6">${linkify(esc(p)).replace(/\n/g, "<br>")}</p>`
   ).join("");
   const replyTo = c.mail_reply_to || c.mail_from || "";
   const name = c.mail_from_name || "Crux";
