@@ -69,7 +69,7 @@ security definer
 set search_path to 'public'
 as $function$
 declare
-  v_role role_kind; v_dept text; v_admin boolean; v_hr boolean;
+  v_admin boolean; v_hr boolean;
   a person; s person; m person; v_old uuid;
 begin
   select * into a from person where id = p_actor
