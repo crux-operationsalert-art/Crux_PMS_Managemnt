@@ -8,6 +8,19 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.pms_cap_shadow()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+begin
+  if new.key = 'pms_cut_cap' and new.value is distinct from old.value then
+    update app_setting set value = new.value where key = 'pms_monthly_cap';
+  end if;
+  return new;
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.pms_cascade_apply(p_cycle uuid, p_kind raisable_kind, p_source uuid, p_actor uuid, p_reason text)
  RETURNS TABLE(half text, points numeric, applied boolean)
  LANGUAGE plpgsql

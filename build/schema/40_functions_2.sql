@@ -8,21 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_addr_norm(p text)
- RETURNS text
- LANGUAGE sql
- IMMUTABLE
- SET search_path TO 'public'
-AS $function$
-  select btrim(regexp_replace(
-    regexp_replace(
-      regexp_replace(lower(coalesce(p,'')), '[.,/#!$%&;:{}=_`~()''"-]', ' ', 'g'),
-      '\m(road|rd|street|st|lane|ln|marg|nagar|colony|apartments?|apts?|flat|building|bldg|floor|flr|near|opp|opposite|behind|society|soc)\M',
-      ' ', 'g'),
-    '\s+', ' ', 'g'))
-$function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_allocate(p_assignment uuid, p_person uuid, p_actor uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4097,6 +4082,117 @@ begin
   insert into delivery (outbox_id, channel, recipient, state, provider_ref, at)
   select p_id, 'EMAIL', recipient, 'SENT', p_ref, now() from outbox where id = p_id;
   update mail_budget set recipients_sent = recipients_sent + 1 where day = current_date;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.penalty_recovery_for(p_person uuid, p_rule uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select case when (select employee_type from person where id = p_person) = 'PARTNER'
+              then 'FINANCE'
+              else (select recovered_by from penalty_rule where id = p_rule) end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.penalty_sweep(p_for_day date DEFAULT (CURRENT_DATE - 1))
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_run uuid;
+  r_daily penalty_rule;
+  r_matrix penalty_rule;
+  v_p01 int := 0; v_p06 int := 0;
+  v_ran text[] := '{}';
+  v_notes text[] := '{}';
+begin
+  insert into job_run (job_key, started_at, state)
+  values ('PENALTY_SWEEP', now(), 'RUNNING') returning id into v_run;
+
+  select * into r_daily  from penalty_rule where code = 'P-01' and active;
+  select * into r_matrix from penalty_rule where code = 'P-06' and active;
+
+  -- P-01 - no daily count on a working day
+  if r_daily.id is not null then
+    v_ran := array_append(v_ran, 'P-01');
+    if not exists (select 1 from kpi_definition where active) then
+      v_notes := array_append(v_notes,
+        'P-01 is on, but no KPI is defined for anybody, so nobody is expected '
+        'to file a daily count yet and nobody was charged.');
+    end if;
+    insert into penalty_instance
+      (rule_id, person_id, period, occurred_on, cutoff_missed, evidence,
+       amount, recovered_by)
+    select r_daily.id, p.id, to_char(p_for_day, 'YYYY-MM'), p_for_day,
+           '23:59 on ' || to_char(p_for_day, 'DD Mon YYYY'),
+           'No daily count filed for ' || to_char(p_for_day, 'DD Mon YYYY') || '.',
+           r_daily.amount, penalty_recovery_for(p.id, r_daily.id)
+      from person p
+     where p.superseded_by is null
+       and p.employment_status = 'ACTIVE'
+       and exists (select 1 from chair_holder h
+                    where h.person_id = p.id and h.to_date is null)
+       and exists (select 1 from kpi_definition k
+                    where k.person_id = p.id and k.active)
+       and is_working_day(p_for_day, person_centre(p.id))
+       and not exists (select 1 from daily_count d
+                        where d.person_id = p.id and d.count_date = p_for_day)
+    on conflict do nothing;
+    get diagnostics v_p01 = row_count;
+  end if;
+
+  -- P-06 - the matrix clock runs out.
+  -- Charged on the day it runs out, not every day after, so the branch is
+  -- charged once and re-running the sweep changes nothing.
+  if r_matrix.id is not null then
+    v_ran := array_append(v_ran, 'P-06');
+    if not exists (select 1 from branch where effective_from is not null) then
+      v_notes := array_append(v_notes,
+        'P-06 is on, but no branch carries an opening date, so the fourteen-day '
+        'clock has nothing to start from. Fill opened_on in the Clients and '
+        'branches upload for the rule to do anything.');
+    end if;
+    insert into penalty_instance
+      (rule_id, person_id, period, occurred_on, cutoff_missed, evidence,
+       entity_type, entity_id, amount, recovered_by)
+    select distinct on (b.id)
+           r_matrix.id, cr.person_id, to_char(p_for_day, 'YYYY-MM'), p_for_day,
+           'Fourteen days from ' || to_char(b.effective_from, 'DD Mon YYYY'),
+           'Branch ' || coalesce(b.code, b.name) || ' still has fewer than five '
+             || 'complete matrix levels fourteen days after opening.',
+           'branch', b.id, r_matrix.amount,
+           penalty_recovery_for(cr.person_id, r_matrix.id)
+      from branch b
+      join coverage_rule cr on cr.branch_id = b.id
+     where b.status = 'ACTIVE'
+       and b.effective_from = p_for_day - 14
+       and not matrix_complete(b.id)
+       and (cr.effective_to is null or cr.effective_to >= p_for_day)
+     order by b.id, cr.is_assigned_handler desc nulls last, cr.effective_from desc
+    on conflict do nothing;
+    get diagnostics v_p06 = row_count;
+  end if;
+
+  if v_ran = '{}' then
+    v_notes := array_append(v_notes, 'No penalty rule is active, so nothing was charged.');
+  end if;
+
+  update job_run set finished_at = now(), state = 'DONE',
+         counts = jsonb_build_object('day', p_for_day, 'P-01', v_p01, 'P-06', v_p06,
+                                     'rules_run', to_jsonb(v_ran),
+                                     'notes', to_jsonb(v_notes))
+   where id = v_run;
+
+  return jsonb_build_object('day', p_for_day, 'P-01', v_p01, 'P-06', v_p06,
+    'rules_run', to_jsonb(v_ran), 'notes', to_jsonb(v_notes));
+exception when others then
+  update job_run set finished_at = now(), state = 'FAILED', error = sqlerrm where id = v_run;
+  raise;
 end $function$
 ;
 

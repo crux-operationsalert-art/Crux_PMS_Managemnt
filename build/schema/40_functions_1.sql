@@ -3083,3 +3083,18 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ogl_addr_norm(p text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public'
+AS $function$
+  select btrim(regexp_replace(
+    regexp_replace(
+      regexp_replace(lower(coalesce(p,'')), '[.,/#!$%&;:{}=_`~()''"-]', ' ', 'g'),
+      '\m(road|rd|street|st|lane|ln|marg|nagar|colony|apartments?|apts?|flat|building|bldg|floor|flr|near|opp|opposite|behind|society|soc)\M',
+      ' ', 'g'),
+    '\s+', ' ', 'g'))
+$function$
+;
+

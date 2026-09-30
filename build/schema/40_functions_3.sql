@@ -8,117 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.penalty_recovery_for(p_person uuid, p_rule uuid)
- RETURNS text
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  select case when (select employee_type from person where id = p_person) = 'PARTNER'
-              then 'FINANCE'
-              else (select recovered_by from penalty_rule where id = p_rule) end;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.penalty_sweep(p_for_day date DEFAULT (CURRENT_DATE - 1))
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  v_run uuid;
-  r_daily penalty_rule;
-  r_matrix penalty_rule;
-  v_p01 int := 0; v_p06 int := 0;
-  v_ran text[] := '{}';
-  v_notes text[] := '{}';
-begin
-  insert into job_run (job_key, started_at, state)
-  values ('PENALTY_SWEEP', now(), 'RUNNING') returning id into v_run;
-
-  select * into r_daily  from penalty_rule where code = 'P-01' and active;
-  select * into r_matrix from penalty_rule where code = 'P-06' and active;
-
-  -- P-01 - no daily count on a working day
-  if r_daily.id is not null then
-    v_ran := array_append(v_ran, 'P-01');
-    if not exists (select 1 from kpi_definition where active) then
-      v_notes := array_append(v_notes,
-        'P-01 is on, but no KPI is defined for anybody, so nobody is expected '
-        'to file a daily count yet and nobody was charged.');
-    end if;
-    insert into penalty_instance
-      (rule_id, person_id, period, occurred_on, cutoff_missed, evidence,
-       amount, recovered_by)
-    select r_daily.id, p.id, to_char(p_for_day, 'YYYY-MM'), p_for_day,
-           '23:59 on ' || to_char(p_for_day, 'DD Mon YYYY'),
-           'No daily count filed for ' || to_char(p_for_day, 'DD Mon YYYY') || '.',
-           r_daily.amount, penalty_recovery_for(p.id, r_daily.id)
-      from person p
-     where p.superseded_by is null
-       and p.employment_status = 'ACTIVE'
-       and exists (select 1 from chair_holder h
-                    where h.person_id = p.id and h.to_date is null)
-       and exists (select 1 from kpi_definition k
-                    where k.person_id = p.id and k.active)
-       and is_working_day(p_for_day, person_centre(p.id))
-       and not exists (select 1 from daily_count d
-                        where d.person_id = p.id and d.count_date = p_for_day)
-    on conflict do nothing;
-    get diagnostics v_p01 = row_count;
-  end if;
-
-  -- P-06 - the matrix clock runs out.
-  -- Charged on the day it runs out, not every day after, so the branch is
-  -- charged once and re-running the sweep changes nothing.
-  if r_matrix.id is not null then
-    v_ran := array_append(v_ran, 'P-06');
-    if not exists (select 1 from branch where effective_from is not null) then
-      v_notes := array_append(v_notes,
-        'P-06 is on, but no branch carries an opening date, so the fourteen-day '
-        'clock has nothing to start from. Fill opened_on in the Clients and '
-        'branches upload for the rule to do anything.');
-    end if;
-    insert into penalty_instance
-      (rule_id, person_id, period, occurred_on, cutoff_missed, evidence,
-       entity_type, entity_id, amount, recovered_by)
-    select distinct on (b.id)
-           r_matrix.id, cr.person_id, to_char(p_for_day, 'YYYY-MM'), p_for_day,
-           'Fourteen days from ' || to_char(b.effective_from, 'DD Mon YYYY'),
-           'Branch ' || coalesce(b.code, b.name) || ' still has fewer than five '
-             || 'complete matrix levels fourteen days after opening.',
-           'branch', b.id, r_matrix.amount,
-           penalty_recovery_for(cr.person_id, r_matrix.id)
-      from branch b
-      join coverage_rule cr on cr.branch_id = b.id
-     where b.status = 'ACTIVE'
-       and b.effective_from = p_for_day - 14
-       and not matrix_complete(b.id)
-       and (cr.effective_to is null or cr.effective_to >= p_for_day)
-     order by b.id, cr.is_assigned_handler desc nulls last, cr.effective_from desc
-    on conflict do nothing;
-    get diagnostics v_p06 = row_count;
-  end if;
-
-  if v_ran = '{}' then
-    v_notes := array_append(v_notes, 'No penalty rule is active, so nothing was charged.');
-  end if;
-
-  update job_run set finished_at = now(), state = 'DONE',
-         counts = jsonb_build_object('day', p_for_day, 'P-01', v_p01, 'P-06', v_p06,
-                                     'rules_run', to_jsonb(v_ran),
-                                     'notes', to_jsonb(v_notes))
-   where id = v_run;
-
-  return jsonb_build_object('day', p_for_day, 'P-01', v_p01, 'P-06', v_p06,
-    'rules_run', to_jsonb(v_ran), 'notes', to_jsonb(v_notes));
-exception when others then
-  update job_run set finished_at = now(), state = 'FAILED', error = sqlerrm where id = v_run;
-  raise;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.perf_accrual_kind(p_kpi uuid, p_unit text)
  RETURNS text
  LANGUAGE plpgsql
@@ -3380,6 +3269,117 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.plb_phase_targets(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  s plb_goal_sheet; r record; c record;
+  v_cycles uuid[]; v_n int; v_share numeric; v_kind text;
+  v_set int := 0; v_pinned int := 0; v_blank int := 0; v_rows jsonb := '[]'::jsonb;
+  v_shares numeric[]; i int;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+
+  if not perf_may_set(p_actor, s.person_id) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Phasing a quarter into months sets somebody''s targets, and '
+               'belongs to the person they report to.');
+  end if;
+  if s.status = 'LOCKED' then
+    return jsonb_build_object('error','locked',
+      'reason','That goal sheet is locked.');
+  end if;
+
+  select array_agg(q order by q) into v_cycles
+    from plb_quarter_cycles(s.quarter) q;
+  v_n := coalesce(array_length(v_cycles,1), 0);
+  if v_n = 0 then
+    return jsonb_build_object('error','no_cycles',
+      'reason','No monthly period has been opened inside that quarter, so '
+               'there is nothing to phase the target into.');
+  end if;
+
+  for r in
+    select gk.kpi_id, gk.target_value, k.name, k.unit,
+           perf_accrual_kind(k.id, k.unit) as kind
+      from plb_goal_kpi gk join kpi_definition k on k.id = gk.kpi_id
+     where gk.sheet_id = p_sheet
+     order by k.position, k.name
+  loop
+    if r.target_value is null then
+      v_blank := v_blank + 1;
+      v_rows := v_rows || jsonb_build_object('name', r.name, 'set', 0,
+        'why','no quarterly target to phase');
+      continue;
+    end if;
+
+    -- The same rule a third time: a count divides, a level is copied.
+    if r.kind = 'SUM' then
+      v_share := round(r.target_value / v_n, 2);
+    else
+      v_share := r.target_value;
+    end if;
+
+    -- The three share columns are NOT NULL and default to zero, so a
+    -- quarter with fewer than three months open writes zero for the
+    -- months that do not exist. Zero is the honest value: there is no
+    -- cycle to ask anybody for a number in.
+    v_shares := '{}';
+    for i in 1..3 loop
+      v_shares := v_shares || case when i <= v_n then v_share else 0 end;
+    end loop;
+    update plb_goal_kpi
+       set m1_share = v_shares[1], m2_share = v_shares[2], m3_share = v_shares[3]
+     where sheet_id = p_sheet and kpi_id = r.kpi_id;
+
+    -- Write each month's assignment, except where somebody agreed one by
+    -- hand. The arithmetic gives way to the agreement.
+    for c in
+      select a.id, a.target_source
+        from perf_assignment a
+       where a.person_id = s.person_id and a.kpi_id = r.kpi_id
+         and a.part_of_id is null
+         and a.cycle_id = any(v_cycles)
+    loop
+      if c.target_source = 'MANUAL' then
+        v_pinned := v_pinned + 1;
+      else
+        update perf_assignment
+           set target_value = v_share, target_source = 'SHARED'
+         where id = c.id;
+        v_set := v_set + 1;
+      end if;
+    end loop;
+
+    v_rows := v_rows || jsonb_build_object(
+      'name', r.name, 'kind', r.kind, 'quarterly', r.target_value,
+      'eachMonth', v_share, 'months', v_n,
+      'divides', r.kind = 'SUM');
+  end loop;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor,'PLB_TARGETS_PHASED','plb_goal_sheet', p_sheet::text,
+          jsonb_build_object('set', v_set, 'pinned', v_pinned,
+                             'months', v_n, 'quarter', s.quarter));
+
+  return jsonb_build_object('ok', true,
+    'months', v_n, 'set', v_set, 'leftPinned', v_pinned, 'noTarget', v_blank,
+    'measures', v_rows,
+    'note', v_set || ' monthly target(s) now come from the quarter' ||
+      case when v_pinned > 0
+           then ', and ' || v_pinned || ' agreed by hand were left alone'
+           else '' end ||
+      case when v_n < 3
+           then '. Only ' || v_n || ' month(s) of that quarter are open, so the '
+                'target divided across those.'
+           else '.' end);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_publish(p_actor uuid, p_sheet uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3483,6 +3483,39 @@ AS $function$
      and c.period_start <  (date_trunc('quarter', p_quarter) + interval '3 months')::date
    order by c.period_start
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_quarter_from_months(p_person uuid, p_kpi uuid, p_quarter date)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_kind text; v numeric;
+begin
+  select perf_accrual_kind(a.kpi_id, a.unit) into v_kind
+    from perf_assignment a
+   where a.person_id = p_person and a.kpi_id = p_kpi
+     and a.cycle_id in (select plb_quarter_cycles(p_quarter))
+     and a.part_of_id is null
+   limit 1;
+  if v_kind is null then return null; end if;
+
+  if v_kind = 'SUM' then
+    select sum(a.target_value) into v from perf_assignment a
+     where a.person_id = p_person and a.kpi_id = p_kpi
+       and a.part_of_id is null
+       and a.cycle_id in (select plb_quarter_cycles(p_quarter));
+  else
+    -- A level is not added across months. Three months at 95% is a 95%
+    -- quarter, not a 285% one.
+    select avg(a.target_value) into v from perf_assignment a
+     where a.person_id = p_person and a.kpi_id = p_kpi
+       and a.part_of_id is null and a.target_value is not null
+       and a.cycle_id in (select plb_quarter_cycles(p_quarter));
+  end if;
+  return v;
+end $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.plb_score_lock(p_actor uuid, p_sheet uuid, p_month date)
@@ -3736,6 +3769,56 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.plb_sheet_from_perf(p_actor uuid, p_person uuid, p_quarter date, p_plb_inr numeric DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_sheet uuid; o jsonb; r record; v_n int := 0; v numeric; a person;
+begin
+  select * into a from person where id = p_actor
+     and employment_status = 'ACTIVE' and superseded_by is null;
+
+  -- Running the scheme is HR's and Business Excellence's; managing the
+  -- person is their manager's. Either may issue a sheet, which is the set
+  -- plb_sheet_issue has always served. Gating this on perf_may_set alone
+  -- would have stopped HR doing their own job.
+  if not (perf_may_set(p_actor, p_person)
+          or a.app_role = 'ADMIN'
+          or coalesce(a.department,'') in ('Human Resources','Business Excellence')) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Issuing somebody''s goal sheet belongs to the person they '
+               'report to, or to HR.');
+  end if;
+  if p_actor = p_person then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Nobody issues their own goal sheet.');
+  end if;
+
+  -- Issue it empty, so the registry decides the measures and the weights.
+  o := plb_sheet_issue(p_actor, p_person, p_quarter, p_plb_inr,
+                       '[]'::jsonb, false);
+  if o->>'error' is not null then return o; end if;
+  v_sheet := (o->>'sheetId')::uuid;
+
+  for r in select gk.kpi_id from plb_goal_kpi gk where gk.sheet_id = v_sheet loop
+    v := plb_quarter_from_months(p_person, r.kpi_id,
+                                 date_trunc('quarter', p_quarter)::date);
+    if v is not null then
+      update plb_goal_kpi set target_value = v
+       where sheet_id = v_sheet and kpi_id = r.kpi_id;
+      v_n := v_n + 1;
+    end if;
+  end loop;
+
+  return jsonb_build_object('ok', true, 'sheetId', v_sheet, 'fromMonths', v_n,
+    'note', v_n || ' quarterly target(s) read off the monthly targets that '
+            'already existed, rather than typed in again. Where the months '
+            'said nothing, the quarter is left blank.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_sheet_issue(p_actor uuid, p_person uuid, p_quarter date, p_target numeric, p_targets jsonb DEFAULT '[]'::jsonb, p_default boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3845,6 +3928,62 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.plb_target_agreement(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare s plb_goal_sheet; v_rows jsonb := '[]'::jsonb; v_off int := 0; r record;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+  if perf_rel(p_actor, s.person_id) is null then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line.');
+  end if;
+
+  for r in
+    select gk.kpi_id, k.name, k.unit, gk.target_value as quarterly,
+           plb_quarter_from_months(s.person_id, gk.kpi_id, s.quarter) as monthly,
+           perf_accrual_kind(k.id, k.unit) as kind
+      from plb_goal_kpi gk join kpi_definition k on k.id = gk.kpi_id
+     where gk.sheet_id = p_sheet
+     order by k.position, k.name
+  loop
+    -- Rounded to two places before comparing: a third of 100 is 33.33
+    -- three times over, and 99.99 against 100 is agreement, not a fault.
+    if r.quarterly is not null and r.monthly is not null
+       and round(r.quarterly, 2) <> round(r.monthly, 2) then
+      v_off := v_off + 1;
+    end if;
+    v_rows := v_rows || jsonb_build_object(
+      'kpiId', r.kpi_id, 'name', r.name, 'unit', r.unit, 'kind', r.kind,
+      'quarterly', r.quarterly, 'monthly', r.monthly,
+      'agrees', case when r.quarterly is null or r.monthly is null then null
+                     else round(r.quarterly,2) = round(r.monthly,2) end,
+      'why', case
+        when r.quarterly is null then 'no quarterly target has been set'
+        when r.monthly is null then 'no monthly target exists for this measure'
+        when round(r.quarterly,2) = round(r.monthly,2) then null
+        when r.kind = 'SUM' then 'the months add to ' || r.monthly ||
+             ' against a quarter of ' || r.quarterly
+        else 'the months average ' || r.monthly ||
+             ' against a quarter of ' || r.quarterly end);
+  end loop;
+
+  return jsonb_build_object(
+    'sheetId', p_sheet, 'quarter', s.quarter,
+    'measures', v_rows, 'disagree', v_off,
+    'mayPhase', perf_may_set(p_actor, s.person_id),
+    'note', case when v_off = 0
+      then 'Every measure''s months agree with its quarter.'
+      else v_off || ' measure(s) are asking for one thing every month and '
+           'promising another for the quarter. Phasing the quarter down '
+           'fixes it, and leaves alone anything a person agreed by hand.' end);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_unseated()
  RETURNS jsonb
  LANGUAGE sql
@@ -3938,18 +4077,5 @@ AS $function$
   select greatest(0, coalesce(sum(points), 0))
   from pms_adjustment where cycle_id = p_cycle and half = 'ATTRIBUTE' and applied;
 $function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_cap_shadow()
- RETURNS trigger
- LANGUAGE plpgsql
- SET search_path TO 'public'
-AS $function$
-begin
-  if new.key = 'pms_cut_cap' and new.value is distinct from old.value then
-    update app_setting set value = new.value where key = 'pms_monthly_cap';
-  end if;
-  return new;
-end $function$
 ;
 
