@@ -671,6 +671,141 @@ off, which is what was ejecting people on #plb"). v7 went out about two and a
 half minutes later with `verify_jwt: false`, and `plb/index.ts` now carries a
 comment saying so at the top, where the next person to deploy it will read it.
 
+# The daily flow, and the leak that was still open · 2026-09-30
+
+## 5 · "Data leakage still exists, managers are seeing everyone's data"
+
+Correct, and I had checked one half of one screen. Migration 218 closed the
+Performance screen's **KPI** half. The **appraisal** half goes through a
+different door and I did not look at it:
+
+> `GET /plb/quarter` → `plb_quarter(p_quarter date)` — **no actor at all.**
+
+It returned, to anybody who could sign in: every goal sheet in the company,
+with name, employee number, chair, status, **target PLB in rupees**, months
+scored, disputes open and overdue, whether it was certified and published,
+and **the amount paid**. Plus `inScheme` — every seated person on a chair
+that carries a measure set.
+
+Migration 222 gives it the actor and asks `perf_rel` about every row, so the
+two halves of one screen cannot disagree about who somebody may see. The old
+one-argument form is left standing and made to **refuse** rather than
+dropped, so a stale caller gets an empty answer instead of everybody's.
+
+`plb_sheet` got the same treatment. 218 gated it *at the route*, which works
+and is a gate exactly one route remembers — 222's own assertion caught that,
+which is what it is for, so the gate moved into the database as
+`plb_sheet_for`.
+
+Checked on the live data with real accounts, counting what each sees in the
+quarter now:
+
+| | now | before |
+|---|---|---|
+| ABHIJEET KORI · Executive, no reports | **1** (themselves) | 101 |
+| ROOPA R · Team Leader | **1** | 101 |
+| Parag Mayekar · Branch Manager | **17** — themselves + 16 | 101 |
+| Aniket Chalke · Branch Manager | **43** — themselves + 42 | 101 |
+| Nitish Bhope · Zonal Manager | **26** — themselves + 25 | 101 |
+| Virendra Pal · Chief Executive | **100** — the whole line | 101 |
+
+## 6 · The daily flow — bottom to top, and targets top to bottom
+
+### What was already there, and what was not
+
+`perf_value()` has walked `rolls_into_id` and added a measure's filings into
+everything above it since migration 190, and `perf_accrual_kind()` already
+decided sum-versus-average the right way round. **The arithmetic was never
+the problem.** Two things were:
+
+**Nothing climbed.** Of the 364 measures seeded in 221, **ten** did. 221
+linked by NAME, and the registry does not name that way — it names per chair
+and codes the family in the unit after a middle dot:
+
+| Chair | Measure | Family |
+|---|---|---|
+| Executive | Cases completed against target | `EX1` |
+| Team Leader | Daily target achievement | `D3` |
+| Branch Manager | Cases completed within TAT | `D3` |
+| Zonal Manager | Branches at or above plan | `D8` |
+
+One pyramid, no two sharing a name. So the link is by **family**, and where
+the code changes going up it changes by `perf_rollup_map` — a table with the
+sentence justifying every row, because **that map is a judgement about the
+business and correcting it must be an UPDATE, not a deploy.**
+
+**Nothing was ever due.** All 173 registry measures said `MONTHLY`, and a
+monthly measure falls due exactly once, on the closing date. That is why
+`perf_due` returned nothing on any ordinary day and the fortnight strip was
+empty for everybody. Every measure is now `DAILY`; the cadence stays a
+per-measure column, so a measure that genuinely is monthly is one UPDATE from
+being monthly again.
+
+### Three rules, each added after the one before let something through
+
+Two were caught by the tests. **The third was caught on the live data**,
+which is worth recording as a failure of my own testing:
+
+| Rule | What it stops | How it was found |
+|---|---|---|
+| **Family** | Linking by name, which linked almost nothing | designing |
+| **Direction** | A ceiling into a floor — "work returned" (want low) into "quality score" (want high). The cascade was overwriting a 5% ceiling with a 90% floor | `test_flow.sql` |
+| **Kind** | A percentage into a count. A plan of **100 branches** divided by 62 feeders gave sixty-three real executives a target of **1.61% of cases** | reading the live chain back |
+
+All three must agree or the chain stops and says it stopped. 140 of 364
+climb. The rest are tops of chains, and every one of those is a place where
+the registry changes family, direction or type going up.
+
+### Targets, the other way
+
+`perf_target_set` sets one and pushes it down, **dividing the way the roll-up
+adds** — or a team's targets would not reconcile with their manager's:
+
+* **a count divides** — 600 cases across four people is 150 each
+* **a percentage is copied** — 95% across four is 95 each, not 23.75
+
+A share typed by hand is `MANUAL`: it comes off the top first, the rest
+divide what is left, and **no later cascade from above ever overwrites it.**
+Pin one of four at 300 of 600 and the other three get 100 each; raise the
+parent to 800 and the pin stays at 300 while the others move to 166.67.
+
+### Dummy targets
+
+Every blank target has a starting number, marked `SEEDED`, read out of the
+registry's own words where it states one ("target 95%", "target below 3%",
+"target zero"). A ceiling measure is seeded at 5 and a floor at 90, so an
+error rate is not seeded as a goal to miss nine times in ten. The screen says
+which of the three a number is — **agreed**, **a share from above**, or **a
+starting number nobody has agreed**.
+
+### What this exposes about the registry
+
+Worth saying plainly, because it is theirs to decide and not mine:
+
+* **The measures change type going up.** A percentage at the bottom, a count
+  at the top. The pyramid can only be built where family, direction and type
+  line up.
+* **`D21` names two opposite things.** "Error rate" at Team Leader, "Branch
+  quality score" at Branch Manager. The quality chain therefore stops at Team
+  Leader, because there is no ceiling-facing quality measure at branch level.
+* **`perf_rollup_map` has 20 rows and each is a guess I can defend, not a
+  fact I was given.** It is the one part of this that should be read and
+  corrected by somebody who knows the business.
+
+## Status · 2026-09-30
+
+| | |
+|---|---|
+| Defect 5 · the quarter leak | **closed** — 222, plb v8, verified per account |
+| The daily climb | **built** — 140 measures climb, every measure due daily |
+| Targets down | **built** — divides or copies, a hand edit pins |
+| Dummy targets | **728 seeded** across two months, all marked SEEDED |
+| Screen | **published** — 467,960 bytes, Targets section live |
+| Functions | plb v8, perf v2, both `verify_jwt` off |
+| Tests | 34 in `test_flow.sql`; suite green once the baseline refreshes |
+
+---
+
 ## Change log
 
 | When | What changed | Why |
