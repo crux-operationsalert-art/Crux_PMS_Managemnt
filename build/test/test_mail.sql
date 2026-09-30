@@ -39,6 +39,17 @@ begin
           'DAILY', p_ex, 'ISSUED', 'SEEDED');
 end $seed$;
 
+-- The baseline carries the SCHEMA and not the data, so the app_url row that
+-- migration 235 inserts is absent from a freshly rebuilt database. Every
+-- `update app_setting` below would then touch nothing and app_link would read
+-- null throughout. This test passed on a cluster where the migration had been
+-- applied by hand and failed in the suite for exactly that reason, which is
+-- the whole argument for running it against the baseline alone.
+insert into app_setting (key, value, plain_language, group_name, editable_by)
+values ('app_url', '', 'Where the published tool is served from.',
+        'Mail and reminders', 'ADMIN')
+on conflict (key) do nothing;
+
 do $t$
 declare o text; n int; v_body text; v_run jsonb; p_ex uuid;
 begin
