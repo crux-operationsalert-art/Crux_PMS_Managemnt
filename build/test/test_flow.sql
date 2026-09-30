@@ -342,6 +342,61 @@ begin
     else raise exception 'FAIL  the branch manager saw % in the quarter',
       jsonb_array_length(o->'inScheme'); end if;
 
+  -- =================================== the handover, where a chain stops
+  -- The branch's D8 is a count of branches; the lead's D3 is a count of
+  -- cases. Nothing climbs between them, and that is right -- but the
+  -- branch manager must still SEE what stopped below them before filing
+  -- their own number. That is the whole of "if the KPI changes there, the
+  -- chair must see the roll up and then update his own".
+  o := perf_handover(p_bm, cyc);
+  if jsonb_array_length(o->'from') >= 1
+    then raise notice 'PASS  the chair above sees the reports whose numbers stopped';
+    else raise exception 'FAIL  the handover came back empty'; end if;
+
+  select count(*) into n
+    from jsonb_array_elements(o->'from') f,
+         jsonb_array_elements(f->'measures') m
+   where (m->>'value') is not null;
+  if n >= 1
+    then raise notice 'PASS  and it carries what those numbers have reached, not just their names';
+    else raise exception 'FAIL  the handover named measures but carried no values'; end if;
+
+  -- It is a briefing about the line below, so it must obey the line.
+  o := perf_handover(p_e1, cyc, p_bm);
+  if o->>'error' = 'not_permitted'
+    then raise notice 'PASS  and an executive cannot read their branch manager''s briefing';
+    else raise exception 'FAIL  the handover was readable upwards'; end if;
+
+  -- Nothing climbing into the branch's D8 is still true, and the handover
+  -- is what replaces it rather than a quiet null.
+  if (select count(*) from perf_assignment a
+       where a.cycle_id = cyc and a.rolls_into_id =
+             (select id from perf_assignment where person_id = p_bm
+               and cycle_id = cyc and unit like '%D8%')) = 0
+    then raise notice 'PASS  the count of branches still takes no percentages by arithmetic';
+    else raise exception 'FAIL  something climbed into the branches count'; end if;
+
+  -- ============================================ the map says only same-quantity
+  if not exists (select 1 from perf_rollup_map
+                  where child_family = 'D3' and parent_family = 'D8')
+    then raise notice 'PASS  cases no longer claim to be branches';
+    else raise exception 'FAIL  D3 -> D8 is still in the map'; end if;
+
+  if exists (select 1 from perf_rollup_map
+              where child_family = 'HRE1' and parent_family = 'HRO2')
+   and not exists (select 1 from perf_rollup_map
+                    where child_family = 'HRE1' and parent_family = 'HRO1')
+    then raise notice 'PASS  joiners on record climbs into joiners on record, not into chairs seated';
+    else raise exception 'FAIL  HRE1 still points at HRO1'; end if;
+
+  select count(*) into n from perf_rollup_map where child_family = 'EX2';
+  if n = 3 then raise notice 'PASS  one family may have several parents -- days filed has three';
+           else raise exception 'FAIL  EX2 has % parents, expected 3', n; end if;
+
+  select count(*) into n from perf_rollup_map where child_family = parent_family;
+  if n = 0 then raise notice 'PASS  and a code that does not change carries no row, because it needs none';
+           else raise exception 'FAIL  % rows map a family to itself', n; end if;
+
   raise notice '--- the pyramid, both ways: every assertion passed ---';
 end $t$;
 

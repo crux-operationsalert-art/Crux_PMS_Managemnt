@@ -255,4 +255,58 @@ r.get("/target/team", async (req: any, res: any) => {
   });
 });
 
+// What came up from below and stopped there (migration 226).
+//
+// Most of what a team files climbs on its own. Some of it cannot: the
+// measure below is a different quantity from anything the person above
+// holds, so no arithmetic can add it in. Those are the numbers a chair has
+// to read and then account for in their own filing -- the step the pyramid
+// leaves to a human, made visible instead of left implicit.
+r.get("/handover", async (req: any, res: any) => {
+  const cycle = req.query.get("cycle");
+  if (!cycle) return res.status(400).json({ error: "missing_cycle" });
+  const o = await one(`select perf_handover($1,$2::uuid,$3::uuid) as o`,
+    [req.person.id, cycle, req.query.get("person") || null]);
+  return out(res, o.o);
+});
+
+// =====================================================================
+// The month, read out of the same filings (migration 227).
+//
+// A suggestion and nothing else. plb_month_suggest writes no row: the
+// Constitution's "partly or late" is a person's call about a person, and a
+// system that scored it silently would be inventing judgements. So this is
+// safe to call on every load of the screen.
+//
+// The caller passes a date, not a sheet, because a person on the screen
+// knows what month they are looking at and does not know their goal
+// sheet's id. The quarter it falls in picks the sheet.
+// =====================================================================
+r.get("/month", async (req: any, res: any) => {
+  const who = req.query.get("person") || req.person.id;
+  const on = req.query.get("on") || null;
+  let sheet = req.query.get("sheet");
+  if (!sheet) {
+    const row = await one(
+      `select s.id
+         from plb_goal_sheet s
+        where s.person_id = $1::uuid
+          and s.quarter = date_trunc('quarter', coalesce($2::date, current_date))::date
+        order by s.created_at desc limit 1`,
+      [who, on]);
+    // No sheet for that quarter is an ordinary state, not a fault -- the
+    // screen has nothing to show and says nothing.
+    if (!row) {
+      return res.json({
+        error: "no_sheet",
+        reason: "No goal sheet has been issued for that quarter yet.",
+      });
+    }
+    sheet = row.id;
+  }
+  const o = await one(`select plb_month_suggest($1,$2::uuid,coalesce($3::date, current_date)) as o`,
+    [req.person.id, sheet, on]);
+  return out(res, o.o);
+});
+
 export default r;

@@ -792,6 +792,74 @@ Worth saying plainly, because it is theirs to decide and not mine:
   fact I was given.** It is the one part of this that should be read and
   corrected by somebody who knows the business.
 
+---
+
+## 7 · The roll-up map, read row by row — migration 226
+
+Asked for directly: *"check the rollup map rows and fix the ones that are
+wrong."* So each of the 20 was read against what the two measures actually
+count, and **seven were deleted, three were redundant, and thirteen stand.**
+
+| Deleted | Why it was wrong |
+|---|---|
+| `D3 → D8` | Sent an executive's own family past its own parent's copy of it |
+| `F4 → F4b`, `X3 → CEO2` | Two different quantities with a similar name |
+| `HRE1 → HRO1`, `HRE3 → HRO3` | Crossed a floor into a ceiling — a 5% ceiling was being overwritten by a 90% goal |
+| `K4 → K1`, `M1 → HFO4`, `F9 → AC4`, `D2 → L1`, `D8 → L1` | A count feeding a percentage, or a percentage feeding a count |
+| `D1 → D1`, `D21 → D21`, `G4 → G4` | Redundant: a code that does not change needs no row. Same-family is tried first |
+
+Two structural changes came out of the reading:
+
+1. **The key is now (child, parent) with a `priority`,** because one family
+   legitimately has several parents — "days filed" climbs into three.
+2. **`perf_relink` tries the same family first and the mapped parents
+   second.** The old order is what made `D3 → D8` silently skip a level.
+
+### The handover — the step the pyramid cannot take
+
+Asked for: *"if the managers or a layer or chair where the KPI changes there
+the chair must see the roll up and then update his own."*
+
+**239 measures hand over to a person rather than climbing.** They measure
+something the chair above does not hold, so no arithmetic can add them in.
+`perf_handover(actor, cycle, person)` returns them grouped by measure —
+people, filed, target, team total or mean, best, worst, how many met it —
+with the per-person detail underneath. A Branch Manager with forty-two
+executives gets a briefing, not eighty-six rows.
+
+---
+
+## 8 · The day, the month and the quarter — migration 227
+
+Until now the same quantity was entered twice: filed daily by the person,
+and retyped quarterly by somebody else, with nothing checking they agreed.
+
+**The line this draws is where facts stop and judgements start.**
+
+| | |
+|---|---|
+| A quarterly **actual** is a fact — what was filed, rolled up | `plb_actual_from_perf` **writes** it |
+| A monthly **score** is a judgement — the Constitution's "partly or late" is a person's call about a person | `plb_month_suggest` **writes nothing** |
+
+Both halves are asserted in `build/test/test_link.sql`, including that a
+measure nobody filed is left **blank rather than scored as zero**, and that a
+frozen quarter is frozen against arithmetic and not only against typing.
+
+### The screen
+
+The blueprint's sections gained three, and the CSS follows the app's existing
+status palette rather than introducing hues:
+
+* **Today, as a headline** — one ring, filed against due, the run of working
+  days behind it, and one sentence that is true rather than encouraging.
+* **What came up from below** — the handover, as cards then detail.
+* **This month, out of ten** — the suggestion and its working, marked as a
+  suggestion, writing nothing.
+
+Status never travels as colour alone: every bar ships the percentage and the
+word beside it, and nothing due reads green because a day with no measures on
+it is not a failure.
+
 ## Status · 2026-09-30
 
 | | |
@@ -803,6 +871,26 @@ Worth saying plainly, because it is theirs to decide and not mine:
 | Screen | **published** — 467,960 bytes, Targets section live |
 | Functions | plb v8, perf v2, both `verify_jwt` off |
 | Tests | 34 in `test_flow.sql`; suite green once the baseline refreshes |
+| Roll-up map | **corrected** — 7 wrong rows deleted, 3 redundant, 13 stand |
+| Handover | **built** — 239 measures that hand over to a person, not to arithmetic |
+| Day → month → quarter | **built and tested** — 299 passed, 0 failed on a clean rebuild with 226 and 227 applied |
+
+### Not yet live — blocked, not forgotten
+
+Three steps need the Supabase connection, which is unauthenticated in this
+session. Everything else is written, tested and pushed.
+
+1. **`plb_month_suggest` is not applied to the live database.** The rest of
+   227 is. Until it is, `/perf/month` answers 404 and the screen hides that
+   section rather than showing an empty one.
+2. **`perf` is still v2** and has no `/handover` or `/month` route. The code
+   for both is in the repository. **It must be redeployed with
+   `verify_jwt: false`** — the page sends `x-crux-token` and no
+   Authorization header, and the default of `true` 401s everything.
+3. **The baseline lags by two migrations.** `build/schema` is regenerated
+   from the live database, so it catches up only after step 1. Until then
+   `build/test/run.sh` is red on `test_link` — correctly, because the
+   baseline genuinely cannot rebuild what is not in it yet.
 
 ---
 
@@ -819,3 +907,6 @@ Worth saying plainly, because it is theirs to decide and not mine:
 | 2026-09-29 | Vrunda Potdar seated with the place left open | She covers four regions and the chart has no seat that means four. Being in the line matters more than the label |
 | 2026-09-29 | RLS turned on for five tables the convention missed | Found by the advisor. Had to go before the KPI seed, which would have filled two of them |
 | 2026-09-29 | Targets seeded blank, on purpose | A target nobody agreed is multiplied into somebody's pay at the end of the quarter |
+| 2026-09-30 | Seven roll-up rows deleted after reading each one | Four crossed a type or a direction; three were a count feeding a percentage. Each would have overwritten somebody's target with a number that measured something else |
+| 2026-09-30 | Same-family tried before the mapped parents | `D3 → D8` was making a measure skip its own parent's copy of itself |
+| 2026-09-30 | The quarterly actual is computed; the monthly score is not | A fact and a judgement are different things, and a system that scores "partly or late" silently is inventing one |
