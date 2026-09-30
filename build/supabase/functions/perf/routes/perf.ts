@@ -173,4 +173,86 @@ r.post("/weighting", async (req: any, res: any) => {
   });
 });
 
+// =====================================================================
+// The pyramid, both ways (migrations 223 and 224).
+//
+// Up: a person files today's number, and perf_value adds it into
+// everything above them the same moment. Nothing here does that
+// arithmetic -- it asks.
+//
+// Down: a manager sets a target and it divides across their team. A count
+// divides, a percentage is copied, and a share somebody typed by hand is
+// pinned and never overwritten.
+// =====================================================================
+
+// One person's measures with everything below them already added in.
+// Defaults to the caller, so "my line" needs no argument, and refuses a
+// person outside it.
+r.get("/org", async (req: any, res: any) => {
+  const cycle = req.query.get("cycle");
+  if (!cycle) return res.status(400).json({ error: "missing_cycle" });
+  const o = await one(`select perf_org_rollup($1,$2::uuid,$3::uuid) as o`,
+    [req.person.id, cycle, req.query.get("person") || null]);
+  return out(res, o.o);
+});
+
+// Set one target. The gate is perf_may_set inside the function -- your own
+// team, one step, never yourself -- and the cascade runs from there.
+//
+// manual defaults to TRUE because a person typing into a box means it.
+// The only caller that passes false is a cascade, and a cascade does not
+// come through here.
+r.post("/target", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.assignmentId) return res.status(400).json({ error: "missing_assignment" });
+  if (b.target === null || b.target === undefined || b.target === "") {
+    return res.status(400).json({
+      error: "missing_target",
+      reason: "A target needs a number. To clear one, set it to zero and say why.",
+    });
+  }
+  const o = await one(`select perf_target_set($1,$2::uuid,$3::numeric,$4) as o`,
+    [req.person.id, b.assignmentId, b.target, b.manual !== false]);
+  return out(res, o.o);
+});
+
+// What the cascade would do, without doing it: the measures that climb
+// into this one, what each holds now, and which of them are pinned. So a
+// manager can see who is about to move before they move them.
+r.get("/target/team", async (req: any, res: any) => {
+  const id = req.query.get("assignment");
+  if (!id) return res.status(400).json({ error: "missing_assignment" });
+  const mine = await one(
+    `select a.id, a.person_id, a.name, a.unit, a.target_value as target,
+            a.target_source as "targetSource",
+            perf_accrual_kind(a.kpi_id, a.unit) as kind,
+            perf_rel($1, a.person_id) as rel
+       from perf_assignment a where a.id = $2::uuid`,
+    [req.person.id, id]);
+  if (!mine) return res.status(404).json({ error: "no_such_assignment" });
+  if (mine.rel == null) {
+    return res.status(403).json({ error: "not_permitted",
+      reason: "That measure is not in your line." });
+  }
+  const team = await many(
+    `select c.id as "assignmentId", p.full_name as name, p.employee_no as "employeeNo",
+            c.target_value as target, c.target_source as "targetSource",
+            c.target_source = 'MANUAL' as pinned,
+            perf_rel($1, c.person_id) as rel,
+            perf_rel($1, c.person_id) = 'manage' as "maySet",
+            (select count(*) from perf_assignment g where g.rolls_into_id = c.id) as feeders
+       from perf_assignment c
+       join person p on p.id = c.person_id
+      where c.rolls_into_id = $2::uuid
+      order by p.full_name`,
+    [req.person.id, id]);
+  return res.json({
+    measure: mine, team,
+    divides: mine.kind === "SUM",
+    note: mine.kind === "SUM"
+      ? "A count. What is pinned comes off the top and the rest share what is left."
+      : "A percentage. Every person carries the same number; it is not divided.",
+  });
+});
+
 export default r;

@@ -90,7 +90,12 @@ r.get("/mine", async (req: any, res: any) => {
 // The whole quarter: sheets issued, and the people who should have one.
 r.get("/quarter", async (req: any, res: any) => {
   const q = quarterOf(req.query.get("quarter") || undefined);
-  const o = await one(`select plb_quarter($1) as q`, [q]);
+  // The actor, second. Until migration 222 this called plb_quarter(q) with
+  // no actor and handed back every goal sheet in the company -- name,
+  // chair, target PLB in rupees, and the amount paid -- to anybody who
+  // could sign in. The one-argument form still exists and now refuses, so
+  // a caller that forgets gets an empty answer rather than everybody's.
+  const o = await one(`select plb_quarter($1,$2) as q`, [q, req.person.id]);
   return res.json({ ...o.q, maySetUp: maySetUp(req), me: req.person.id });
 });
 
@@ -101,24 +106,19 @@ r.get("/sheet/:id", async (req: any, res: any) => {
   // Business Excellence or administration -- so a manager could not open
   // their own report's sheet and an HR executive could open the chief
   // executive's. The relationship is the database's to state.
-  const rel = await one(`select plb_sheet_rel($1,$2) as rel`,
+  // One call, and the gate is inside it. Migration 222 moved this out of
+  // the route for the reason the route itself proves: a gate written here
+  // is a gate exactly one route remembers.
+  const o = await one(`select plb_sheet_for($1,$2) as s`,
     [req.person.id, req.params.id]);
-  if (rel?.rel == null) {
-    const exists = await one(`select 1 as yes from plb_goal_sheet where id = $1`,
-      [req.params.id]);
-    if (!exists) return res.status(404).json({ error: "no_such_sheet" });
-    return res.status(403).json({
-      error: "not_permitted",
-      reason: "A goal sheet is the employee's and the line above them.",
-    });
-  }
-  const o = await one(`select plb_sheet($1) as s`, [req.params.id]);
-  if (!o?.s?.sheetId) return res.status(404).json({ error: "no_such_sheet" });
+  const s = o?.s;
+  if (s?.error === "no_such_sheet") return res.status(404).json(s);
+  if (s?.error) return res.status(403).json(s);
   return res.json({
-    sheet: o.s,
-    mine: rel.rel === "self",
-    rel: rel.rel,
-    maySet: rel.rel === "manage" || rel.rel === "admin",
+    sheet: s,
+    mine: s?.mine === true,
+    rel: s?.rel,
+    maySet: s?.maySet === true,
     maySetUp: maySetUp(req),
   });
 });
