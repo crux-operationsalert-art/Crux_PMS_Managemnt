@@ -663,8 +663,6 @@ grant execute on function public.person_request_open(p_actor uuid, p jsonb) to s
 grant execute on function public.person_warn(p_actor uuid, p_in jsonb) to service_role;
 grant execute on function public.person_welcome_all(p_actor uuid, p_domain text) to service_role;
 grant execute on function public.person_welcome_body(p_person uuid, p_sign_in text) to service_role;
-grant execute on function public.person_welcome_on_create() to anon;
-grant execute on function public.person_welcome_on_create() to authenticated;
 grant execute on function public.person_welcome_on_create() to service_role;
 grant execute on function public.person_welcome_send(p_actor uuid, p_person uuid, p_sign_in text) to service_role;
 grant execute on function public.person_without_number() to service_role;
