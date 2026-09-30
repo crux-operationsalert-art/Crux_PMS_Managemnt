@@ -181,5 +181,28 @@ on conflict do nothing;
 
 -- pms_impact is empty
 
+insert into public.perf_rollup_map (child_family, parent_family, note, set_by, set_at) values
+  ('D2', 'L1', 'Four-region delivery against plan is what EBITDA against plan rests on.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('D3', 'D8', 'A branch at or above plan is a branch whose daily target achievement held. The zone counts branches; the branch counts cases.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('D8', 'L1', 'Branches at or above plan is what EBITDA against plan rests on.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('EX1', 'D3', 'An executive''s cases completed against target are what a Team Leader''s daily target achievement is made of.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('EX2', 'D8', 'Days filed by one person are what "team days filed" counts.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('EX3', 'D21', 'Work returned to an executive for correction is what a quality or error-rate score measures.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('F4', 'F4b', 'Collection achievement at a branch is what the zone''s DSO against the Finance target is made of.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('F9', 'AC4', 'Claim accuracy against computed entitlement is part of reconciliation being current.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('HRE1', 'HRO1', 'An HR executive''s joiners on record are what the HR Operations head is measured on.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('HRE2', 'HRO4', 'An HR executive''s days filed are part of their team''s days filed.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('HRE3', 'HRO3', 'Work returned for correction in HR is part of nothing being left unactioned.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('K4', 'K1', 'Sales against target is what mandate renewal is built on.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('K5', 'HFO3', 'Nothing unactioned in sales is part of nothing unactioned in finance operations.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('M1', 'HFO4', 'MIS submitted on time by a Team Leader is part of the team''s filing record.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('R1', 'CEO1', 'Revenue against plan is what company revenue against the board plan is made of.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('R6', 'R8', 'Branch revenue achievement is what zone revenue achievement is made of.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('R8', 'R1', 'Zone revenue is what revenue against plan is made of.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('X1', 'CEO2', 'Function cost against budget is part of company cost against budget.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('X2', 'X1', 'A branch''s expense against budget is part of the function''s cost against budget.', null, '2026-09-29T23:47:49.430419+00:00'),
+  ('X3', 'CEO2', 'Cost per case is part of company cost against budget.', null, '2026-09-29T23:47:49.430419+00:00')
+on conflict do nothing;
+
 
 
