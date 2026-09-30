@@ -8,6 +8,28 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_wd_after(p_from date, p_days integer, p_centre text DEFAULT NULL::text)
+ RETURNS date
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+declare d date := p_from; n int := 0; guard int := 0;
+begin
+  if p_from is null or p_days is null then return null; end if;
+  while n < p_days loop
+    d := d + 1;
+    guard := guard + 1;
+    -- a calendar with every day marked a holiday would otherwise spin forever
+    if guard > 400 then
+      raise exception 'plb_wd_after: % working days from % never arrived', p_days, p_from;
+    end if;
+    if is_working_day(d, p_centre) then n := n + 1; end if;
+  end loop;
+  return d;
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_wd_count(p_from date, p_to date, p_centre text DEFAULT NULL::text)
  RETURNS integer
  LANGUAGE sql

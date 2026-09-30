@@ -8,48 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_arbiter(p_assignment uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare
-  a assignment%rowtype; v_cur uuid; v_chain uuid[] := '{}'; v_guard int := 0;
-begin
-  select * into a from assignment where id = p_assignment;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-
-  -- the assignor's line, from them upwards
-  v_cur := a.assignor_id;
-  while v_cur is not null and v_guard < 50 loop
-    v_chain := v_chain || v_cur;
-    select manager_id into v_cur from person where id = v_cur;
-    v_guard := v_guard + 1;
-  end loop;
-
-  -- walk the assignee's line until it meets it
-  v_cur := coalesce(a.allocated_to_id, a.assignor_id); v_guard := 0;
-  while v_cur is not null and v_guard < 50 loop
-    if v_cur = any(v_chain) and v_cur is distinct from a.assignor_id
-       and v_cur is distinct from a.allocated_to_id then
-      return jsonb_build_object('person_id', v_cur,
-        'name', (select full_name from person where id = v_cur), 'how','lowest common manager');
-    end if;
-    select manager_id into v_cur from person where id = v_cur;
-    v_guard := v_guard + 1;
-  end loop;
-
-  -- no common manager below the top: the top is the arbiter
-  select id into v_cur from person
-   where manager_id is null and employment_status = 'ACTIVE' and superseded_by is null
-   limit 1;
-  return jsonb_build_object('person_id', v_cur,
-    'name', (select full_name from person where id = v_cur),
-    'how','no common manager below the top of the chart, so the top holds it');
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_arbitrate(p_assignment uuid, p_actor uuid, p_outcome text, p_reason text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3380,6 +3338,90 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.org_add_options(p_actor uuid, p_under uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_actor person; v_under person; v_chair uuid;
+begin
+  select * into v_actor from person where id = p_actor;
+  if v_actor.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+  select * into v_under from person where id = p_under;
+  if v_under.id is null then
+    return jsonb_build_object('error','no_such_person');
+  end if;
+  if not org_may_add_under(p_actor, p_under) then
+    return jsonb_build_object('error','not_permitted',
+      'reason', v_under.full_name || ' is not somebody you manage.');
+  end if;
+
+  select h.chair_id into v_chair from chair_holder h
+   where h.person_id = p_under and h.to_date is null
+   order by h.is_primary desc limit 1;
+
+  return jsonb_build_object(
+    'underId', p_under,
+    'underName', v_under.full_name,
+    -- HR and an administrator can skip the queue, because for them the
+    -- queue would only be a queue of one behind themselves.
+    'mayCreate', v_actor.app_role = 'ADMIN'
+                 or coalesce(v_actor.department,'') = 'Human Resources',
+    'mayRequest', true,
+
+    -- Somebody who already works here. Only people this actor may move,
+    -- and not the ones already reporting to p_under, and never p_under's
+    -- own line upwards -- org_move_person would refuse those as a loop and
+    -- an option that is always refused is not an option.
+    'movable', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'personId', q.id, 'name', q.full_name,
+               'employeeNo', q.employee_no,
+               'managerName', (select m.full_name from person m where m.id = q.manager_id),
+               'chair', (select ch.title from chair_holder h
+                          join chair ch on ch.id = h.chair_id
+                         where h.person_id = q.id and h.to_date is null
+                         order by h.is_primary desc limit 1))
+             order by q.full_name)
+      from person q
+     where q.employment_status = 'ACTIVE' and q.superseded_by is null
+       and q.id <> p_under
+       and coalesce(q.manager_id, '00000000-0000-0000-0000-000000000000'::uuid) <> p_under
+       and perf_may_set(p_actor, q.id)
+       and p_under not in (select person_id from org_subtree(q.id))
+    ), '[]'::jsonb),
+
+    -- The chairs a report of this person would plausibly sit in: the ones
+    -- reporting to their own chair. If their chair has no children below
+    -- it, offering nothing would be worse than offering everything.
+    'chairs', coalesce((
+      select jsonb_agg(jsonb_build_object('chairId', c.id, 'title', c.title,
+                                          'code', c.code, 'level', c.level)
+             order by c.title)
+      from chair c
+     where c.parent_id = v_chair
+    ), (select coalesce(jsonb_agg(jsonb_build_object(
+                 'chairId', c.id, 'title', c.title, 'code', c.code,
+                 'level', c.level) order by c.title), '[]'::jsonb)
+          from chair c where c.parent_id is not null)),
+
+    -- What is already in the queue for this person, so nobody files the
+    -- same joiner twice on Monday and Tuesday.
+    'pending', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'requestId', r.id, 'name', r.full_name, 'email', r.work_email,
+               'state', r.state, 'requestedAt', r.requested_at,
+               'requestedBy', (select q.full_name from person q where q.id = r.requested_by))
+             order by r.requested_at desc)
+      from person_request r
+     where r.manager_id = p_under and r.state in ('DRAFT','AWAITING_HR','AWAITING_ADMIN')
+    ), '[]'::jsonb));
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.org_chair(p_code text)
  RETURNS jsonb
  LANGUAGE sql
@@ -3523,6 +3565,21 @@ AS $function$
       ) q
     ), '[]'::jsonb)
   );
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_may_add_under(p_actor uuid, p_under uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select p_actor is not null and p_under is not null
+     and (p_under = p_actor
+       or perf_may_set(p_actor, p_under)
+       or exists (select 1 from person a where a.id = p_actor
+                   and (a.app_role = 'ADMIN'
+                     or coalesce(a.department,'') = 'Human Resources')));
 $function$
 ;
 
@@ -3809,7 +3866,7 @@ begin
   return jsonb_build_object(
     'rootId', v_root,
     'cycleId', v_cycle,
-    'mayAdd', perf_may_set(p_actor, v_root) or v_root = p_actor,
+    'mayAdd', org_may_add_under(p_actor, v_root),
     'people', coalesce((
       select jsonb_agg(jsonb_build_object(
                'personId', x.id,
@@ -3826,6 +3883,7 @@ begin
                -- the server refuses is how the target box went wrong.
                'rel', perf_rel(p_actor, x.id),
                'maySet', perf_may_set(p_actor, x.id),
+               'mayAddUnder', org_may_add_under(p_actor, x.id),
                'mayMove', case
                  when x.id = p_actor then false
                  when x.depth = 0 then false
@@ -4234,6 +4292,30 @@ begin
   insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
   values (p_actor, 'PERF_KPI_SET', 'person', v_person::text, null, p_in);
   return jsonb_build_object('ok', true, 'assignmentId', v_id);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_assign_bulk(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare p text; m jsonb; out jsonb := '[]'::jsonb; r jsonb; ok int := 0; bad int := 0;
+begin
+  for p in select jsonb_array_elements_text(p_in->'people') loop
+    for m in select jsonb_array_elements(p_in->'measures') loop
+      r := perf_assign(p_actor, m || jsonb_build_object(
+             'personId', p, 'cycleId', p_in->>'cycleId'));
+      if coalesce((r->>'ok')::boolean, false) then ok := ok + 1;
+      else bad := bad + 1;
+           out := out || jsonb_build_object('personId', p,
+                     'measure', m->>'name', 'why', coalesce(r->>'reason', r->>'error'));
+      end if;
+    end loop;
+  end loop;
+  return jsonb_build_object('ok', bad = 0, 'set', ok, 'refused', bad, 'why', out,
+    'note', ok || ' set' || case when bad > 0 then ', ' || bad || ' refused' else '' end || '.');
 end $function$
 ;
 

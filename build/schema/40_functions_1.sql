@@ -3150,3 +3150,45 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ogl_arbiter(p_assignment uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+declare
+  a assignment%rowtype; v_cur uuid; v_chain uuid[] := '{}'; v_guard int := 0;
+begin
+  select * into a from assignment where id = p_assignment;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+
+  -- the assignor's line, from them upwards
+  v_cur := a.assignor_id;
+  while v_cur is not null and v_guard < 50 loop
+    v_chain := v_chain || v_cur;
+    select manager_id into v_cur from person where id = v_cur;
+    v_guard := v_guard + 1;
+  end loop;
+
+  -- walk the assignee's line until it meets it
+  v_cur := coalesce(a.allocated_to_id, a.assignor_id); v_guard := 0;
+  while v_cur is not null and v_guard < 50 loop
+    if v_cur = any(v_chain) and v_cur is distinct from a.assignor_id
+       and v_cur is distinct from a.allocated_to_id then
+      return jsonb_build_object('person_id', v_cur,
+        'name', (select full_name from person where id = v_cur), 'how','lowest common manager');
+    end if;
+    select manager_id into v_cur from person where id = v_cur;
+    v_guard := v_guard + 1;
+  end loop;
+
+  -- no common manager below the top: the top is the arbiter
+  select id into v_cur from person
+   where manager_id is null and employment_status = 'ACTIVE' and superseded_by is null
+   limit 1;
+  return jsonb_build_object('person_id', v_cur,
+    'name', (select full_name from person where id = v_cur),
+    'how','no common manager below the top of the chart, so the top holds it');
+end $function$
+;
+

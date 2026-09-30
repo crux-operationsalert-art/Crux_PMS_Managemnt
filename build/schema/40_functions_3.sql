@@ -8,30 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.perf_assign_bulk(p_actor uuid, p_in jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare p text; m jsonb; out jsonb := '[]'::jsonb; r jsonb; ok int := 0; bad int := 0;
-begin
-  for p in select jsonb_array_elements_text(p_in->'people') loop
-    for m in select jsonb_array_elements(p_in->'measures') loop
-      r := perf_assign(p_actor, m || jsonb_build_object(
-             'personId', p, 'cycleId', p_in->>'cycleId'));
-      if coalesce((r->>'ok')::boolean, false) then ok := ok + 1;
-      else bad := bad + 1;
-           out := out || jsonb_build_object('personId', p,
-                     'measure', m->>'name', 'why', coalesce(r->>'reason', r->>'error'));
-      end if;
-    end loop;
-  end loop;
-  return jsonb_build_object('ok', bad = 0, 'set', ok, 'refused', bad, 'why', out,
-    'note', ok || ' set' || case when bad > 0 then ', ' || bad || ' refused' else '' end || '.');
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.perf_assignment_edges()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -2375,6 +2351,214 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.person_request_decide(p_actor uuid, p_request uuid, p_decision text, p jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_actor person; r person_request; v_dec text := upper(btrim(coalesce(p_decision,'')));
+  v_reason text := nullif(btrim(coalesce(p->>'reason','')),'');
+  v_add jsonb; o jsonb;
+begin
+  select * into v_actor from person where id = p_actor;
+  if v_actor.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+  if v_actor.app_role <> 'ADMIN'
+     and coalesce(v_actor.department,'') <> 'Human Resources' then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Deciding a joiner request is HR''s, or an administrator''s.');
+  end if;
+
+  select * into r from person_request where id = p_request;
+  if r.id is null then return jsonb_build_object('error','no_such_request'); end if;
+  if r.state not in ('DRAFT','AWAITING_HR','AWAITING_ADMIN') then
+    return jsonb_build_object('error','already_decided',
+      'reason','That request is already ' || lower(r.state::text) || '.');
+  end if;
+
+  if v_dec = 'REJECT' then
+    -- The table's own constraint demands a reason. Asking for it here means
+    -- the person reading the refusal gets a sentence, not a constraint name.
+    if v_reason is null then
+      return jsonb_build_object('error','missing_reason',
+        'reason','Say why, so the manager who asked knows what to do next.');
+    end if;
+    update person_request
+       set state = 'REJECTED', reject_reason = v_reason,
+           hr_by = p_actor, hr_at = now()
+     where id = p_request;
+    insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                             old_value, new_value)
+    values (p_actor, 'PERSON_REQUEST_REJECTED', 'person_request', p_request::text,
+            jsonb_build_object('state', r.state),
+            jsonb_build_object('state','REJECTED','reason', v_reason));
+    return jsonb_build_object('ok', true, 'state','REJECTED',
+      'note', r.full_name || ' was not taken on: ' || v_reason);
+  end if;
+
+  if v_dec <> 'APPROVE' then
+    return jsonb_build_object('error','bad_decision',
+      'reason','Approve or reject.');
+  end if;
+
+  -- The request carries what the MANAGER knew. HR supplies the rest -- the
+  -- employee number, the joining date, the department. The request's own
+  -- fields win over anything passed in, so approving cannot quietly become
+  -- approving a different person than the one that was asked for.
+  v_add := coalesce(p, '{}'::jsonb) || jsonb_build_object(
+    'fullName', r.full_name,
+    'workEmail', r.work_email,
+    'chairId', r.chair_id,
+    'managerId', r.manager_id,
+    'employeeType', r.employee_type);
+
+  -- Every check person_add makes runs again here, under HR's authority.
+  -- This is a queue in front of person_add, not a way around it.
+  o := person_add(p_actor, v_add);
+  if coalesce(o->>'ok','') <> 'true' then
+    return o;
+  end if;
+
+  update person_request
+     set state = 'ACTIVE', person_id = (o->>'personId')::uuid,
+         hr_by = p_actor, hr_at = now()
+   where id = p_request;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'PERSON_REQUEST_APPROVED', 'person_request', p_request::text,
+          jsonb_build_object('state', r.state),
+          jsonb_build_object('state','ACTIVE','personId', o->>'personId'));
+
+  return o || jsonb_build_object('requestId', p_request, 'state','ACTIVE');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.person_request_list(p_actor uuid, p_state text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_actor person; v_hr boolean;
+begin
+  select * into v_actor from person where id = p_actor;
+  if v_actor.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+  v_hr := v_actor.app_role = 'ADMIN'
+          or coalesce(v_actor.department,'') = 'Human Resources';
+
+  return jsonb_build_object(
+    'isHr', v_hr,
+    'requests', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'requestId', r.id, 'name', r.full_name, 'email', r.work_email,
+               'employeeType', r.employee_type,
+               'state', r.state, 'requestedAt', r.requested_at,
+               'requestedBy', (select q.full_name from person q where q.id = r.requested_by),
+               'managerId', r.manager_id,
+               'managerName', (select q.full_name from person q where q.id = r.manager_id),
+               'chairId', r.chair_id,
+               'chair', (select c.title from chair c where c.id = r.chair_id),
+               'rejectReason', r.reject_reason,
+               'personId', r.person_id,
+               -- Decided here rather than by the screen, for the same
+               -- reason as everywhere else: an offered button the server
+               -- refuses is a lie told to the user.
+               'mayDecide', v_hr and r.state = 'AWAITING_HR')
+             order by r.requested_at desc)
+      from person_request r
+     where (p_state is null or r.state::text = upper(p_state))
+       -- HR sees the queue. Everybody else sees what they asked for and
+       -- what was asked for their own team, and nothing else at all.
+       and (v_hr or r.requested_by = p_actor or org_may_add_under(p_actor, r.manager_id))
+    ), '[]'::jsonb));
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.person_request_open(p_actor uuid, p jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_actor person; v_mgr uuid; v_chair chair; v_id uuid;
+  v_name text := btrim(coalesce(p->>'fullName',''));
+  v_mail text := lower(btrim(coalesce(p->>'workEmail','')));
+  v_type text := upper(btrim(coalesce(nullif(p->>'employeeType',''),'EMPLOYEE')));
+begin
+  select * into v_actor from person where id = p_actor;
+  if v_actor.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+
+  v_mgr := nullif(p->>'managerId','')::uuid;
+  if v_mgr is null then
+    return jsonb_build_object('error','missing_manager',
+      'reason','A joiner joins somebody''s team. Say whose.');
+  end if;
+  if not org_may_add_under(p_actor, v_mgr) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','You can only ask for somebody to join a team you manage.');
+  end if;
+
+  if length(v_name) < 3 or v_name !~ '[A-Za-z]' then
+    return jsonb_build_object('error','missing_name',
+      'reason','A request needs the joiner''s name.');
+  end if;
+  if v_mail !~ '^[^@[:space:]]+@[^@[:space:]]+\.[a-z]{2,}$' then
+    return jsonb_build_object('error','bad_email',
+      'reason','That is not an e-mail address.');
+  end if;
+  if v_type not in ('EMPLOYEE','PARTNER','INTERN','CONTRACT') then
+    return jsonb_build_object('error','bad_type',
+      'reason','Employee, partner, intern or contract.');
+  end if;
+
+  -- The two ways this is a duplicate, told apart, because "already exists"
+  -- and "already asked for" need different answers from the person reading.
+  if exists (select 1 from person q
+              where lower(q.work_email) = v_mail
+                 or lower(coalesce(q.personal_email,'')) = v_mail) then
+    return jsonb_build_object('error','already_employed',
+      'reason', v_mail || ' already belongs to somebody here. If they are '
+                'moving team, move them instead of asking for a new account.');
+  end if;
+  if exists (select 1 from person_request r
+              where lower(r.work_email) = v_mail
+                and r.state in ('DRAFT','AWAITING_HR','AWAITING_ADMIN')) then
+    return jsonb_build_object('error','already_asked',
+      'reason','There is already an open request for that address.');
+  end if;
+
+  select * into v_chair from chair where id = nullif(p->>'chairId','')::uuid;
+  if v_chair.id is null then
+    return jsonb_build_object('error','no_such_chair',
+      'reason','A joiner sits in a chair. Pick one.');
+  end if;
+
+  insert into person_request (full_name, work_email, chair_id, manager_id,
+                              requested_by, state, employee_type)
+  values (v_name, v_mail, v_chair.id, v_mgr, p_actor, 'AWAITING_HR', v_type)
+  returning id into v_id;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'PERSON_REQUESTED', 'person_request', v_id::text, null,
+          jsonb_build_object('name', v_name, 'email', v_mail,
+                             'chair', v_chair.title, 'managerId', v_mgr));
+
+  return jsonb_build_object('ok', true, 'requestId', v_id,
+    'note', v_name || ' is with HR. They make the account -- you will see '
+            'them on your team the moment they do.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.person_warn(p_actor uuid, p_in jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4195,27 +4379,5 @@ AS $function$
                        where k.chair_id = ch.id and k.active and k.position < 100))
   ) t;
 $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_wd_after(p_from date, p_days integer, p_centre text DEFAULT NULL::text)
- RETURNS date
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare d date := p_from; n int := 0; guard int := 0;
-begin
-  if p_from is null or p_days is null then return null; end if;
-  while n < p_days loop
-    d := d + 1;
-    guard := guard + 1;
-    -- a calendar with every day marked a holiday would otherwise spin forever
-    if guard > 400 then
-      raise exception 'plb_wd_after: % working days from % never arrived', p_days, p_from;
-    end if;
-    if is_working_day(d, p_centre) then n := n + 1; end if;
-  end loop;
-  return d;
-end $function$
 ;
 
