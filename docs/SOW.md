@@ -1031,3 +1031,5 @@ Both now rebase and retry. The fix was exercised on its first outing —
 | 2026-09-30 | Five functions re-applied after the live database was found behind the repository | An apply that returns success is not evidence the database holds what the file says. Verified by MD5 from here on |
 | 2026-09-30 | Thirty SECURITY DEFINER functions revoked from anon | The gate reads "is this person in p_actor's line" and the caller supplied p_actor. With a public key, the caller is anybody |
 | 2026-09-30 | Revokes name PUBLIC, not only anon and authenticated | anon inherits from PUBLIC, so the first draft revoked nothing and every statement still succeeded |
+| 2026-09-30 | 531 "people" found to be client-bank contacts, not employees | They have no employee number, no department, have never signed in, and are already in branch_contact. 84% of the staff list was not staff |
+| 2026-09-30 | A person's reporting line becomes a guarded write | Dragging a tile changes person.manager_id, which is what every visibility rule is built on. A ring in that column would hang a recursive walk |
