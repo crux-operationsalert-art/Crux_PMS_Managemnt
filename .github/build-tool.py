@@ -407,6 +407,16 @@ PATCHES.append((
       '  .pfhand{grid-template-columns:1fr}\n'
       '  .pfbar{max-width:none}\n'
       '}\n'
+      # ------------------------------ one target, several clients
+      # The split lives inside the target panel, so it is bounded by a
+      # rule rather than a card: it is part of deciding the target, not
+      # a separate decision.
+      '.pfsplitq{margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line3)}\n'
+      '.pfsplit{margin:10px 0 0;padding-top:9px;border-top:1px solid var(--line3)}\n'
+      '.pfsplit h3{margin:0 0 3px;font-size:13px;color:var(--ink)}\n'
+      '.pfsplit table{font-size:12.5px}\n'
+      '.pfsplit label{cursor:pointer}\n'
+      '.pfsplit input.pfin{width:110px}\n'
       '.pftree{padding:2px 0 8px}\n'
       '.pfrow{display:flex;align-items:center;gap:8px;padding:7px 15px;\n'
       '  border-top:1px solid var(--line3);font-size:13px}\n'

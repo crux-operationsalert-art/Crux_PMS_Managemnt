@@ -342,4 +342,41 @@ r.post("/team/move", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// =====================================================================
+// One target, several clients (migration 230).
+//
+// The parts are ordinary assignments with a part_of_id, so everything
+// downstream -- the daily list, the roll-up, the quarter -- already reads
+// them. These two routes only create and read the split.
+// =====================================================================
+
+r.get("/split", async (req: any, res: any) => {
+  const id = req.query.get("assignment");
+  if (!id) return res.status(400).json({ error: "missing_assignment" });
+  const o = await one(`select perf_split_of($1,$2::uuid) as o`, [req.person.id, id]);
+  return out(res, o.o);
+});
+
+// parts is [{ref: clientId, target?: number}]. A target left out means
+// "give this one an even share of what is left", which is the same
+// sentence the cascade uses, so it is passed through untouched rather
+// than defaulted here.
+r.post("/split", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.assignmentId) return res.status(400).json({ error: "missing_assignment" });
+  if (!Array.isArray(b.parts)) {
+    return res.status(400).json({
+      error: "missing_parts",
+      reason: "Send the clients to split across. An empty list removes the split.",
+    });
+  }
+  const o = await one(`select perf_split_set($1,$2::uuid,$3::jsonb) as o`,
+    [req.person.id, b.assignmentId,
+     JSON.stringify({ kind: b.kind || "CLIENT", parts: b.parts })]);
+  // has_filings is a refusal to delete somebody's numbers, not a bad
+  // request -- 409 so a caller can tell the two apart.
+  if (o.o?.error === "has_filings") return res.status(409).json(o.o);
+  return out(res, o.o);
+});
+
 export default r;
