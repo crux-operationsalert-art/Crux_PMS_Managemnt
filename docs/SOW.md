@@ -877,20 +877,37 @@ it is not a failure.
 
 ### Not yet live — blocked, not forgotten
 
-Three steps need the Supabase connection, which is unauthenticated in this
-session. Everything else is written, tested and pushed.
+The Supabase connector reads `needs_reconnect`, so nothing in this session
+can reach the database. Everything else is written, tested and pushed, and
+the gap is now **one function wide**.
 
-1. **`plb_month_suggest` is not applied to the live database.** The rest of
-   227 is. Until it is, `/perf/month` answers 404 and the screen hides that
-   section rather than showing an empty one.
-2. **`perf` is still v2** and has no `/handover` or `/month` route. The code
-   for both is in the repository. **It must be redeployed with
-   `verify_jwt: false`** — the page sends `x-crux-token` and no
-   Authorization header, and the default of `true` 401s everything.
-3. **The baseline lags by two migrations.** `build/schema` is regenerated
-   from the live database, so it catches up only after step 1. Until then
-   `build/test/run.sh` is red on `test_link` — correctly, because the
-   baseline genuinely cannot rebuild what is not in it yet.
+The baseline was refreshed on `826be6c` and carries all of 226 and all of
+227 **except `plb_month_suggest`** — the one function that never reached the
+live database. `build/test/run.sh` therefore reports **303 passed, 1 failed**,
+and the single failure is `function plb_month_suggest(uuid, uuid, date) does
+not exist`. That is an accurate reading, not a flaky one: the baseline cannot
+rebuild what was never applied.
+
+Two steps close it:
+
+1. **Apply the `plb_month_suggest` half of migration 227** to the live
+   database. The snapshot workflow then carries it into the baseline on the
+   next migration push and the suite goes green.
+2. **Redeploy `perf` as v3** so `/handover` and `/month` exist. The code for
+   both is in the repository. **It must be deployed with `verify_jwt: false`**
+   — the page sends `x-crux-token` and no Authorization header, and the
+   parameter's default of `true` 401s everything. Until then both routes 404
+   and the screen hides those sections rather than showing empty ones.
+
+### One defect fixed along the way
+
+`Snapshot the schema` failed on `3f892e7` for no reason to do with the
+database: it read the schema, built the baseline, and then had its push
+rejected because `Publish the tool` had committed in the same seconds. Each
+job was serialised against itself and against nothing else, so any push
+touching both `build/app` and `build/migration` started both and one lost.
+Both now rebase and retry. The fix was exercised on its first outing —
+`aeb1909` triggered both jobs and both succeeded.
 
 ---
 
