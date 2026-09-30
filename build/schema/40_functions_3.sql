@@ -8,18 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.penalty_recovery_for(p_person uuid, p_rule uuid)
- RETURNS text
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  select case when (select employee_type from person where id = p_person) = 'PARTNER'
-              then 'FINANCE'
-              else (select recovered_by from penalty_rule where id = p_rule) end;
-$function$
-;
-
 CREATE OR REPLACE FUNCTION public.penalty_sweep(p_for_day date DEFAULT (CURRENT_DATE - 1))
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -586,35 +574,96 @@ begin
   v_who := coalesce(p_person, p_actor);
   v_rel := perf_rel(p_actor, v_who);
   if v_rel is null then
-    return jsonb_build_object('error','not_permitted','reason','That person is not in your line.');
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line.');
   end if;
+
   return jsonb_build_object(
     'rel', v_rel,
+
+    -- The summary first, and it is not a nicety. A Branch Manager with
+    -- forty-two executives gets eighty-six numbers handed to them; a list
+    -- of eighty-six is not a briefing, it is a wall. Grouped by measure
+    -- there are three lines, each saying how the team stands and who is
+    -- furthest from the mark -- which is what the person filing their own
+    -- number actually needs to know.
+    'summary', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'name', q.name, 'unit', q.unit, 'family', q.family,
+               'direction', q.direction, 'kind', q.kind,
+               'people', q.people, 'filed', q.filed,
+               'target', q.target,
+               'team', case when q.kind = 'SUM' then q.total else q.mean end,
+               'best', case when q.direction = 'CEILING' then q.lo else q.hi end,
+               'worst', case when q.direction = 'CEILING' then q.hi else q.lo end,
+               'atOrAbove', q.made,
+               'pct', case when coalesce(q.target,0) = 0 then null
+                           else round(100.0
+                                * (case when q.kind = 'SUM' then q.total else q.mean end)
+                                / q.target, 1) end)
+             order by q.name)
+        from (
+          select a.name, a.unit,
+                 perf_family(a.unit) as family,
+                 perf_direction(a.unit) as direction,
+                 perf_accrual_kind(a.kpi_id, a.unit) as kind,
+                 count(*) as people,
+                 count(perf_value(a.id)) as filed,
+                 avg(a.target_value) as target,
+                 sum(perf_value(a.id)) as total,
+                 avg(perf_value(a.id)) as mean,
+                 min(perf_value(a.id)) as lo,
+                 max(perf_value(a.id)) as hi,
+                 count(*) filter (
+                   where perf_value(a.id) is not null and a.target_value is not null
+                     and ((perf_direction(a.unit) = 'CEILING'
+                           and perf_value(a.id) <= a.target_value)
+                       or (perf_direction(a.unit) = 'FLOOR'
+                           and perf_value(a.id) >= a.target_value))) as made
+            from perf_line(v_who) l
+            join perf_assignment a on a.person_id = l.person_id
+           where l.depth = 1
+             and a.cycle_id = p_cycle
+             and a.part_of_id is null
+             and a.rolls_into_id is null
+           group by a.name, a.unit, perf_family(a.unit),
+                    perf_direction(a.unit), perf_accrual_kind(a.kpi_id, a.unit)
+        ) q), '[]'::jsonb),
+
     'from', coalesce((
       select jsonb_agg(x order by x->>'name')
         from (
           select jsonb_build_object(
-                   'personId', p.id, 'name', p.full_name, 'employeeNo', p.employee_no,
+                   'personId', p.id,
+                   'name', p.full_name,
+                   'employeeNo', p.employee_no,
                    'chair', (select ch.title from chair_holder h
                               join chair ch on ch.id = h.chair_id
                              where h.person_id = p.id and h.to_date is null
                              order by h.is_primary desc limit 1),
                    'measures', coalesce((
                      select jsonb_agg(jsonb_build_object(
-                              'assignmentId', a.id, 'name', a.name, 'unit', a.unit,
-                              'family', perf_family(a.unit),
+                              'assignmentId', a.id, 'name', a.name,
+                              'unit', a.unit, 'family', perf_family(a.unit),
                               'direction', perf_direction(a.unit),
                               'kind', perf_accrual_kind(a.kpi_id, a.unit),
-                              'target', a.target_value, 'value', perf_value(a.id),
+                              'target', a.target_value,
+                              'value', perf_value(a.id),
                               'pct', case when coalesce(a.target_value,0) = 0 then null
-                                          else round(100.0 * perf_value(a.id) / a.target_value, 1) end,
-                              'filings', (select count(*) from perf_entry e where e.assignment_id = a.id),
-                              'lastFiled', (select max(e.as_of) from perf_entry e where e.assignment_id = a.id),
-                              'feeders', (select count(*) from perf_assignment g where g.rolls_into_id = a.id))
+                                          else round(100.0 * perf_value(a.id)
+                                                     / a.target_value, 1) end,
+                              'filings', (select count(*) from perf_entry e
+                                           where e.assignment_id = a.id),
+                              'lastFiled', (select max(e.as_of) from perf_entry e
+                                             where e.assignment_id = a.id),
+                              'feeders', (select count(*) from perf_assignment g
+                                           where g.rolls_into_id = a.id))
                             order by a.name)
                        from perf_assignment a
-                      where a.person_id = p.id and a.cycle_id = p_cycle
-                        and a.part_of_id is null and a.rolls_into_id is null), '[]'::jsonb)) as x
+                      where a.person_id = p.id
+                        and a.cycle_id = p_cycle
+                        and a.part_of_id is null
+                        and a.rolls_into_id is null), '[]'::jsonb)) as x
             from perf_line(v_who) l
             join person p on p.id = l.person_id
            where l.depth = 1
@@ -622,7 +671,9 @@ begin
                           where a.person_id = p.id and a.cycle_id = p_cycle
                             and a.part_of_id is null and a.rolls_into_id is null)
         ) q), '[]'::jsonb),
-    'note', 'These numbers stop with the person who filed them, because what they measure is not what you are measured on. Read them, then file your own.');
+    'note', 'These numbers stop with the person who filed them, because what '
+            'they measure is not what you are measured on. Read them, then '
+            'file your own.');
 end $function$
 ;
 
@@ -866,16 +917,24 @@ begin
   select perf_accrual_kind(a.kpi_id, a.unit) into v_kind
     from perf_assignment a
    where a.person_id = p_person and a.kpi_id = p_kpi
-     and a.cycle_id in (select plb_quarter_cycles(p_quarter)) limit 1;
+     and a.cycle_id in (select plb_quarter_cycles(p_quarter))
+   limit 1;
   if v_kind is null then return null; end if;
+
   if v_kind = 'SUM' then
-    select sum(perf_value(a.id)) into v from perf_assignment a
-     where a.person_id = p_person and a.kpi_id = p_kpi and a.part_of_id is null
+    select sum(perf_value(a.id)) into v
+      from perf_assignment a
+     where a.person_id = p_person and a.kpi_id = p_kpi
+       and a.part_of_id is null
        and a.cycle_id in (select plb_quarter_cycles(p_quarter));
   else
+    -- A percentage across three months is the average of the months that
+    -- have one, not of three months two of which are silent.
     select avg(x) into v from (
-      select perf_value(a.id) as x from perf_assignment a
-       where a.person_id = p_person and a.kpi_id = p_kpi and a.part_of_id is null
+      select perf_value(a.id) as x
+        from perf_assignment a
+       where a.person_id = p_person and a.kpi_id = p_kpi
+         and a.part_of_id is null
          and a.cycle_id in (select plb_quarter_cycles(p_quarter))) q
      where x is not null;
   end if;
@@ -914,7 +973,8 @@ begin
   select app_role into v_role from person
    where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
   if v_role is distinct from 'ADMIN' then
-    return jsonb_build_object('error','not_admin','reason','Rebuilding the roll-up is an administrator''s.');
+    return jsonb_build_object('error','not_admin',
+      'reason','Rebuilding the roll-up is an administrator''s.');
   end if;
 
   update perf_assignment set rolls_into_id = null
@@ -929,13 +989,13 @@ begin
      where a.cycle_id = p_cycle and a.part_of_id is null
        and perf_family(a.unit) is not null
   loop
-    -- The same family first, always: a code that does not change on the way
-    -- up needs no row and must not be sent past its own parent.
+    -- The same family first, always: a code that does not change on the
+    -- way up needs no row and must not be sent past its own parent.
     v_into := perf_climb(p_cycle, r.person_id, r.fam, r.dir, r.kind);
 
-    -- Then each mapped parent in turn, until one is actually above this
-    -- person. Three parents is not three guesses: the reporting line picks,
-    -- and at most one can be in it.
+    -- Then each mapped parent in turn, until one of them is actually
+    -- above this person. A family with three parents is not three
+    -- guesses: the reporting line picks, and at most one can be in it.
     if v_into is null then
       for m in select parent_family from perf_rollup_map
                 where child_family = r.fam and parent_family <> r.fam
@@ -946,7 +1006,8 @@ begin
       end loop;
     end if;
 
-    if v_into is null then v_top := v_top + 1;
+    if v_into is null then
+      v_top := v_top + 1;
     else
       update perf_assignment set rolls_into_id = v_into where id = r.id;
       v_linked := v_linked + 1;
@@ -955,12 +1016,14 @@ begin
 
   insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
   values (p_actor, 'PERF_ROLLUP_REBUILT', 'perf_cycle', p_cycle::text,
-          jsonb_build_object('linked', v_linked, 'cleared', v_cleared, 'handedOver', v_top));
+          jsonb_build_object('linked', v_linked, 'cleared', v_cleared,
+                             'handedOver', v_top));
 
   return jsonb_build_object('ok', true, 'linked', v_linked, 'cleared', v_cleared,
     'handedOver', v_top,
     'note', v_linked || ' measure(s) climb by arithmetic. ' || v_top ||
-            ' stop, and are handed to the chair above to read and answer in their own number.');
+            ' stop, and are handed to the chair above to read and answer in '
+            'their own number.');
 end $function$
 ;
 
@@ -2319,36 +2382,48 @@ CREATE OR REPLACE FUNCTION public.plb_actual_from_perf(p_actor uuid, p_sheet uui
 AS $function$
 declare
   s plb_goal_sheet; v_rel text; v_frozen timestamptz;
-  r record; v numeric; v_set int := 0; v_blank int := 0; v_rows jsonb := '[]'::jsonb;
+  r record; v numeric; v_set int := 0; v_blank int := 0;
+  v_rows jsonb := '[]'::jsonb;
 begin
   select * into s from plb_goal_sheet where id = p_sheet;
   if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+
   v_rel := perf_rel(p_actor, s.person_id);
-  if v_rel is distinct from 'manage' and v_rel is distinct from 'admin' then
+  if v_rel not in ('manage','admin') then
     return jsonb_build_object('error','not_permitted',
-      'reason','Pulling a quarter''s actuals is the reporting manager''s, or an administrator''s. You may read the sheet either way.');
+      'reason','Pulling a quarter''s actuals is the reporting manager''s, or '
+               'an administrator''s. You may read the sheet either way.');
   end if;
+
   select data_frozen_at into v_frozen from plb_result where sheet_id = p_sheet;
   if v_frozen is not null then
-    return jsonb_build_object('error','frozen','reason','The KPI source data for that quarter is frozen.');
+    return jsonb_build_object('error','frozen',
+      'reason','The KPI source data for that quarter is frozen.');
   end if;
 
   for r in
     select gk.kpi_id, k.name, k.unit, gk.target_value, gk.actual_value
-      from plb_goal_kpi gk join kpi_definition k on k.id = gk.kpi_id
-     where gk.sheet_id = p_sheet order by k.position, k.name
+      from plb_goal_kpi gk
+      join kpi_definition k on k.id = gk.kpi_id
+     where gk.sheet_id = p_sheet
+     order by k.position, k.name
   loop
     v := perf_quarter_value(s.person_id, r.kpi_id, s.quarter);
+
     if v is null then
       v_blank := v_blank + 1;
-      v_rows := v_rows || jsonb_build_object('name', r.name, 'unit', r.unit,
-        'target', r.target_value, 'actual', r.actual_value, 'filled', false,
-        'why','nothing was filed against this measure in the quarter, so the actual is left as it was rather than written as a zero');
+      v_rows := v_rows || jsonb_build_object(
+        'name', r.name, 'unit', r.unit, 'target', r.target_value,
+        'actual', r.actual_value, 'filled', false,
+        'why', 'nothing was filed against this measure in the quarter, so the '
+               'actual is left as it was rather than written as a zero');
     else
-      update plb_goal_kpi set actual_value = v where sheet_id = p_sheet and kpi_id = r.kpi_id;
+      update plb_goal_kpi set actual_value = v
+       where sheet_id = p_sheet and kpi_id = r.kpi_id;
       v_set := v_set + 1;
-      v_rows := v_rows || jsonb_build_object('name', r.name, 'unit', r.unit,
-        'target', r.target_value, 'was', r.actual_value, 'actual', v, 'filled', true,
+      v_rows := v_rows || jsonb_build_object(
+        'name', r.name, 'unit', r.unit, 'target', r.target_value,
+        'was', r.actual_value, 'actual', v, 'filled', true,
         'pct', case when coalesce(r.target_value,0) = 0 then null
                     else round(100.0 * v / r.target_value, 1) end);
     end if;
@@ -2358,9 +2433,12 @@ begin
   values (p_actor, 'PLB_ACTUALS_FROM_FILINGS', 'plb_goal_sheet', p_sheet::text,
           jsonb_build_object('quarter', s.quarter, 'set', v_set, 'blank', v_blank));
 
-  return jsonb_build_object('ok', true, 'set', v_set, 'blank', v_blank, 'rows', v_rows,
+  return jsonb_build_object('ok', true, 'set', v_set, 'blank', v_blank,
+    'rows', v_rows,
     'note', v_set || ' actual(s) taken from what was filed day by day' ||
-            case when v_blank > 0 then ', and ' || v_blank || ' left alone because nothing was filed against them' else '' end || '.');
+            case when v_blank > 0
+                 then ', and ' || v_blank || ' left alone because nothing was filed against them'
+                 else '' end || '.');
 end $function$
 ;
 
@@ -2960,6 +3038,107 @@ AS $function$
   from plb_dispute d left join kpi_definition k on k.id = d.kpi_id
   where d.sheet_id = p_sheet;
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_month_suggest(p_actor uuid, p_sheet uuid, p_month date)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  s plb_goal_sheet; v_rel text; c perf_cycle;
+  r record; v numeric; ratio numeric; pts numeric;
+  v_sum numeric := 0; v_n int := 0; v_blank int := 0;
+  v_rows jsonb := '[]'::jsonb; v_now jsonb;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+
+  v_rel := perf_rel(p_actor, s.person_id);
+  if v_rel is null then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line.');
+  end if;
+
+  select * into c from perf_cycle
+   where period_kind = 'MONTH'
+     and period_start = date_trunc('month', p_month)::date;
+  if c.id is null then
+    return jsonb_build_object('error','no_such_cycle',
+      'reason','No monthly cycle has been opened for ' ||
+               to_char(date_trunc('month', p_month), 'Mon YYYY') || '.');
+  end if;
+
+  for r in
+    select gk.kpi_id, k.name, k.unit, gk.weight_pct
+      from plb_goal_kpi gk
+      join kpi_definition k on k.id = gk.kpi_id
+     where gk.sheet_id = p_sheet
+     order by k.position, k.name
+  loop
+    select perf_value(a.id), a.target_value into v, ratio
+      from perf_assignment a
+     where a.person_id = s.person_id and a.kpi_id = r.kpi_id
+       and a.cycle_id = c.id and a.part_of_id is null
+     limit 1;
+
+    if v is null or coalesce(ratio, 0) = 0 then
+      v_blank := v_blank + 1;
+      v_rows := v_rows || jsonb_build_object(
+        'name', r.name, 'unit', r.unit, 'points', null, 'counted', false,
+        'why', case when v is null then 'nothing filed in this month'
+                    else 'no target was set for this month' end);
+      continue;
+    end if;
+
+    -- A ceiling measure is met by being small. Turning it the right way up
+    -- here rather than in the caller is the difference between rewarding a
+    -- low error rate and punishing it.
+    ratio := case when perf_direction(r.unit) = 'CEILING'
+                  then case when v = 0 then 150 else least(150, round(100.0 * ratio / v, 2)) end
+                  else least(150, round(100.0 * v / ratio, 2)) end;
+
+    pts := case when ratio >= 100 then 2.0
+                when ratio >= 50  then 1.0
+                else 0.0 end;
+
+    v_sum := v_sum + pts; v_n := v_n + 1;
+    v_rows := v_rows || jsonb_build_object(
+      'name', r.name, 'unit', r.unit, 'value', v,
+      'pct', ratio, 'points', pts, 'counted', true,
+      'why', case when pts = 2 then 'at or past the target'
+                  when pts = 1 then 'part of the way there'
+                  else 'short of half the target' end);
+  end loop;
+
+  select jsonb_build_object('kpiPoints', ms.kpi_points, 'attrPoints', ms.attr_points,
+                            'monthlyScore', ms.monthly_score,
+                            'lockedAt', ms.locked_at, 'scoredAt', ms.scored_at)
+    into v_now
+    from plb_month_score ms
+   where ms.sheet_id = p_sheet and ms.month = date_trunc('month', p_month)::date;
+
+  return jsonb_build_object(
+    'month', date_trunc('month', p_month)::date,
+    'rel', v_rel,
+    'maySet', v_rel in ('manage','admin'),
+    'measures', v_rows,
+    'counted', v_n, 'blank', v_blank,
+    -- Out of ten, because the Constitution's KPI half is scored out of ten
+    -- and the arithmetic downstream expects it that way.
+    'suggested', case when v_n = 0 then null
+                      else round(10.0 * v_sum / (2.0 * v_n), 2) end,
+    'now', v_now,
+    'says', case
+      when v_n = 0 then 'Nothing can be suggested: no measure has both a target and a number this month.'
+      else 'Suggested from ' || v_n || ' measure(s) with a target and a number' ||
+           case when v_blank > 0 then ', ' || v_blank || ' left out and each one says why' else '' end ||
+           '. This is what the filings say. The score is yours.' end,
+    'note', 'Two points a measure: at or past the target is two, at least '
+            'half way is one, short of that is none. Nothing here has been '
+            'written -- it is a reading of the month, not a verdict on it.');
+end $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.plb_payout_factor(p_achievement numeric)

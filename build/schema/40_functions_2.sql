@@ -3908,3 +3908,15 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.penalty_recovery_for(p_person uuid, p_rule uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select case when (select employee_type from person where id = p_person) = 'PARTNER'
+              then 'FINANCE'
+              else (select recovered_by from penalty_rule where id = p_rule) end;
+$function$
+;
+
