@@ -1389,6 +1389,8 @@ begin
                'it, and belongs to the person they report to.');
   end if;
 
+  -- One level only. A split of a split is a different feature and would
+  -- make perf_value's recursion mean two things at once.
   if a.part_of_id is not null then
     return jsonb_build_object('error','already_a_part',
       'reason','That measure is itself one client''s share. Split the '
@@ -1403,6 +1405,7 @@ begin
 
   v_kind := perf_accrual_kind(a.kpi_id, a.unit);
 
+  -- --------------------------------------------------- read what was asked
   for r in select * from jsonb_array_elements(coalesce(p_in->'parts','[]'::jsonb)) loop
     v_ref := nullif(r->>'ref','')::uuid;
     if v_ref is null then
@@ -1425,6 +1428,7 @@ begin
     end if;
   end loop;
 
+  -- Naming nobody removes the split altogether, which is a legitimate act.
   if array_length(v_named,1) is null then
     select string_agg(c.split_label, ', ') into v_stuck
       from perf_assignment c
@@ -1444,6 +1448,7 @@ begin
       'note','The split is gone. The measure is filed as one number again.');
   end if;
 
+  -- ------------------------------------------------------- the arithmetic
   if v_kind = 'SUM' then
     if a.target_value is not null and v_given > a.target_value then
       return jsonb_build_object('error','over_the_target',
@@ -1454,6 +1459,7 @@ begin
                    else a.target_value - v_given end;
   end if;
 
+  -- ------------------------------------------------------------ write them
   for r in select * from jsonb_array_elements(p_in->'parts') loop
     v_ref   := (r->>'ref')::uuid;
     v_label := (select name from client where id = v_ref);
@@ -1465,6 +1471,8 @@ begin
         when v_left is null or v_blank = 0 then null
         else round(v_left / v_blank, 2) end;
     else
+      -- A percentage is copied, never divided. perf_value weights a level
+      -- by target_value, so equal targets make it a plain mean.
       v_target := a.target_value;
     end if;
 
@@ -1497,6 +1505,7 @@ begin
       'target', v_target);
   end loop;
 
+  -- ------------------------------------- anything dropped from the list
   select string_agg(c.split_label, ', ') into v_stuck
     from perf_assignment c
    where c.part_of_id = a.id and not (c.id = any(v_keep))

@@ -3603,6 +3603,9 @@ begin
   v_hr    := coalesce(a.department,'') = 'Human Resources';
   v_old   := s.manager_id;
 
+  -- ------------------------------------------------ rule 3, first
+  -- Checked before anything else, because "may I move myself" has a
+  -- flattering answer if you ask it after "is this inside my subtree".
   if p_person = p_actor then
     return jsonb_build_object('error','not_permitted',
       'reason','You cannot move yourself. Ask the person you report to.');
@@ -3612,6 +3615,7 @@ begin
       'reason','You cannot move the person you report to.');
   end if;
 
+  -- ------------------------------------------------------ rules 1 and 2
   if not (v_admin or v_hr) then
     if not exists (select 1 from org_subtree(p_actor) t
                     where t.person_id = p_person and t.depth > 0) then
@@ -3626,6 +3630,7 @@ begin
     end if;
   end if;
 
+  -- --------------------------------------------- a manager must exist
   if p_new_manager is null then
     if not (v_admin or v_hr) then
       return jsonb_build_object('error','not_permitted',
@@ -3639,6 +3644,7 @@ begin
     end if;
   end if;
 
+  -- ---------------------------------------------------------- rule 4
   if p_new_manager = p_person then
     return jsonb_build_object('error','would_loop',
       'reason','Somebody cannot report to themselves.');
@@ -3866,6 +3872,9 @@ begin
                'chair', x.chair,
                'department', x.department,
                'reports', x.reports,
+               -- What may THIS viewer do to THIS person, decided here and
+               -- not guessed by the screen. A tile that offers an action
+               -- the server refuses is how the target box went wrong.
                'rel', perf_rel(p_actor, x.id),
                'maySet', perf_may_set(p_actor, x.id),
                'mayMove', case
@@ -3878,6 +3887,9 @@ begin
                'measures', x.measures,
                'filed', x.filed,
                'onTrack', x.on_track,
+               -- The one number a tile shows: measures at or past target
+               -- over measures with a target. Null rather than zero when
+               -- there is nothing to be a fraction of.
                'progress', case when x.with_target = 0 then null
                                 else round(100.0 * x.on_track / x.with_target, 0) end)
              order by x.depth, x.full_name)
@@ -3909,6 +3921,9 @@ begin
                          and perf_value(a.id) >= a.target_value))) as on_track
           from org_subtree(v_root) t
           join person p on p.id = t.person_id
+         -- The subtree is walked from the root, but the ANSWER is still
+         -- filtered by what this viewer may see. A root they may read does
+         -- not make everybody under it readable.
          where perf_may_see(p_actor, p.id)
       ) x), '[]'::jsonb));
 end $function$
