@@ -8,83 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.perf_accrual_kind(p_kpi uuid, p_unit text)
- RETURNS text
- LANGUAGE plpgsql
- STABLE
-AS $function$
-declare a text; u text;
-begin
-  if p_kpi is not null then
-    select lower(k.accrual::text) into a from kpi_definition k where k.id = p_kpi;
-  end if;
-
-  -- An explicit REPLACES is somebody saying so. Nothing overrides it.
-  if a is not null and (a like '%replace%' or a like '%level%' or a like '%latest%'
-                        or a like '%last%' or a like '%avg%' or a like '%aver%') then
-    return 'LEVEL';
-  end if;
-
-  -- The design's own test, and it beats ADDS on purpose: /%|score/i is a
-  -- level. A measure counted in per cent that claims to accumulate is a
-  -- default nobody changed, and believing it is how a month reaches 181%.
-  u := coalesce(p_unit, '');
-  if u ~* '%|score|rate|ratio|pct|percent|per cent' then return 'LEVEL'; end if;
-
-  return 'SUM';
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_assign(p_actor uuid, p_in jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare c perf_cycle; k kpi_definition; v_person uuid; v_id uuid;
-begin
-  v_person := (p_in->>'personId')::uuid;
-  if not perf_may_set(p_actor, v_person) then
-    return jsonb_build_object('error','not_permitted',
-      'reason','KPIs are set by the person''s reporting manager, by HR, or by an administrator -- and never by themselves.');
-  end if;
-  select * into c from perf_cycle where id = (p_in->>'cycleId')::uuid;
-  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
-  if current_date > c.assign_closes
-     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
-    return jsonb_build_object('error','window_closed',
-      'reason','KPIs for ' || c.period_start || ' had to be set by ' || c.assign_closes ||
-               '. An administrator can still change them, and it is recorded.');
-  end if;
-  if p_in ? 'kpiId' and (p_in->>'kpiId') is not null then
-    select * into k from kpi_definition where id = (p_in->>'kpiId')::uuid;
-  end if;
-  insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit, target_value,
-      weight_pct, cadence_day, part_of_id, split_kind, split_ref, split_label,
-      rolls_into_id, set_by, note)
-  values (c.id, v_person, k.id,
-          coalesce(p_in->>'name', k.name),
-          coalesce(p_in->>'unit', k.unit),
-          nullif(p_in->>'target','')::numeric,
-          nullif(p_in->>'weight','')::numeric,
-          nullif(p_in->>'cadenceDay','')::int,
-          nullif(p_in->>'partOf','')::uuid,
-          nullif(p_in->>'splitKind',''),
-          nullif(p_in->>'splitRef','')::uuid,
-          nullif(p_in->>'splitLabel',''),
-          nullif(p_in->>'rollsInto','')::uuid,
-          p_actor, nullif(p_in->>'note',''))
-  returning id into v_id;
-  if p_in ? 'cadence' and (p_in->>'cadence') is not null then
-    execute format('update perf_assignment set cadence = %L where id = %L',
-                   p_in->>'cadence', v_id);
-  end if;
-  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
-  values (p_actor, 'PERF_KPI_SET', 'person', v_person::text, null, p_in);
-  return jsonb_build_object('ok', true, 'assignmentId', v_id);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.perf_assign_bulk(p_actor uuid, p_in jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -1913,6 +1836,50 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.person_conduct(p_actor uuid, p_person uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+begin
+  if perf_rel(p_actor, p_person) is null then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line.');
+  end if;
+  return jsonb_build_object(
+    'personId', p_person,
+    'mayAct', hr_may_discipline(p_actor, p_person),
+    'warnings', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', w.id, 'level', w.level, 'subject', w.subject,
+               'detail', w.detail, 'issuedAt', w.issued_at,
+               'issuedBy', (select full_name from person x where x.id = w.issued_by),
+               'acknowledgedAt', w.acknowledged_at)
+             order by w.issued_at desc)
+        from person_warning w where w.person_id = p_person), '[]'::jsonb),
+    'plan', (
+      select jsonb_build_object(
+               'id', pl.id, 'state', pl.state,
+               'startsOn', pl.starts_on, 'endsOn', pl.ends_on,
+               'concern', pl.concern, 'expectation', pl.expectation,
+               'support', pl.support, 'outcome', pl.outcome_note,
+               'reviews', coalesce((
+                 select jsonb_agg(jsonb_build_object(
+                          'id', rv.id, 'seq', rv.seq, 'dueOn', rv.due_on,
+                          'heldAt', rv.held_at, 'judgement', rv.judgement,
+                          'note', rv.note,
+                          'overdue', rv.held_at is null and rv.due_on < current_date)
+                        order by rv.seq)
+                   from pip_review rv where rv.plan_id = pl.id), '[]'::jsonb))
+        from pip_plan pl
+       where pl.person_id = p_person
+       order by case when pl.state in ('OPEN','EXTENDED') then 0 else 1 end,
+                pl.opened_at desc
+       limit 1));
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.person_duplicates()
  RETURNS jsonb
  LANGUAGE sql
@@ -2408,6 +2375,49 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.person_warn(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_person uuid; v_id uuid; v_level text;
+begin
+  v_person := nullif(p_in->>'personId','')::uuid;
+  if v_person is null then return jsonb_build_object('error','missing_person'); end if;
+  if not hr_may_discipline(p_actor, v_person) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A warning is issued by the person they report to, or by HR.');
+  end if;
+  v_level := upper(coalesce(p_in->>'level','WRITTEN'));
+  if v_level not in ('VERBAL','WRITTEN','FINAL') then
+    return jsonb_build_object('error','unknown_level',
+      'reason','A warning is verbal, written or final.');
+  end if;
+  if coalesce(trim(p_in->>'subject'),'') = '' then
+    return jsonb_build_object('error','missing_subject',
+      'reason','A warning has to say what it is about.');
+  end if;
+
+  insert into person_warning (person_id, issued_by, level, subject, detail,
+                              about_kind, about_ref)
+  values (v_person, p_actor, v_level, trim(p_in->>'subject'), p_in->>'detail',
+          nullif(upper(coalesce(p_in->>'aboutKind','OTHER')),''),
+          nullif(p_in->>'aboutRef','')::uuid)
+  returning id into v_id;
+
+  insert into person_event (person_id, kind, note, at)
+  values (v_person, 'WARNING_ISSUED', v_level || ': ' || trim(p_in->>'subject'), now());
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor,'WARNING_ISSUED','person', v_person::text,
+          jsonb_build_object('warningId', v_id, 'level', v_level));
+
+  return jsonb_build_object('ok', true, 'warningId', v_id, 'level', v_level,
+    'note','Issued and on the record. A warning is not edited afterwards; '
+           'if it was wrong, issue the correction as its own record.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.person_without_number()
  RETURNS jsonb
  LANGUAGE sql
@@ -2461,6 +2471,161 @@ AS $function$
      and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
   ) t;
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.pip_close(p_actor uuid, p_plan uuid, p_state text, p_note text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_plan pip_plan; v_s text; v_open int;
+begin
+  select * into v_plan from pip_plan where id = p_plan;
+  if v_plan.id is null then return jsonb_build_object('error','no_such_plan'); end if;
+  if not hr_may_discipline(p_actor, v_plan.person_id) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That plan is not yours to close.');
+  end if;
+  v_s := upper(coalesce(p_state,''));
+  if v_s not in ('MET','NOT_MET','WITHDRAWN','EXTENDED') then
+    return jsonb_build_object('error','unknown_outcome',
+      'reason','A plan is met, not met, withdrawn, or extended.');
+  end if;
+  if v_s in ('MET','NOT_MET') and coalesce(trim(p_note),'') = '' then
+    return jsonb_build_object('error','missing_note',
+      'reason','Say why. "Not met" with no reason is not a decision '
+               'anybody can stand behind later.');
+  end if;
+
+  select count(*) into v_open from pip_review
+   where plan_id = p_plan and held_at is null;
+
+  update pip_plan
+     set state = v_s, outcome_note = p_note,
+         closed_at = case when v_s = 'EXTENDED' then null else now() end,
+         closed_by = case when v_s = 'EXTENDED' then null else p_actor end
+   where id = p_plan;
+
+  insert into person_event (person_id, kind, note, at)
+  values (v_plan.person_id, 'PIP_' || v_s, coalesce(p_note,''), now());
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor,'PIP_CLOSED','pip_plan', p_plan::text,
+          jsonb_build_object('state', v_s, 'reviewsUnheld', v_open));
+
+  return jsonb_build_object('ok', true, 'state', v_s, 'reviewsUnheld', v_open,
+    'note', case when v_open > 0
+      then 'Closed with ' || v_open || ' review(s) never held. That is on the '
+           'record too.'
+      else 'Closed, every review held.' end);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.pip_open(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_person uuid; v_id uuid; v_start date; v_end date;
+  v_every int; v_n int := 0; d date; i int := 0;
+begin
+  v_person := nullif(p_in->>'personId','')::uuid;
+  if v_person is null then return jsonb_build_object('error','missing_person'); end if;
+  if not hr_may_discipline(p_actor, v_person) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A PIP is opened by the person they report to, or by HR.');
+  end if;
+  if coalesce(trim(p_in->>'concern'),'') = ''
+     or coalesce(trim(p_in->>'expectation'),'') = '' then
+    return jsonb_build_object('error','missing_detail',
+      'reason','A PIP has to say what the concern is and what improvement '
+               'would look like. A plan without both is not a plan.');
+  end if;
+
+  v_start := coalesce(nullif(p_in->>'startsOn','')::date, current_date);
+  v_end   := coalesce(nullif(p_in->>'endsOn','')::date, v_start + 60);
+  if v_end <= v_start then
+    return jsonb_build_object('error','bad_dates',
+      'reason','A PIP has to end after it starts.');
+  end if;
+
+  if exists (select 1 from pip_plan
+              where person_id = v_person and state in ('OPEN','EXTENDED')) then
+    return jsonb_build_object('error','already_on_one',
+      'reason','That person is already on a plan. Close it before opening '
+               'another, or extend the one they are on.');
+  end if;
+
+  insert into pip_plan (person_id, opened_by, starts_on, ends_on,
+                        concern, expectation, support)
+  values (v_person, p_actor, v_start, v_end,
+          trim(p_in->>'concern'), trim(p_in->>'expectation'), p_in->>'support')
+  returning id into v_id;
+
+  -- The reviews are written now, not remembered later.
+  v_every := greatest(7, coalesce(nullif(p_in->>'reviewEveryDays','')::int, 14));
+  d := v_start + v_every;
+  while d < v_end loop
+    i := i + 1;
+    insert into pip_review (plan_id, due_on, seq) values (v_id, d, i);
+    v_n := v_n + 1;
+    d := d + v_every;
+  end loop;
+  i := i + 1;
+  insert into pip_review (plan_id, due_on, seq) values (v_id, v_end, i);
+  v_n := v_n + 1;
+
+  insert into person_event (person_id, kind, note, at)
+  values (v_person, 'PIP_OPENED',
+          'PIP ' || v_start || ' to ' || v_end || ', ' || v_n || ' reviews', now());
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor,'PIP_OPENED','person', v_person::text,
+          jsonb_build_object('planId', v_id, 'reviews', v_n,
+                             'startsOn', v_start, 'endsOn', v_end));
+
+  return jsonb_build_object('ok', true, 'planId', v_id, 'reviews', v_n,
+    'startsOn', v_start, 'endsOn', v_end,
+    'note', v_n || ' review(s) are already booked, the last on the day the '
+            'plan ends. None of them is a reminder -- each is a row that '
+            'stays unanswered until somebody holds it.');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.pip_review_hold(p_actor uuid, p_review uuid, p_judgement text, p_note text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_plan pip_plan; v_j text;
+begin
+  select pl.* into v_plan from pip_review r join pip_plan pl on pl.id = r.plan_id
+   where r.id = p_review;
+  if v_plan.id is null then return jsonb_build_object('error','no_such_review'); end if;
+  if not hr_may_discipline(p_actor, v_plan.person_id) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That plan is not yours to review.');
+  end if;
+  v_j := upper(coalesce(p_judgement,''));
+  if v_j not in ('ON_TRACK','AT_RISK','OFF_TRACK') then
+    return jsonb_build_object('error','missing_judgement',
+      'reason','A review says on track, at risk, or off track.');
+  end if;
+
+  update pip_review
+     set held_at = now(), held_by = p_actor, judgement = v_j, note = p_note
+   where id = p_review;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, new_value)
+  values (p_actor,'PIP_REVIEW_HELD','pip_plan', v_plan.id::text,
+          jsonb_build_object('reviewId', p_review, 'judgement', v_j));
+
+  return jsonb_build_object('ok', true, 'judgement', v_j,
+    'remaining', (select count(*) from pip_review
+                   where plan_id = v_plan.id and held_at is null));
+end $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.plb_acknowledge(p_actor uuid, p_sheet uuid)
@@ -4052,30 +4217,5 @@ begin
   end loop;
   return d;
 end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_wd_count(p_from date, p_to date, p_centre text DEFAULT NULL::text)
- RETURNS integer
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  select case
-    when p_from is null or p_to is null or p_to <= p_from then 0
-    else (select count(*)::int from generate_series(p_from + 1, p_to, interval '1 day') g
-           where is_working_day(g::date, p_centre))
-  end;
-$function$
-;
-
-CREATE OR REPLACE FUNCTION public.pms_attribute_balance(p_cycle uuid)
- RETURNS numeric
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  select greatest(0, coalesce(sum(points), 0))
-  from pms_adjustment where cycle_id = p_cycle and half = 'ATTRIBUTE' and applied;
-$function$
 ;
 

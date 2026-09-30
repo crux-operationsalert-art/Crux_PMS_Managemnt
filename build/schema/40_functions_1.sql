@@ -1890,6 +1890,22 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.hr_may_discipline(p_actor uuid, p_person uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select p_actor <> p_person
+     and (perf_may_set(p_actor, p_person)
+          or exists (select 1 from person a
+                      where a.id = p_actor
+                        and a.employment_status = 'ACTIVE' and a.superseded_by is null
+                        and (a.app_role = 'ADMIN'
+                             or coalesce(a.department,'') = 'Human Resources')));
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.is_op_zone(p_name text)
  RETURNS boolean
  LANGUAGE sql
@@ -3096,5 +3112,41 @@ AS $function$
       ' ', 'g'),
     '\s+', ' ', 'g'))
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_allocate(p_assignment uuid, p_person uuid, p_actor uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a assignment%rowtype; v_ok boolean; r jsonb;
+begin
+  select * into a from assignment where id = p_assignment for update;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+
+  select true into v_ok from person
+   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null;
+  if not coalesce(v_ok,false) then
+    return jsonb_build_object('error','no_such_person',
+      'reason','That person is not active on the people master.');
+  end if;
+
+  update assignment set allocated_to_id = p_person where id = p_assignment;
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (p_assignment, 'ALLOCATED', p_actor, jsonb_build_object('to', p_person));
+
+  if a.current_state = 'SUBMITTED' then
+    r := ogl_transition(p_assignment, 'ASSIGNED', p_actor, 'allocated');
+  else
+    r := jsonb_build_object('state', a.current_state);
+  end if;
+
+  perform ogl_notify(p_assignment, p_person, 'ALLOCATED', 'allocated to you',
+    'This assignment has been allocated to you. Accept it to start work.',
+    p_assignment::text || ':allocated:' || p_person::text);
+
+  return r || jsonb_build_object('allocated_to', p_person);
+end $function$
 ;
 

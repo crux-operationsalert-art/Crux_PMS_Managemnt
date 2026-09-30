@@ -113,6 +113,9 @@ alter table public.person add constraint person_pkey PRIMARY KEY (id);
 alter table public.person_document add constraint person_document_pkey PRIMARY KEY (id);
 alter table public.person_event add constraint person_event_pkey PRIMARY KEY (id);
 alter table public.person_request add constraint person_request_pkey PRIMARY KEY (id);
+alter table public.person_warning add constraint person_warning_pkey PRIMARY KEY (id);
+alter table public.pip_plan add constraint pip_plan_pkey PRIMARY KEY (id);
+alter table public.pip_review add constraint pip_review_pkey PRIMARY KEY (id);
 alter table public.plb_correction add constraint plb_correction_pkey PRIMARY KEY (id);
 alter table public.plb_dispute add constraint plb_dispute_pkey PRIMARY KEY (id);
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_pkey PRIMARY KEY (id);
@@ -203,6 +206,7 @@ alter table public.perf_entry add constraint perf_entry_assignment_id_as_of_key 
 alter table public.perf_month add constraint perf_month_uniq UNIQUE (person_id, period, kpi_name, sub_category);
 alter table public.perf_revenue add constraint perf_revenue_uniq UNIQUE (client_id, op_node_id, branch_id, period);
 alter table public.person_document add constraint person_document_once UNIQUE (person_id, kind);
+alter table public.pip_review add constraint pip_review_plan_id_seq_key UNIQUE (plan_id, seq);
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_sheet_id_kpi_id_key UNIQUE (sheet_id, kpi_id);
 alter table public.plb_goal_kpi add constraint plb_goal_kpi_sheet_id_kpi_id_key UNIQUE (sheet_id, kpi_id);
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_person_id_quarter_key UNIQUE (person_id, quarter);

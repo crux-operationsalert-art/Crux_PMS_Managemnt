@@ -1279,6 +1279,47 @@ create table if not exists public.person_request (
   employee_type text default 'EMPLOYEE'::text not null
 );
 
+create table if not exists public.person_warning (
+  id uuid default gen_random_uuid() not null,
+  person_id uuid not null,
+  issued_by uuid not null,
+  issued_at timestamp with time zone default now() not null,
+  level text not null,
+  subject text not null,
+  detail text,
+  about_kind text,
+  about_ref uuid,
+  acknowledged_at timestamp with time zone,
+  acknowledged_note text
+);
+
+create table if not exists public.pip_plan (
+  id uuid default gen_random_uuid() not null,
+  person_id uuid not null,
+  opened_by uuid not null,
+  opened_at timestamp with time zone default now() not null,
+  starts_on date not null,
+  ends_on date not null,
+  concern text not null,
+  expectation text not null,
+  support text,
+  state text default 'OPEN'::text not null,
+  closed_at timestamp with time zone,
+  closed_by uuid,
+  outcome_note text
+);
+
+create table if not exists public.pip_review (
+  id uuid default gen_random_uuid() not null,
+  plan_id uuid not null,
+  due_on date not null,
+  seq integer not null,
+  held_at timestamp with time zone,
+  held_by uuid,
+  note text,
+  judgement text
+);
+
 create table if not exists public.plb_correction (
   id uuid default gen_random_uuid() not null,
   what text not null,

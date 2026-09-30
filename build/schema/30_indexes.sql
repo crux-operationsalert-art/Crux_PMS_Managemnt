@@ -92,7 +92,10 @@ CREATE UNIQUE INDEX person_mobile_key ON public.person USING btree (mobile) WHER
 CREATE UNIQUE INDEX person_one_primary_chair ON public.chair_holder USING btree (person_id) WHERE (is_primary AND (to_date IS NULL));
 CREATE INDEX person_request_overdue_idx ON public.person_request USING btree (due_at) WHERE (finance_state = 'AWAITING'::text);
 CREATE UNIQUE INDEX person_user_id_key ON public.person USING btree (lower(user_id)) WHERE (left_on IS NULL);
+CREATE INDEX person_warning_person ON public.person_warning USING btree (person_id, issued_at DESC);
 CREATE UNIQUE INDEX person_work_email_uniq ON public.person USING btree (lower(work_email)) WHERE ((work_email IS NOT NULL) AND (superseded_by IS NULL) AND (left_on IS NULL));
+CREATE UNIQUE INDEX pip_plan_one_open ON public.pip_plan USING btree (person_id) WHERE (state = ANY (ARRAY['OPEN'::text, 'EXTENDED'::text]));
+CREATE INDEX pip_review_due ON public.pip_review USING btree (due_on) WHERE (held_at IS NULL);
 CREATE INDEX plb_dispute_sheet_idx ON public.plb_dispute USING btree (sheet_id, stage);
 CREATE INDEX pms_adjustment_cycle_idx ON public.pms_adjustment USING btree (cycle_id, half);
 CREATE INDEX pms_cycle_period_idx ON public.pms_cycle USING btree (period, state);

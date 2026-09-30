@@ -210,6 +210,13 @@ alter table public.person_request add constraint person_request_manager_id_fkey 
 alter table public.person_request add constraint person_request_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id);
 alter table public.person_request add constraint person_request_requested_by_fkey FOREIGN KEY (requested_by) REFERENCES person(id);
 alter table public.person_request add constraint person_request_returned_to_fkey FOREIGN KEY (returned_to) REFERENCES person(id);
+alter table public.person_warning add constraint person_warning_issued_by_fkey FOREIGN KEY (issued_by) REFERENCES person(id);
+alter table public.person_warning add constraint person_warning_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id);
+alter table public.pip_plan add constraint pip_plan_closed_by_fkey FOREIGN KEY (closed_by) REFERENCES person(id);
+alter table public.pip_plan add constraint pip_plan_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES person(id);
+alter table public.pip_plan add constraint pip_plan_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id);
+alter table public.pip_review add constraint pip_review_held_by_fkey FOREIGN KEY (held_by) REFERENCES person(id);
+alter table public.pip_review add constraint pip_review_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES pip_plan(id) ON DELETE CASCADE;
 alter table public.plb_correction add constraint plb_correction_who_fkey FOREIGN KEY (who) REFERENCES person(id);
 alter table public.plb_dispute add constraint plb_dispute_decided_by_fkey FOREIGN KEY (decided_by) REFERENCES person(id);
 alter table public.plb_dispute add constraint plb_dispute_kpi_id_fkey FOREIGN KEY (kpi_id) REFERENCES kpi_definition(id);

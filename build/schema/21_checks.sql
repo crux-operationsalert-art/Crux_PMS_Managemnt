@@ -79,6 +79,11 @@ alter table public.person_document add constraint person_document_state_check CH
 alter table public.person_request add constraint person_request_employee_type_check CHECK ((employee_type = ANY (ARRAY['EMPLOYEE'::text, 'PARTNER'::text, 'INTERN'::text, 'CONTRACT'::text])));
 alter table public.person_request add constraint person_request_finance_state_check CHECK ((finance_state = ANY (ARRAY['NOT_REQUIRED'::text, 'AWAITING'::text, 'APPROVED'::text, 'REFUSED'::text])));
 alter table public.person_request add constraint person_request_reject_reason CHECK (((state <> 'REJECTED'::approval_state) OR (reject_reason IS NOT NULL)));
+alter table public.person_warning add constraint person_warning_about_kind_check CHECK ((about_kind = ANY (ARRAY['KPI'::text, 'TASK'::text, 'CONDUCT'::text, 'ATTENDANCE'::text, 'OTHER'::text])));
+alter table public.person_warning add constraint person_warning_level_check CHECK ((level = ANY (ARRAY['VERBAL'::text, 'WRITTEN'::text, 'FINAL'::text])));
+alter table public.pip_plan add constraint pip_plan_dates CHECK ((ends_on > starts_on));
+alter table public.pip_plan add constraint pip_plan_state_check CHECK ((state = ANY (ARRAY['OPEN'::text, 'EXTENDED'::text, 'MET'::text, 'NOT_MET'::text, 'WITHDRAWN'::text])));
+alter table public.pip_review add constraint pip_review_judgement_check CHECK ((judgement = ANY (ARRAY['ON_TRACK'::text, 'AT_RISK'::text, 'OFF_TRACK'::text])));
 alter table public.plb_dispute add constraint plb_dispute_element CHECK ((element = ANY (ARRAY['TARGET'::text, 'ACTUAL'::text, 'WEIGHT'::text, 'MONTH_SCORE'::text, 'ACHIEVEMENT'::text, 'PAYOUT_FACTOR'::text, 'MONTHLY_MEAN'::text, 'CONSISTENCY'::text, 'GATE'::text, 'TARGET_PLB'::text, 'AMOUNT'::text, 'ARITHMETIC'::text])));
 alter table public.plb_dispute add constraint plb_dispute_outcome CHECK (((outcome IS NULL) OR (outcome = ANY (ARRAY['UPHELD'::text, 'PARTLY_UPHELD'::text, 'REJECTED'::text]))));
 alter table public.plb_dispute add constraint plb_dispute_points_at_something CHECK ((((element = ANY (ARRAY['TARGET'::text, 'ACTUAL'::text, 'WEIGHT'::text])) = (kpi_id IS NOT NULL)) AND ((element = 'MONTH_SCORE'::text) = (month IS NOT NULL))));

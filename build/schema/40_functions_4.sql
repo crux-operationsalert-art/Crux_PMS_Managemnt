@@ -8,6 +8,31 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_wd_count(p_from date, p_to date, p_centre text DEFAULT NULL::text)
+ RETURNS integer
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select case
+    when p_from is null or p_to is null or p_to <= p_from then 0
+    else (select count(*)::int from generate_series(p_from + 1, p_to, interval '1 day') g
+           where is_working_day(g::date, p_centre))
+  end;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.pms_attribute_balance(p_cycle uuid)
+ RETURNS numeric
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  select greatest(0, coalesce(sum(points), 0))
+  from pms_adjustment where cycle_id = p_cycle and half = 'ATTRIBUTE' and applied;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.pms_cap_shadow()
  RETURNS trigger
  LANGUAGE plpgsql

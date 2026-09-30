@@ -8,42 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_allocate(p_assignment uuid, p_person uuid, p_actor uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a assignment%rowtype; v_ok boolean; r jsonb;
-begin
-  select * into a from assignment where id = p_assignment for update;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-
-  select true into v_ok from person
-   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null;
-  if not coalesce(v_ok,false) then
-    return jsonb_build_object('error','no_such_person',
-      'reason','That person is not active on the people master.');
-  end if;
-
-  update assignment set allocated_to_id = p_person where id = p_assignment;
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (p_assignment, 'ALLOCATED', p_actor, jsonb_build_object('to', p_person));
-
-  if a.current_state = 'SUBMITTED' then
-    r := ogl_transition(p_assignment, 'ASSIGNED', p_actor, 'allocated');
-  else
-    r := jsonb_build_object('state', a.current_state);
-  end if;
-
-  perform ogl_notify(p_assignment, p_person, 'ALLOCATED', 'allocated to you',
-    'This assignment has been allocated to you. Accept it to start work.',
-    p_assignment::text || ':allocated:' || p_person::text);
-
-  return r || jsonb_build_object('allocated_to', p_person);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_arbiter(p_assignment uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4193,6 +4157,83 @@ begin
 exception when others then
   update job_run set finished_at = now(), state = 'FAILED', error = sqlerrm where id = v_run;
   raise;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_accrual_kind(p_kpi uuid, p_unit text)
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE
+AS $function$
+declare a text; u text;
+begin
+  if p_kpi is not null then
+    select lower(k.accrual::text) into a from kpi_definition k where k.id = p_kpi;
+  end if;
+
+  -- An explicit REPLACES is somebody saying so. Nothing overrides it.
+  if a is not null and (a like '%replace%' or a like '%level%' or a like '%latest%'
+                        or a like '%last%' or a like '%avg%' or a like '%aver%') then
+    return 'LEVEL';
+  end if;
+
+  -- The design's own test, and it beats ADDS on purpose: /%|score/i is a
+  -- level. A measure counted in per cent that claims to accumulate is a
+  -- default nobody changed, and believing it is how a month reaches 181%.
+  u := coalesce(p_unit, '');
+  if u ~* '%|score|rate|ratio|pct|percent|per cent' then return 'LEVEL'; end if;
+
+  return 'SUM';
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_assign(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare c perf_cycle; k kpi_definition; v_person uuid; v_id uuid;
+begin
+  v_person := (p_in->>'personId')::uuid;
+  if not perf_may_set(p_actor, v_person) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','KPIs are set by the person''s reporting manager, by HR, or by an administrator -- and never by themselves.');
+  end if;
+  select * into c from perf_cycle where id = (p_in->>'cycleId')::uuid;
+  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  if current_date > c.assign_closes
+     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
+    return jsonb_build_object('error','window_closed',
+      'reason','KPIs for ' || c.period_start || ' had to be set by ' || c.assign_closes ||
+               '. An administrator can still change them, and it is recorded.');
+  end if;
+  if p_in ? 'kpiId' and (p_in->>'kpiId') is not null then
+    select * into k from kpi_definition where id = (p_in->>'kpiId')::uuid;
+  end if;
+  insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit, target_value,
+      weight_pct, cadence_day, part_of_id, split_kind, split_ref, split_label,
+      rolls_into_id, set_by, note)
+  values (c.id, v_person, k.id,
+          coalesce(p_in->>'name', k.name),
+          coalesce(p_in->>'unit', k.unit),
+          nullif(p_in->>'target','')::numeric,
+          nullif(p_in->>'weight','')::numeric,
+          nullif(p_in->>'cadenceDay','')::int,
+          nullif(p_in->>'partOf','')::uuid,
+          nullif(p_in->>'splitKind',''),
+          nullif(p_in->>'splitRef','')::uuid,
+          nullif(p_in->>'splitLabel',''),
+          nullif(p_in->>'rollsInto','')::uuid,
+          p_actor, nullif(p_in->>'note',''))
+  returning id into v_id;
+  if p_in ? 'cadence' and (p_in->>'cadence') is not null then
+    execute format('update perf_assignment set cadence = %L where id = %L',
+                   p_in->>'cadence', v_id);
+  end if;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor, 'PERF_KPI_SET', 'person', v_person::text, null, p_in);
+  return jsonb_build_object('ok', true, 'assignmentId', v_id);
 end $function$
 ;
 
