@@ -733,6 +733,27 @@ button.exp:hover{border-color:var(--blue);color:var(--blue);background:var(--whi
 .tmfm p{margin:6px 0}
 .tmfm textarea,.tmfm select{font:inherit;padding:4px 6px;
   border:1px solid var(--line);border-radius:3px;background:var(--panel)}
+.tmadd{position:absolute;top:-8px;right:-8px;z-index:3;
+  width:19px;height:19px;line-height:17px;padding:0;
+  border:1px solid var(--line);background:var(--panel);
+  border-radius:50%;font-size:14px;color:var(--mute);cursor:pointer}
+.tmadd:hover{border-color:var(--green);color:var(--green);
+  background:var(--green-bg)}
+.tmtabs{display:flex;gap:0;margin:10px 0 0;border-bottom:1px solid var(--line)}
+.tmtab{font:inherit;font-size:13px;padding:6px 12px;cursor:pointer;
+  border:0;border-bottom:2px solid transparent;background:none;
+  color:var(--mute)}
+.tmtab:hover{color:var(--ink)}
+.tmtab.on{color:var(--ink);border-bottom-color:var(--ink);font-weight:600}
+.tmabody{padding:10px 0 2px;font-size:13px}
+.tmabody label{font-size:12.5px;color:var(--mute)}
+.tmabody input,.tmabody select{font:inherit;padding:4px 6px;
+  border:1px solid var(--line);border-radius:3px;background:var(--panel);
+  color:var(--body)}
+.tmq{margin-top:4px;font-size:12.5px}
+.tmq td{padding:5px 8px 5px 0;vertical-align:middle}
+.tmerrs{margin:5px 0 0;padding-left:18px}
+.tmerrs li{margin:2px 0}
 @media (max-width:560px){
   .tmcard{width:150px}
   .tmoc{font-size:12px}
@@ -2957,7 +2978,8 @@ async function refreshBadges(){
 
 var TM = { tree:null, cycle:null, shut:{}, sel:null, drag:null, over:null,
            busy:false, says:"", detail:null, detailFor:null, addTo:null,
-           conduct:null, conductFor:null, form:null };
+           conduct:null, conductFor:null, form:null,
+           addOpts:null, addTab:"move", addErr:null, qForm:null };
 
 async function vTeamScreen(){
   el("view").innerHTML = '<p class="mute">Loading&hellip;</p>';
@@ -3006,6 +3028,13 @@ function tmCard(p){
       (TM.over === p.personId ? ' over' : '') + '"' +
       ' data-tm="' + esc(p.personId) + '"' +
       (p.mayMove ? ' draggable="true"' : '') + '>' +
+    /* The + sits on the card rather than in the panel because that is
+       where somebody looking at a team reaches for it, and because it
+       names WHOSE team is being added to without a sentence saying so. */
+    (p.mayAddUnder
+      ? '<button class="tmadd" data-tmadd="' + esc(p.personId) + '" title="Add to ' +
+        esc(p.name) + '&rsquo;s team">+</button>'
+      : '') +
     '<div class="tmnm">' + esc(p.name) + '</div>' +
     '<div class="tmch">' + esc(p.chair || "no chair") + '</div>' +
     (p.employeeNo ? '<div class="tmno">' + esc(p.employeeNo) + '</div>' : '') +
@@ -3082,10 +3111,158 @@ function tmRender(){
         (TM.shut[root.personId] ? '' : tmBranch(by, root.personId)) +
       '</li></ul>' +
     '</div></div>' +
+    (TM.addTo ? tmAdd() : '') +
     (TM.sel ? tmPanel() : '') +
     '<div id="pfmsg">' + TM.says + '</div>';
 
   tmWire();
+}
+
+/* -------------------------------------------- the + on a card
+   Two things live behind one button and they are NOT the same thing, so
+   they are not the same tab. Moving somebody who already works here is
+   the manager's to do outright: the identity exists, nothing is created,
+   and org_move_person settles it. Asking for somebody who does not work
+   here yet is a request, because it makes an ACCOUNT -- something that
+   can sign in, be paid and read other people's numbers -- and that stays
+   HR's. The panel says which is which in those words, so nobody files a
+   request for a person sitting two desks away.                          */
+function tmAdd(){
+  var o = TM.addOpts;
+  if (!o) return '<div class="card tmpanel"><p class="mute">Loading&hellip;</p></div>';
+  if (o.error) {
+    return '<div class="card tmpanel">' + msg("bad", o.reason || o.error) +
+      '<p><button class="btn" id="tmaclose">Close</button></p></div>';
+  }
+
+  var movable = o.movable || [];
+  var tabs = '<div class="tmtabs">' +
+    '<button class="tmtab' + (TM.addTab === "move" ? ' on' : '') + '" data-tmatab="move">' +
+      'Somebody already here' +
+      (movable.length ? ' <span class="tmtg n">' + esc(movable.length) + '</span>' : '') +
+    '</button>' +
+    '<button class="tmtab' + (TM.addTab === "new" ? ' on' : '') + '" data-tmatab="new">' +
+      (o.mayCreate ? 'A new joiner' : 'Ask HR for a new joiner') +
+    '</button></div>';
+
+  var body;
+  if (TM.addTab === "move") {
+    body = movable.length
+      ? '<p class="mute">They already have an account. Moving them changes who ' +
+        'can see their numbers, so it is recorded.</p>' +
+        '<p><select id="tmamove" class="pfin" style="max-width:26rem">' +
+          movable.map(function(m){
+            return '<option value="' + esc(m.personId) + '">' + esc(m.name) +
+              (m.employeeNo ? ' &middot; ' + esc(m.employeeNo) : '') +
+              (m.managerName ? ' &mdash; now under ' + esc(m.managerName) : '') +
+              '</option>';
+          }).join("") +
+        '</select></p>' +
+        '<p><button class="btn primary" id="tmamovego">Move them under ' +
+          esc(o.underName) + '</button></p>'
+      : '<p class="mute">There is nobody you can move. Everybody you manage ' +
+        'already reports to ' + esc(o.underName) + ', or moving them would ' +
+        'turn the reporting line into a circle.</p>';
+  } else {
+    var chairs = o.chairs || [];
+    body =
+      (o.mayCreate
+        ? '<p class="mute">You are in HR, so you can make the account yourself ' +
+          'on <a href="#people">People</a> &mdash; that form asks for everything ' +
+          'at once. Filing it here instead puts it in the same queue, which is ' +
+          'useful when somebody else will finish it.</p>'
+        : '<p class="mute">A new joiner needs an account, and an account is ' +
+          'HR&rsquo;s to make: it can sign in, be paid, and read other ' +
+          'people&rsquo;s numbers. Ask here and HR finishes it &mdash; they ' +
+          'appear on your team the moment that happens.</p>') +
+      '<p><label>Their name<br><input id="tmaname" class="pfin" style="width:100%" ' +
+        'placeholder="Nikhil Sawant"></label></p>' +
+      '<p><label>Work e-mail<br><input id="tmamail" class="pfin" style="width:100%" ' +
+        'placeholder="nikhil.sawant@cruxindia.co.in"></label></p>' +
+      '<p><label>Chair <select id="tmachair">' +
+        chairs.map(function(c){
+          return '<option value="' + esc(c.chairId) + '">' + esc(c.title) + '</option>';
+        }).join("") +
+      '</select></label> ' +
+      '<label>Kind <select id="tmatype">' +
+        '<option value="EMPLOYEE">Employee</option>' +
+        '<option value="PARTNER">Partner</option>' +
+        '<option value="INTERN">Intern</option>' +
+        '<option value="CONTRACT">Contract</option>' +
+      '</select></label></p>' +
+      '<p><button class="btn primary" id="tmaask">Send it to HR</button></p>';
+  }
+
+  /* Anything already queued for this manager, shown on both tabs, because
+     the commonest way to get two accounts for one person is not knowing
+     somebody asked on Monday. */
+  var pend = o.pending || [];
+  var queue = pend.length
+    ? '<h3 class="tmh3">Already with HR</h3>' +
+      '<table class="tbl tmq"><tbody>' + pend.map(function(q){
+        return '<tr><td>' + esc(q.name) + '</td><td class="mute">' + esc(q.email) +
+          '</td><td class="mute">asked by ' + esc(q.requestedBy || "somebody") +
+          '</td><td>' + (TM.addOpts.mayCreate
+            ? '<button class="btn" data-tmqok="' + esc(q.requestId) + '">Make the account</button> ' +
+              '<button class="btn" data-tmqno="' + esc(q.requestId) + '">Refuse</button>'
+            : '<span class="tmtg">waiting</span>') + '</td></tr>';
+      }).join("") + '</tbody></table>' +
+      (TM.qForm && TM.qForm.indexOf("ok:") === 0 ? tmQForm(TM.qForm.slice(3)) : '') +
+      (TM.qForm && TM.qForm.indexOf("no:") === 0 ? tmQNo(TM.qForm.slice(3)) : '')
+    : '';
+
+  return '<div class="card tmpanel">' +
+    '<h2>Add to ' + esc(o.underName) + '&rsquo;s team</h2>' +
+    tabs + '<div class="tmabody">' + body + '</div>' +
+    (TM.addErr ? tmAddErr() : '') +
+    queue +
+    '<p><button class="btn" id="tmaclose">Close</button></p></div>';
+}
+
+/* person_add answers with a field-by-field list rather than one sentence,
+   and throwing that away to print "invalid" would be the same as not
+   having written it. */
+function tmAddErr(){
+  var e = TM.addErr;
+  if (!e) return "";
+  var errs = e.errors || [];
+  if (!errs.length) return msg("bad", e.reason || e.error);
+  return msg("bad", (e.reason || "That cannot be made yet.") +
+    '<ul class="tmerrs">' + errs.map(function(x){
+      return '<li><b>' + esc(x.field) + '</b> &mdash; ' + esc(x.says) + '</li>';
+    }).join("") + '</ul>');
+}
+
+/* What HR adds that the manager could not know: the employee number every
+   performance upload joins on, and the mobile that is the second way in. */
+function tmQForm(id){
+  return '<div class="tmfm"><h4>Make the account</h4>' +
+    '<p class="mute">The name, address, chair and manager come from the ask ' +
+    'and cannot be changed here &mdash; approving is approving that person, ' +
+    'not a different one.</p>' +
+    '<p><label>Employee number<br><input id="tmqno" class="pfin" ' +
+      'placeholder="EMP-0123"></label> ' +
+    '<label>Mobile<br><input id="tmqmob" class="pfin" ' +
+      'placeholder="9820011223"></label></p>' +
+    '<p><label>Department<br><input id="tmqdept" class="pfin"></label> ' +
+    '<label>Joined on<br><input id="tmqjoin" type="date"></label></p>' +
+    '<p><label>Sign-in role <select id="tmqrole">' +
+      '<option value="VIEWER">Viewer</option>' +
+      '<option value="MANAGER">Manager</option>' +
+      '<option value="LOCATION_HEAD">Location head</option>' +
+    '</select></label></p>' +
+    '<p><button class="btn primary" data-tmqgo="' + esc(id) + '">Create it</button> ' +
+    '<button class="btn" id="tmqcancel">Cancel</button></p></div>';
+}
+
+/* A refusal must carry a reason -- the table's own constraint insists, and
+   so does the manager who asked and has to do something next. */
+function tmQNo(id){
+  return '<div class="tmfm"><h4>Refuse this ask</h4>' +
+    '<p><label>Why<br><textarea id="tmqwhy" rows="3" style="width:100%" ' +
+      'placeholder="Headcount for the quarter is already filled."></textarea></label></p>' +
+    '<p><button class="btn primary" data-tmqnogo="' + esc(id) + '">Refuse it</button> ' +
+    '<button class="btn" id="tmqcancel">Cancel</button></p></div>';
 }
 
 /* ------------------------------------- what a manager does with a person
@@ -3303,6 +3480,9 @@ function tmWire(){
       /* Somebody else's warnings must not stay on screen under this
          person's name, and a half-typed form must not follow them. */
       TM.conduct = null; TM.conductFor = null; TM.form = null;
+      /* Two panels arguing over the screen is one too many: picking a
+         person puts that person's panel up, and the + panel away. */
+      TM.addTo = null; TM.addOpts = null; TM.addErr = null; TM.qForm = null;
       tmRender();
     };
 
@@ -3358,6 +3538,109 @@ function tmWire(){
   });
 
   if (el("tmfcancel")) el("tmfcancel").onclick = function(){ TM.form = null; tmRender(); };
+
+  /* -------------------------------------------------------- the + */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmadd]"), function(b){
+    b.onclick = async function(e){
+      /* The + lives inside a card that is itself clickable and draggable,
+         so the click must stop here or opening the + also selects the
+         person and the two panels argue over the screen. */
+      e.stopPropagation();
+      var id = b.getAttribute("data-tmadd");
+      TM.addTo = id; TM.addOpts = null; TM.addErr = null;
+      TM.qForm = null; TM.addTab = "move";
+      tmRender();
+      TM.addOpts = await perfApi("/perf/team/add?under=" + encodeURIComponent(id));
+      /* Open on the tab that has something in it. Landing on an empty
+         picker when the real answer is "ask HR" wastes a click every
+         time, which is most times on a small team. */
+      if (TM.addOpts && !TM.addOpts.error &&
+          !(TM.addOpts.movable || []).length) TM.addTab = "new";
+      tmRender();
+    };
+  });
+
+  if (el("tmaclose")) el("tmaclose").onclick = function(){
+    TM.addTo = null; TM.addOpts = null; TM.addErr = null; TM.qForm = null;
+    tmRender();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmatab]"), function(b){
+    b.onclick = function(){
+      TM.addTab = b.getAttribute("data-tmatab"); TM.addErr = null; tmRender();
+    };
+  });
+
+  async function tmAddReload(){
+    TM.addOpts = await perfApi("/perf/team/add?under=" + encodeURIComponent(TM.addTo));
+    TM.tree = await perfApi("/perf/team/tree");
+    tmRender();
+  }
+
+  if (el("tmamovego")) el("tmamovego").onclick = async function(){
+    var who = el("tmamove").value;
+    var under = TM.addTo;
+    if (!who || !under) return;
+    /* The panel is closed before the move rather than after it, because
+       the list it is showing is about to be wrong -- the person just
+       moved out of it. */
+    TM.addTo = null; TM.addOpts = null;
+    await tmMove(who, under);
+  };
+
+  if (el("tmaask")) el("tmaask").onclick = async function(){
+    if (TM.busy) return;
+    TM.busy = true; TM.addErr = null;
+    var o = await perfApi("/perf/team/request", { method:"POST", body:{
+      fullName: el("tmaname").value,
+      workEmail: el("tmamail").value,
+      chairId: el("tmachair") ? el("tmachair").value : null,
+      employeeType: el("tmatype").value,
+      managerId: TM.addTo } });
+    TM.busy = false;
+    if (o && o.error) { TM.addErr = o; tmRender(); return; }
+    TM.says = msg("good", (o && o.note) || "Sent to HR.");
+    await tmAddReload();
+  };
+
+  /* -------------------------------------------- HR decides an ask */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmqok]"), function(b){
+    b.onclick = function(){
+      TM.qForm = "ok:" + b.getAttribute("data-tmqok"); TM.addErr = null; tmRender();
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmqno]"), function(b){
+    b.onclick = function(){
+      TM.qForm = "no:" + b.getAttribute("data-tmqno"); TM.addErr = null; tmRender();
+    };
+  });
+  if (el("tmqcancel")) el("tmqcancel").onclick = function(){ TM.qForm = null; tmRender(); };
+
+  async function tmDecide(id, decision, fields){
+    if (TM.busy) return;
+    TM.busy = true; TM.addErr = null;
+    var o = await perfApi("/perf/team/request/decide", { method:"POST", body:{
+      requestId: id, decision: decision, fields: fields } });
+    TM.busy = false;
+    if (o && o.error) { TM.addErr = o; tmRender(); return; }
+    TM.says = msg("good", (o && o.note) || "Done.");
+    TM.qForm = null;
+    await tmAddReload();
+  }
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmqgo]"), function(b){
+    b.onclick = function(){
+      tmDecide(b.getAttribute("data-tmqgo"), "APPROVE", {
+        employeeNo: el("tmqno").value, mobile: el("tmqmob").value,
+        department: el("tmqdept").value, joinedOn: el("tmqjoin").value || null,
+        appRole: el("tmqrole").value });
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmqnogo]"), function(b){
+    b.onclick = function(){
+      tmDecide(b.getAttribute("data-tmqnogo"), "REJECT", { reason: el("tmqwhy").value });
+    };
+  });
 
   async function tmSend(path, body, good){
     if (TM.busy) return;
