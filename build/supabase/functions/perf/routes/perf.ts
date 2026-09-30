@@ -309,4 +309,37 @@ r.get("/month", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// =====================================================================
+// The team, as a structure (migration 229).
+//
+// The chart the tool already had is the chair tree. This is the people
+// tree -- person.manager_id -- which is what every visibility rule is
+// built on. Both routes are thin: org_team_tree and org_move_person do
+// their own checking, and org_move_person is the most consequential write
+// in the tool because moving somebody changes who can read their numbers.
+// =====================================================================
+
+r.get("/team/tree", async (req: any, res: any) => {
+  const o = await one(`select org_team_tree($1,$2::uuid,$3::uuid) as o`,
+    [req.person.id, req.query.get("root") || null, req.query.get("cycle") || null]);
+  return out(res, o.o);
+});
+
+// A drag that landed. personId moves under managerId.
+//
+// managerId may legitimately be null -- that is "out of the line
+// altogether" -- and org_move_person refuses it for anybody but HR and an
+// administrator. So the absence of the field is passed through rather
+// than treated as a missing argument.
+r.post("/team/move", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.personId) return res.status(400).json({ error: "missing_person" });
+  const o = await one(`select org_move_person($1,$2::uuid,$3::uuid) as o`,
+    [req.person.id, b.personId, b.managerId || null]);
+  if (o.o?.error === "would_loop") {
+    return res.status(409).json(o.o);
+  }
+  return out(res, o.o);
+});
+
 export default r;

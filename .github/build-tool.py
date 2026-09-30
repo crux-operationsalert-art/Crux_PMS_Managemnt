@@ -699,6 +699,117 @@ PATCHES.append((
 ))
 
 print("%d patches to consider." % len(PATCHES))
+# ------------------------------------------------------ 12. MY TEAM
+# The people tree, in the shape of the attached org-chart design. The old
+# "My team" drew the CHAIR tree, which is what Structure is for; this one
+# draws who reports to whom, which is the column every visibility rule is
+# built on.
+#
+# The screen is inserted and the router is pointed at it. The old vPeople
+# is left where it is rather than cut out: excising a function by string
+# match is how a build breaks quietly, and an unreferenced function costs
+# nothing but bytes.
+SCREEN_TEAM = io.open("build/app/screen-team.js", encoding="utf-8").read()
+
+PATCHES.append((
+    "my team is the people tree",
+    "function tmRender(",
+    [("    people:vPeople, penalties:vPenalties,",
+      "    people:vTeamScreen, penalties:vPenalties,", 1),
+
+     # The screen, and the design's language as CSS. Colour carries depth,
+     # never status on its own: every bar ships a number and a word.
+     ('var PF = { period:null, cycle:null, tab:"mine",',
+      SCREEN_TEAM.replace("async function vPeople(){", "async function vTeamScreen(){")
+      + '\nvar PF = { period:null, cycle:null, tab:"mine",', 1),
+
+     ("</style>",
+      # ------------------------------------------- the paper and the rules
+      ".tmwrap{overflow:auto;padding:16px 14px 20px}\n"
+      ".tmoc{width:max-content;margin:0 auto;font-size:13px}\n"
+      ".tmoc ul{padding-top:22px;position:relative;display:flex;\n"
+      "  justify-content:center;margin:0;list-style:none}\n"
+      ".tmoc>ul{padding-top:0}\n"
+      ".tmoc li{position:relative;padding:22px 7px 0;list-style:none;\n"
+      "  display:flex;flex-direction:column;align-items:center}\n"
+      # The connectors are drawn in CSS, as the design draws them: a pair
+      # of borders per item, with the outer halves removed at each end.
+      ".tmoc li::before,.tmoc li::after{content:'';position:absolute;top:0;\n"
+      "  right:50%;border-top:1px solid var(--line2);width:50%;height:22px}\n"
+      ".tmoc li::after{right:auto;left:50%;border-left:1px solid var(--line2)}\n"
+      ".tmoc li:only-child{padding-top:0}\n"
+      ".tmoc li:only-child::before,.tmoc li:only-child::after{display:none}\n"
+      ".tmoc li:first-child::before,.tmoc li:last-child::after{border-top:0 none}\n"
+      ".tmoc li:last-child::before{border-right:1px solid var(--line2);\n"
+      "  border-radius:0 5px 0 0}\n"
+      ".tmoc li:first-child::after{border-radius:5px 0 0 0}\n"
+      ".tmoc>ul>li::before,.tmoc>ul>li::after{display:none}\n"
+      # ---------------------------------------------------------- the card
+      ".tmcard{position:relative;width:186px;padding:9px 11px 10px;\n"
+      "  background:var(--panel);border:1px solid var(--line);\n"
+      "  border-top:3px solid var(--line2);border-radius:3px;cursor:pointer;\n"
+      "  text-align:left;transition:box-shadow .12s,border-color .12s}\n"
+      ".tmcard:hover{border-color:var(--mute)}\n"
+      ".tmcard.sel{border-color:var(--ink);box-shadow:0 0 0 2px var(--line3)}\n"
+      ".tmcard.dragging{opacity:.45}\n"
+      ".tmcard.over{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue)}\n"
+      "[draggable=true].tmcard{cursor:grab}\n"
+      # Depth is shown by tinting the top edge, so the eye reads the level
+      # without the tree having to indent.
+      ".tmcard.d1{border-top-color:#B9C2D4}\n"
+      ".tmcard.d2{border-top-color:#8C99B4}\n"
+      ".tmcard.d3{border-top-color:#5F7095}\n"
+      ".tmcard.d4{border-top-color:#34497A}\n"
+      ".tmcard.d5{border-top-color:#14203A}\n"
+      ".tmnm{font-size:14px;color:var(--ink);line-height:1.25;font-weight:600}\n"
+      ".tmch{font-size:11.5px;color:var(--mute);margin-top:1px}\n"
+      ".tmno{font-size:10px;color:var(--mute);letter-spacing:.04em;\n"
+      "  font-variant-numeric:tabular-nums;margin-top:2px}\n"
+      # ------------------------------------------------ progress, with words
+      ".tmbar{height:5px;border-radius:3px;background:var(--line2);\n"
+      "  overflow:hidden;margin:8px 0 3px}\n"
+      ".tmbar i{display:block;height:100%;border-radius:3px}\n"
+      ".tmbar.good i{background:var(--green)}\n"
+      ".tmbar.part i{background:var(--gold)}\n"
+      ".tmbar.short i{background:var(--terra)}\n"
+      ".tmbar.none i{background:transparent}\n"
+      ".tmpc{font-size:11px;font-weight:600}\n"
+      ".tmpc.good{color:var(--green)}\n"
+      ".tmpc.part{color:var(--gold-ink)}\n"
+      ".tmpc.short{color:var(--terra-ink)}\n"
+      ".tmpc.none{color:var(--mute);font-weight:400}\n"
+      ".tmtags{display:flex;flex-wrap:wrap;gap:3px;margin-top:6px}\n"
+      ".tmtg{font-size:8.5px;letter-spacing:.05em;text-transform:uppercase;\n"
+      "  padding:0 3px;border:1px solid var(--line2);color:var(--mute)}\n"
+      ".tmtg.n{color:var(--green);border-color:var(--green)}\n"
+      ".tmtg.v{color:var(--blue);border-color:var(--blue)}\n"
+      ".tmtg.d{color:var(--gold-ink);border-color:var(--gold)}\n"
+      # --------------------------------------------------------- the rest
+      ".tmtog{position:absolute;top:-9px;left:50%;transform:translateX(-50%);\n"
+      "  z-index:2;width:17px;height:17px;line-height:15px;padding:0;\n"
+      "  border:1px solid var(--line);background:var(--panel);\n"
+      "  border-radius:50%;font-size:12px;color:var(--body);cursor:pointer}\n"
+      ".tmtog:hover{border-color:var(--ink);color:var(--ink)}\n"
+      ".tmbarrow{display:flex;gap:7px;align-items:center;flex-wrap:wrap;\n"
+      "  padding:2px 0 10px}\n"
+      ".tmkey{font-size:11.5px;display:inline-flex;align-items:center;gap:4px;\n"
+      "  flex-wrap:wrap}\n"
+      ".tmsw{display:inline-block;width:9px;height:5px;border-radius:2px;\n"
+      "  margin-left:7px}\n"
+      ".tmsw.good{background:var(--green)}\n"
+      ".tmsw.part{background:var(--gold)}\n"
+      ".tmsw.short{background:var(--terra)}\n"
+      ".tmsw.none{background:var(--line2)}\n"
+      ".tmpanel h3.tmh3{margin:14px 0 6px;font-size:13px;color:var(--ink)}\n"
+      ".tmacts{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 4px}\n"
+      ".tmsoon{font-size:12px;margin:6px 0 0}\n"
+      "@media (max-width:560px){\n"
+      "  .tmcard{width:150px}\n"
+      "  .tmoc{font-size:12px}\n"
+      "}\n"
+      "</style>", 1)],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)

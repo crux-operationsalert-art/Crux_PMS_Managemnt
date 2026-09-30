@@ -1033,3 +1033,5 @@ Both now rebase and retry. The fix was exercised on its first outing —
 | 2026-09-30 | Revokes name PUBLIC, not only anon and authenticated | anon inherits from PUBLIC, so the first draft revoked nothing and every statement still succeeded |
 | 2026-09-30 | 531 "people" found to be client-bank contacts, not employees | They have no employee number, no department, have never signed in, and are already in branch_contact. 84% of the staff list was not staff |
 | 2026-09-30 | A person's reporting line becomes a guarded write | Dragging a tile changes person.manager_id, which is what every visibility rule is built on. A ring in that column would hang a recursive walk |
+| 2026-09-30 | "My team" becomes the PEOPLE tree; Structure keeps the chair tree | Both were drawing chairs. The thing a manager needs is who reports to whom, which is also what every visibility rule is built on |
+| 2026-09-30 | The design's language adopted, its content not | Its cards carry level frameworks; ours carry the people holding the chairs and what they filed. What was taken is the paper surface, the CSS connectors, the depth tint and the small-caps tags |
