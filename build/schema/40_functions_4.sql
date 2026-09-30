@@ -8,6 +8,80 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.pms_cascade_apply(p_cycle uuid, p_kind raisable_kind, p_source uuid, p_actor uuid, p_reason text)
+ RETURNS TABLE(half text, points numeric, applied boolean)
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+declare
+  st record;
+  v_down boolean := p_kind in ('ESCALATION','WARNING');
+  v_size numeric;
+  v_used numeric; v_over numeric; v_want numeric; v_room numeric;
+  v_kc numeric := 0; v_blocked numeric := 0; v_kb numeric := 0;
+  c_cap numeric := pms_cfg('pms_cut_cap', 2);
+begin
+  select * into st from pms_cycle_state(p_cycle);
+
+  v_size := case p_kind
+              when 'ESCALATION'   then pms_cfg('pms_esc_attr', 1)
+              when 'WARNING'      then pms_cfg('pms_warn_attr', 2)
+              when 'APPRECIATION' then pms_cfg('pms_appr_attr', 1)
+              else                     pms_cfg('pms_idea_attr', 2)
+            end;
+
+  if v_down then
+    v_used := least(st.attr, v_size);
+    v_over := v_size - v_used;
+    if v_over > 0 then
+      v_want := (v_over / v_size) * case p_kind when 'ESCALATION'
+                                      then pms_cfg('pms_esc_kpi', 0.5)
+                                      else pms_cfg('pms_warn_kpi', 1) end;
+      v_room := greatest(0, c_cap - st.cut);
+      v_kc := least(v_want, v_room);
+      v_blocked := v_want - v_kc;
+    end if;
+
+    if v_used > 0 then
+      insert into pms_adjustment (cycle_id, source_kind, source_id, half, points, reason, actor_id, applied)
+      values (p_cycle, p_kind, p_source, 'ATTRIBUTE', -v_used, p_reason, p_actor, true);
+      half := 'ATTRIBUTE'; points := -v_used; applied := true; return next;
+    end if;
+    if v_kc > 0 then
+      insert into pms_adjustment (cycle_id, source_kind, source_id, half, points, reason, actor_id, applied)
+      values (p_cycle, p_kind, p_source, 'KPI', -v_kc,
+              p_reason || ' - Attributes were already at zero', p_actor, true);
+      half := 'KPI'; points := -v_kc; applied := true; return next;
+    end if;
+    if v_blocked > 0.001 then
+      insert into pms_adjustment (cycle_id, source_kind, source_id, half, points, reason,
+                                  actor_id, applied, capped, over_cap)
+      values (p_cycle, p_kind, p_source, 'KPI', -v_blocked,
+              p_reason || ' - beyond the ' || c_cap || '-point monthly cap; recorded and flagged to HR rather than taken off the score',
+              p_actor, false, true, true);
+      half := 'KPI'; points := -v_blocked; applied := false; return next;
+    end if;
+  else
+    v_used := least(10 - st.attr, v_size);
+    v_over := v_size - v_used;
+    if v_over > 0 then v_kb := least(10 - st.kpi, v_over); end if;
+
+    if v_used > 0 then
+      insert into pms_adjustment (cycle_id, source_kind, source_id, half, points, reason, actor_id, applied)
+      values (p_cycle, p_kind, p_source, 'ATTRIBUTE', v_used, p_reason, p_actor, true);
+      half := 'ATTRIBUTE'; points := v_used; applied := true; return next;
+    end if;
+    if v_kb > 0 then
+      insert into pms_adjustment (cycle_id, source_kind, source_id, half, points, reason, actor_id, applied)
+      values (p_cycle, p_kind, p_source, 'KPI', v_kb,
+              p_reason || ' - Attributes were already at ten', p_actor, true);
+      half := 'KPI'; points := v_kb; applied := true; return next;
+    end if;
+  end if;
+  return;
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.pms_cfg(p_key text, p_default numeric)
  RETURNS numeric
  LANGUAGE sql

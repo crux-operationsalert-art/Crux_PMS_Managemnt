@@ -8,34 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_addr_match(a text, b text)
- RETURNS jsonb
- LANGUAGE plpgsql
- IMMUTABLE
- SET search_path TO 'public'
-AS $function$
-declare na text; nb text; ta text; tb text; d int; len int; score int;
-begin
-  if btrim(coalesce(a,'')) = btrim(coalesce(b,'')) and coalesce(a,'') <> '' then
-    return jsonb_build_object('match','EXACT','score',100);
-  end if;
-  na := ogl_addr_norm(a); nb := ogl_addr_norm(b);
-  ta := replace(na,' ',''); tb := replace(nb,' ','');   -- how it was typed stops mattering
-  if ta = tb and ta <> '' then
-    return jsonb_build_object('match','NORMALISED','score',100);
-  end if;
-  len := greatest(length(ta), length(tb), 1);
-  -- levenshtein refuses very long strings; the first 120 characters of an
-  -- Indian address is the part that identifies it
-  d := extensions.levenshtein(left(ta,120), left(tb,120));
-  score := greatest(0, 100 - (100 * d / greatest(least(len,120),1)));
-  if score >= 80 then
-    return jsonb_build_object('match','FUZZY','score',score);
-  end if;
-  return jsonb_build_object('match','DIFFERENT','score',score);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_addr_norm(p text)
  RETURNS text
  LANGUAGE sql
@@ -3605,6 +3577,107 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.org_move_person(p_actor uuid, p_person uuid, p_new_manager uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_admin boolean; v_hr boolean;
+  a person; s person; m person; v_old uuid;
+begin
+  select * into a from person where id = p_actor
+     and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+
+  select * into s from person where id = p_person
+     and employment_status = 'ACTIVE' and superseded_by is null;
+  if s.id is null then
+    return jsonb_build_object('error','no_such_person');
+  end if;
+
+  v_admin := a.app_role = 'ADMIN';
+  v_hr    := coalesce(a.department,'') = 'Human Resources';
+  v_old   := s.manager_id;
+
+  if p_person = p_actor then
+    return jsonb_build_object('error','not_permitted',
+      'reason','You cannot move yourself. Ask the person you report to.');
+  end if;
+  if p_person = a.manager_id and not (v_admin or v_hr) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','You cannot move the person you report to.');
+  end if;
+
+  if not (v_admin or v_hr) then
+    if not exists (select 1 from org_subtree(p_actor) t
+                    where t.person_id = p_person and t.depth > 0) then
+      return jsonb_build_object('error','not_permitted',
+        'reason','That person is not in your team.');
+    end if;
+    if p_new_manager is not null
+       and not exists (select 1 from org_subtree(p_actor) t
+                        where t.person_id = p_new_manager) then
+      return jsonb_build_object('error','not_permitted',
+        'reason','You can only move somebody to a manager inside your own team.');
+    end if;
+  end if;
+
+  if p_new_manager is null then
+    if not (v_admin or v_hr) then
+      return jsonb_build_object('error','not_permitted',
+        'reason','Taking somebody out of the line altogether is HR''s.');
+    end if;
+  else
+    select * into m from person where id = p_new_manager
+       and employment_status = 'ACTIVE' and superseded_by is null;
+    if m.id is null then
+      return jsonb_build_object('error','no_such_manager');
+    end if;
+  end if;
+
+  if p_new_manager = p_person then
+    return jsonb_build_object('error','would_loop',
+      'reason','Somebody cannot report to themselves.');
+  end if;
+  if p_new_manager is not null
+     and exists (select 1 from org_subtree(p_person) t
+                  where t.person_id = p_new_manager) then
+    return jsonb_build_object('error','would_loop',
+      'reason', m.full_name || ' already reports to ' || s.full_name ||
+                ', directly or through somebody else. That move would make '
+                'the reporting line a ring.');
+  end if;
+
+  if v_old is not distinct from p_new_manager then
+    return jsonb_build_object('ok', true, 'changed', false,
+      'note','They already report there. Nothing changed.');
+  end if;
+
+  update person set manager_id = p_new_manager where id = p_person;
+
+  insert into person_event (person_id, kind, note, at)
+  values (p_person, 'REPORTING_CHANGED',
+          coalesce((select full_name from person where id = v_old), 'nobody')
+          || ' -> ' || coalesce(m.full_name, 'nobody'), now());
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'REPORTING_CHANGED', 'person', p_person::text,
+          jsonb_build_object('managerId', v_old),
+          jsonb_build_object('managerId', p_new_manager));
+
+  return jsonb_build_object('ok', true, 'changed', true,
+    'personId', p_person, 'from', v_old, 'to', p_new_manager,
+    'note', s.full_name || ' now reports to ' ||
+            coalesce(m.full_name, 'nobody') || '. Who can see whose numbers '
+            'changed with them.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.org_place_holder(p_actor uuid, p_holder uuid, p_seating uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3734,6 +3807,110 @@ begin
   return jsonb_build_object(
     'passes', v_pass, 'placed', v_placed, 'seatingsMade', v_made,
     'detail', v_detail, 'unplaced', jsonb_array_length(v_left), 'left', v_left);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_subtree(p_person uuid)
+ RETURNS TABLE(person_id uuid, depth integer)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  with recursive down as (
+    select p.id, 0 as depth
+      from person p
+     where p.id = p_person
+       and p.employment_status = 'ACTIVE' and p.superseded_by is null
+    union all
+    select c.id, d.depth + 1
+      from down d
+      join person c on c.manager_id = d.id
+     where d.depth < 12
+       and c.employment_status = 'ACTIVE' and c.superseded_by is null)
+  select id, depth from down;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_team_tree(p_actor uuid, p_root uuid DEFAULT NULL::uuid, p_cycle uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_root uuid; v_cycle uuid; v_rel text;
+begin
+  v_root := coalesce(p_root, p_actor);
+  v_rel  := perf_rel(p_actor, v_root);
+  if v_rel is null then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line.');
+  end if;
+
+  v_cycle := coalesce(p_cycle,
+    (select id from perf_cycle
+      where period_kind = 'MONTH' and period_start <= current_date
+      order by period_start desc limit 1));
+
+  return jsonb_build_object(
+    'rootId', v_root,
+    'cycleId', v_cycle,
+    'mayAdd', perf_may_set(p_actor, v_root) or v_root = p_actor,
+    'people', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'personId', x.id,
+               'name', x.full_name,
+               'employeeNo', x.employee_no,
+               'email', x.work_email,
+               'managerId', x.manager_id,
+               'depth', x.depth,
+               'chair', x.chair,
+               'department', x.department,
+               'reports', x.reports,
+               'rel', perf_rel(p_actor, x.id),
+               'maySet', perf_may_set(p_actor, x.id),
+               'mayMove', case
+                 when x.id = p_actor then false
+                 when x.depth = 0 then false
+                 else perf_may_set(p_actor, x.id)
+                      or (select app_role from person where id = p_actor) = 'ADMIN'
+                      or coalesce((select department from person where id = p_actor),'')
+                         = 'Human Resources' end,
+               'measures', x.measures,
+               'filed', x.filed,
+               'onTrack', x.on_track,
+               'progress', case when x.with_target = 0 then null
+                                else round(100.0 * x.on_track / x.with_target, 0) end)
+             order by x.depth, x.full_name)
+      from (
+        select p.id, p.full_name, p.employee_no, p.work_email, p.manager_id,
+               t.depth, p.department,
+               (select ch.title from chair_holder h join chair ch on ch.id = h.chair_id
+                 where h.person_id = p.id and h.to_date is null
+                 order by h.is_primary desc limit 1) as chair,
+               (select count(*) from person r
+                 where r.manager_id = p.id and r.employment_status = 'ACTIVE'
+                   and r.superseded_by is null) as reports,
+               (select count(*) from perf_assignment a
+                 where a.person_id = p.id and a.cycle_id = v_cycle
+                   and a.part_of_id is null) as measures,
+               (select count(perf_value(a.id)) from perf_assignment a
+                 where a.person_id = p.id and a.cycle_id = v_cycle
+                   and a.part_of_id is null) as filed,
+               (select count(*) from perf_assignment a
+                 where a.person_id = p.id and a.cycle_id = v_cycle
+                   and a.part_of_id is null and a.target_value is not null) as with_target,
+               (select count(*) from perf_assignment a
+                 where a.person_id = p.id and a.cycle_id = v_cycle
+                   and a.part_of_id is null and a.target_value is not null
+                   and perf_value(a.id) is not null
+                   and ((perf_direction(a.unit) = 'CEILING'
+                         and perf_value(a.id) <= a.target_value)
+                     or (perf_direction(a.unit) = 'FLOOR'
+                         and perf_value(a.id) >= a.target_value))) as on_track
+          from org_subtree(v_root) t
+          join person p on p.id = t.person_id
+         where perf_may_see(p_actor, p.id)
+      ) x), '[]'::jsonb));
 end $function$
 ;
 
@@ -3892,31 +4069,5 @@ begin
   get diagnostics n = row_count;
   return n;
 end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.outbox_sent(p_id uuid, p_ref text DEFAULT NULL::text)
- RETURNS void
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-begin
-  update outbox set state = 'SENT', sent_at = now(), last_error = null where id = p_id;
-  insert into delivery (outbox_id, channel, recipient, state, provider_ref, at)
-  select p_id, 'EMAIL', recipient, 'SENT', p_ref, now() from outbox where id = p_id;
-  update mail_budget set recipients_sent = recipients_sent + 1 where day = current_date;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.penalty_recovery_for(p_person uuid, p_rule uuid)
- RETURNS text
- LANGUAGE sql
- STABLE
- SET search_path TO 'public'
-AS $function$
-  select case when (select employee_type from person where id = p_person) = 'PARTNER'
-              then 'FINANCE'
-              else (select recovered_by from penalty_rule where id = p_rule) end;
-$function$
 ;
 

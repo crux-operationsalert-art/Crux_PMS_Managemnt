@@ -3055,3 +3055,31 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ogl_addr_match(a text, b text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ IMMUTABLE
+ SET search_path TO 'public'
+AS $function$
+declare na text; nb text; ta text; tb text; d int; len int; score int;
+begin
+  if btrim(coalesce(a,'')) = btrim(coalesce(b,'')) and coalesce(a,'') <> '' then
+    return jsonb_build_object('match','EXACT','score',100);
+  end if;
+  na := ogl_addr_norm(a); nb := ogl_addr_norm(b);
+  ta := replace(na,' ',''); tb := replace(nb,' ','');   -- how it was typed stops mattering
+  if ta = tb and ta <> '' then
+    return jsonb_build_object('match','NORMALISED','score',100);
+  end if;
+  len := greatest(length(ta), length(tb), 1);
+  -- levenshtein refuses very long strings; the first 120 characters of an
+  -- Indian address is the part that identifies it
+  d := extensions.levenshtein(left(ta,120), left(tb,120));
+  score := greatest(0, 100 - (100 * d / greatest(least(len,120),1)));
+  if score >= 80 then
+    return jsonb_build_object('match','FUZZY','score',score);
+  end if;
+  return jsonb_build_object('match','DIFFERENT','score',score);
+end $function$
+;
+
