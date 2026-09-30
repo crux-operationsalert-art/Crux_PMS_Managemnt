@@ -8,6 +8,48 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.ogl_arbiter(p_assignment uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+declare
+  a assignment%rowtype; v_cur uuid; v_chain uuid[] := '{}'; v_guard int := 0;
+begin
+  select * into a from assignment where id = p_assignment;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+
+  -- the assignor's line, from them upwards
+  v_cur := a.assignor_id;
+  while v_cur is not null and v_guard < 50 loop
+    v_chain := v_chain || v_cur;
+    select manager_id into v_cur from person where id = v_cur;
+    v_guard := v_guard + 1;
+  end loop;
+
+  -- walk the assignee's line until it meets it
+  v_cur := coalesce(a.allocated_to_id, a.assignor_id); v_guard := 0;
+  while v_cur is not null and v_guard < 50 loop
+    if v_cur = any(v_chain) and v_cur is distinct from a.assignor_id
+       and v_cur is distinct from a.allocated_to_id then
+      return jsonb_build_object('person_id', v_cur,
+        'name', (select full_name from person where id = v_cur), 'how','lowest common manager');
+    end if;
+    select manager_id into v_cur from person where id = v_cur;
+    v_guard := v_guard + 1;
+  end loop;
+
+  -- no common manager below the top: the top is the arbiter
+  select id into v_cur from person
+   where manager_id is null and employment_status = 'ACTIVE' and superseded_by is null
+   limit 1;
+  return jsonb_build_object('person_id', v_cur,
+    'name', (select full_name from person where id = v_cur),
+    'how','no common manager below the top of the chart, so the top holds it');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.ogl_arbitrate(p_assignment uuid, p_actor uuid, p_outcome text, p_reason text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4292,30 +4334,6 @@ begin
   insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
   values (p_actor, 'PERF_KPI_SET', 'person', v_person::text, null, p_in);
   return jsonb_build_object('ok', true, 'assignmentId', v_id);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_assign_bulk(p_actor uuid, p_in jsonb)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare p text; m jsonb; out jsonb := '[]'::jsonb; r jsonb; ok int := 0; bad int := 0;
-begin
-  for p in select jsonb_array_elements_text(p_in->'people') loop
-    for m in select jsonb_array_elements(p_in->'measures') loop
-      r := perf_assign(p_actor, m || jsonb_build_object(
-             'personId', p, 'cycleId', p_in->>'cycleId'));
-      if coalesce((r->>'ok')::boolean, false) then ok := ok + 1;
-      else bad := bad + 1;
-           out := out || jsonb_build_object('personId', p,
-                     'measure', m->>'name', 'why', coalesce(r->>'reason', r->>'error'));
-      end if;
-    end loop;
-  end loop;
-  return jsonb_build_object('ok', bad = 0, 'set', ok, 'refused', bad, 'why', out,
-    'note', ok || ' set' || case when bad > 0 then ', ' || bad || ' refused' else '' end || '.');
 end $function$
 ;
 

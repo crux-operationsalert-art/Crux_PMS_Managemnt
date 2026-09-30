@@ -8,6 +8,54 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_unseated()
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select coalesce(jsonb_agg(x order by x->>'why', x->>'person'), '[]'::jsonb) from (
+    select jsonb_build_object(
+      'personId', p.id, 'person', p.full_name,
+      'employeeNo', p.employee_no, 'email', p.work_email,
+      'places', (select count(*) from coverage_rule c2
+                  where c2.person_id = p.id and c2.role = 'BRANCH_MANAGER'
+                    and c2.effective_to is null),
+      'placeList', (select string_agg(n2.name, ', ' order by n2.name)
+                      from coverage_rule c3 join op_node n2 on n2.id = c3.op_node_id
+                     where c3.person_id = p.id and c3.role = 'BRANCH_MANAGER'
+                       and c3.effective_to is null),
+      'chairs', (select coalesce(string_agg(ch.title, ' / ' order by ch.title), '')
+                   from chair_holder h join chair ch on ch.id = h.chair_id
+                  where h.person_id = p.id and h.to_date is null),
+      'why', case
+        when exists (select 1 from chair_holder h join chair ch on ch.id = h.chair_id
+                      where h.person_id = p.id and h.to_date is null
+                        and ch.code = 'LOCATION_PARTNER')
+          then 'A business partner. The scheme puts partners outside it, so this is correct and needs nothing.'
+        when not exists (select 1 from chair_holder h
+                          where h.person_id = p.id and h.to_date is null)
+          then 'Runs a place and sits in no chair at all. Nothing measures them today.'
+        else 'Sits in a chair that carries no measure set, so the scheme cannot see them.'
+      end,
+      'needsDecision', not exists (
+        select 1 from chair_holder h join chair ch on ch.id = h.chair_id
+         where h.person_id = p.id and h.to_date is null and ch.code = 'LOCATION_PARTNER')
+    ) as x
+    from person p
+   where p.employment_status = 'ACTIVE' and p.superseded_by is null
+     and exists (select 1 from coverage_rule cr
+                  where cr.person_id = p.id and cr.role = 'BRANCH_MANAGER'
+                    and cr.effective_to is null)
+     and not exists (
+       select 1 from chair_holder h join chair ch on ch.id = h.chair_id
+        where h.person_id = p.id and h.to_date is null
+          and exists (select 1 from kpi_definition k
+                       where k.chair_id = ch.id and k.active and k.position < 100))
+  ) t;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_wd_after(p_from date, p_days integer, p_centre text DEFAULT NULL::text)
  RETURNS date
  LANGUAGE plpgsql

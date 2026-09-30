@@ -8,6 +8,30 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.perf_assign_bulk(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare p text; m jsonb; out jsonb := '[]'::jsonb; r jsonb; ok int := 0; bad int := 0;
+begin
+  for p in select jsonb_array_elements_text(p_in->'people') loop
+    for m in select jsonb_array_elements(p_in->'measures') loop
+      r := perf_assign(p_actor, m || jsonb_build_object(
+             'personId', p, 'cycleId', p_in->>'cycleId'));
+      if coalesce((r->>'ok')::boolean, false) then ok := ok + 1;
+      else bad := bad + 1;
+           out := out || jsonb_build_object('personId', p,
+                     'measure', m->>'name', 'why', coalesce(r->>'reason', r->>'error'));
+      end if;
+    end loop;
+  end loop;
+  return jsonb_build_object('ok', bad = 0, 'set', ok, 'refused', bad, 'why', out,
+    'note', ok || ' set' || case when bad > 0 then ', ' || bad || ' refused' else '' end || '.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_assignment_edges()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -836,9 +860,15 @@ AS $function$
 declare
   v_run uuid; r record; due jsonb; item jsonb; lines text; body text;
   n_due int := 0; n_unset int := 0; n_skip int := 0; c perf_cycle;
+  v_perf text; v_team text;
 begin
   insert into job_run (job_key, started_at, state)
   values ('PERF_REMINDERS', now(), 'RUNNING') returning id into v_run;
+
+  -- Asked once for the whole sweep rather than once per person: it is one
+  -- setting and a hundred people, and it cannot change mid-sweep.
+  v_perf := app_link('#perf');
+  v_team := app_link('#people');
 
   for r in
     select p.id, p.full_name, lower(btrim(p.work_email)) as email
@@ -855,7 +885,13 @@ begin
                       then ' (' || (item->>'split') || ')' else '' end
               || case when coalesce(item->>'target','') <> ''
                       then ', target ' || (item->>'target')
-                           || coalesce(' ' || (item->>'unit'), '') else '' end
+                           || coalesce(' ' || perf_unit_plain(item->>'unit'), '')
+                      else '' end
+              -- The link goes on the activity's own line, which is what
+              -- "in front of the activities" asks for: a person scanning
+              -- five lines can act on the third without reading the other
+              -- four to find out where to go.
+              || coalesce(E'\n      File it: ' || v_perf, '')
               || E'\n';
       end if;
     end loop;
@@ -865,8 +901,9 @@ begin
     body := 'Good morning ' || split_part(r.full_name, ' ', 1) || E',\n\n'
          || 'These are due from you today, ' || to_char(p_on, 'FMDD FMMonth YYYY') || E':\n\n'
          || lines || E'\n'
-         || 'Open Performance in Crux and file them. The number is for today -- '
-         || 'filing it tomorrow does not make it tomorrow''s number.' || E'\n';
+         || coalesce('Open Performance: ' || v_perf || E'\n\n', '')
+         || 'The number is for today -- filing it tomorrow does not make it '
+         || 'tomorrow''s number.' || E'\n';
 
     insert into outbox (idempotency_key, template_key, recipient, subject, body,
                         entity_type, entity_id, not_before, state)
@@ -899,7 +936,9 @@ begin
            || r.who || E'\n\n'
            || 'The window closes on ' || to_char(c.assign_closes, 'FMDD FMMonth')
            || '. After that an administrator can still change them, and it is recorded.'
-           || E'\n\nOpen Performance in Crux, then My team.\n';
+           || E'\n\n'
+           || coalesce('Set their targets: ' || v_team || E'\n',
+                       E'Open Performance in Crux, then My team.\n');
 
       insert into outbox (idempotency_key, template_key, recipient, subject, body,
                           entity_type, entity_id, not_before, state)
@@ -915,13 +954,22 @@ begin
          counts = jsonb_build_object('day', p_on, 'due_reminders', n_due,
                                      'unset_reminders', n_unset,
                                      'nothing_owed', n_skip,
-                                     'cycle', c.id)
+                                     'cycle', c.id,
+                                     -- Recorded per run, so "why did today's
+                                     -- mail have no links" is answerable
+                                     -- from the job row alone.
+                                     'linked', v_perf is not null)
    where id = v_run;
 
   return jsonb_build_object('day', p_on, 'due', n_due, 'unset', n_unset,
+    'linked', v_perf is not null,
     'note', case when n_due = 0 and n_unset = 0
       then 'Nothing was owed by anybody today, so nobody was written to.'
-      else n_due || ' filing reminder(s) and ' || n_unset || ' setting reminder(s) queued.' end);
+      else n_due || ' filing reminder(s) and ' || n_unset || ' setting reminder(s) queued.'
+           || case when v_perf is null
+                   then ' No app_url is set, so they carry no links -- set it and '
+                        'tomorrow''s will.'
+                   else '' end end);
 exception when others then
   update job_run set finished_at = now(), state = 'FAILED', error = sqlerrm where id = v_run;
   raise;
@@ -1424,6 +1472,19 @@ begin
   end if;
   return v_out;
 end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_unit_plain(p_unit text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+  select case
+    when p_unit is null then null
+    when position('·' in p_unit) = 0 then btrim(p_unit)
+    else btrim(left(p_unit, length(p_unit) - position('·' in reverse(p_unit))))
+  end;
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_value(p_assignment uuid, p_depth integer DEFAULT 0)
@@ -4331,53 +4392,5 @@ begin
            'promising another for the quarter. Phasing the quarter down '
            'fixes it, and leaves alone anything a person agreed by hand.' end);
 end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_unseated()
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select coalesce(jsonb_agg(x order by x->>'why', x->>'person'), '[]'::jsonb) from (
-    select jsonb_build_object(
-      'personId', p.id, 'person', p.full_name,
-      'employeeNo', p.employee_no, 'email', p.work_email,
-      'places', (select count(*) from coverage_rule c2
-                  where c2.person_id = p.id and c2.role = 'BRANCH_MANAGER'
-                    and c2.effective_to is null),
-      'placeList', (select string_agg(n2.name, ', ' order by n2.name)
-                      from coverage_rule c3 join op_node n2 on n2.id = c3.op_node_id
-                     where c3.person_id = p.id and c3.role = 'BRANCH_MANAGER'
-                       and c3.effective_to is null),
-      'chairs', (select coalesce(string_agg(ch.title, ' / ' order by ch.title), '')
-                   from chair_holder h join chair ch on ch.id = h.chair_id
-                  where h.person_id = p.id and h.to_date is null),
-      'why', case
-        when exists (select 1 from chair_holder h join chair ch on ch.id = h.chair_id
-                      where h.person_id = p.id and h.to_date is null
-                        and ch.code = 'LOCATION_PARTNER')
-          then 'A business partner. The scheme puts partners outside it, so this is correct and needs nothing.'
-        when not exists (select 1 from chair_holder h
-                          where h.person_id = p.id and h.to_date is null)
-          then 'Runs a place and sits in no chair at all. Nothing measures them today.'
-        else 'Sits in a chair that carries no measure set, so the scheme cannot see them.'
-      end,
-      'needsDecision', not exists (
-        select 1 from chair_holder h join chair ch on ch.id = h.chair_id
-         where h.person_id = p.id and h.to_date is null and ch.code = 'LOCATION_PARTNER')
-    ) as x
-    from person p
-   where p.employment_status = 'ACTIVE' and p.superseded_by is null
-     and exists (select 1 from coverage_rule cr
-                  where cr.person_id = p.id and cr.role = 'BRANCH_MANAGER'
-                    and cr.effective_to is null)
-     and not exists (
-       select 1 from chair_holder h join chair ch on ch.id = h.chair_id
-        where h.person_id = p.id and h.to_date is null
-          and exists (select 1 from kpi_definition k
-                       where k.chair_id = ch.id and k.active and k.position < 100))
-  ) t;
-$function$
 ;
 

@@ -270,6 +270,26 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.app_link(p_path text DEFAULT ''::text)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  -- Null, not an empty string, so a caller writing
+  --   coalesce(' ' || app_link('#perf'), '')
+  -- gets nothing at all rather than a trailing space and a bare hash.
+  select case
+    when coalesce(btrim(v.value), '') = '' then null
+    else rtrim(btrim(v.value), '/') ||
+         case when coalesce(p_path,'') = '' then ''
+              when left(p_path, 1) in ('#','/') then p_path
+              else '/' || p_path end
+  end
+  from (select value from app_setting where key = 'app_url') v;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.app_person_id()
  RETURNS uuid
  LANGUAGE sql
@@ -2582,12 +2602,13 @@ CREATE OR REPLACE FUNCTION public.matrix_nudge_sweep(p_on date DEFAULT CURRENT_D
 AS $function$
 declare
   v_run uuid; r record; m jsonb; c jsonb; late text; n_late int;
-  body text; n int := 0; v_period date;
+  body text; n int := 0; v_period date; v_link text;
 begin
   insert into job_run (job_key, started_at, state)
   values ('MATRIX_NUDGE', now(), 'RUNNING') returning id into v_run;
 
   v_period := date_trunc('month', p_on)::date;
+  v_link := app_link('#matrix');
 
   for r in
     select p.id, p.full_name, lower(btrim(p.work_email)) as email
@@ -2613,6 +2634,7 @@ begin
              || case when coalesce((c->>'recipients')::int, 0) = 0
                      then ', and no contacts on file to send it to'
                      else '' end
+             || coalesce(E'\n      Send it: ' || v_link, '')
              || E'\n';
       end if;
     end loop;
@@ -2626,7 +2648,8 @@ begin
          || 'A branch with a blank level is held back and named in the letter rather '
          || 'than sent with a gap, so a client with an incomplete branch can still be '
          || 'sent what is ready.' || E'\n\n'
-         || 'Open Escalation matrix in Crux.' || E'\n';
+         || coalesce('Open the escalation matrix: ' || v_link || E'\n',
+                     E'Open Escalation matrix in Crux.\n');
 
     insert into outbox (idempotency_key, template_key, recipient, subject, body,
                         entity_type, entity_id, not_before, state)
@@ -2639,10 +2662,12 @@ begin
   end loop;
 
   update job_run set finished_at = now(), state = 'DONE',
-         counts = jsonb_build_object('day', p_on, 'period', v_period, 'nudges', n)
+         counts = jsonb_build_object('day', p_on, 'period', v_period, 'nudges', n,
+                                     'linked', v_link is not null)
    where id = v_run;
 
   return jsonb_build_object('period', v_period, 'nudges', n,
+    'linked', v_link is not null,
     'note', case when n = 0
       then 'Every client covered by somebody has had this month''s matrix, so nobody was written to.'
       else n || ' person(s) reminded.' end);
@@ -3147,48 +3172,6 @@ begin
     p_assignment::text || ':allocated:' || p_person::text);
 
   return r || jsonb_build_object('allocated_to', p_person);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_arbiter(p_assignment uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare
-  a assignment%rowtype; v_cur uuid; v_chain uuid[] := '{}'; v_guard int := 0;
-begin
-  select * into a from assignment where id = p_assignment;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-
-  -- the assignor's line, from them upwards
-  v_cur := a.assignor_id;
-  while v_cur is not null and v_guard < 50 loop
-    v_chain := v_chain || v_cur;
-    select manager_id into v_cur from person where id = v_cur;
-    v_guard := v_guard + 1;
-  end loop;
-
-  -- walk the assignee's line until it meets it
-  v_cur := coalesce(a.allocated_to_id, a.assignor_id); v_guard := 0;
-  while v_cur is not null and v_guard < 50 loop
-    if v_cur = any(v_chain) and v_cur is distinct from a.assignor_id
-       and v_cur is distinct from a.allocated_to_id then
-      return jsonb_build_object('person_id', v_cur,
-        'name', (select full_name from person where id = v_cur), 'how','lowest common manager');
-    end if;
-    select manager_id into v_cur from person where id = v_cur;
-    v_guard := v_guard + 1;
-  end loop;
-
-  -- no common manager below the top: the top is the arbiter
-  select id into v_cur from person
-   where manager_id is null and employment_status = 'ACTIVE' and superseded_by is null
-   limit 1;
-  return jsonb_build_object('person_id', v_cur,
-    'name', (select full_name from person where id = v_cur),
-    'how','no common manager below the top of the chart, so the top holds it');
 end $function$
 ;
 

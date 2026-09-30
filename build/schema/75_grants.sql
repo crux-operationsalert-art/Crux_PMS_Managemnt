@@ -373,6 +373,7 @@ grant execute on function public.app_config() to service_role;
 grant execute on function public.app_html(p_slug text) to service_role;
 grant execute on function public.app_is_admin() to authenticated;
 grant execute on function public.app_is_admin() to service_role;
+grant execute on function public.app_link(p_path text) to service_role;
 grant execute on function public.app_person_id() to authenticated;
 grant execute on function public.app_person_id() to service_role;
 grant execute on function public.app_refs(p_person uuid) to service_role;
@@ -637,6 +638,9 @@ grant execute on function public.perf_split_set(p_actor uuid, p_assignment uuid,
 grant execute on function public.perf_target_set(p_actor uuid, p_assignment uuid, p_value numeric, p_manual boolean) to service_role;
 grant execute on function public.perf_tree(p_person uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_tree_for(p_actor uuid, p_person uuid, p_cycle uuid) to service_role;
+grant execute on function public.perf_unit_plain(p_unit text) to anon;
+grant execute on function public.perf_unit_plain(p_unit text) to authenticated;
+grant execute on function public.perf_unit_plain(p_unit text) to service_role;
 grant execute on function public.perf_value(p_assignment uuid, p_depth integer) to service_role;
 grant execute on function public.person_add(p_actor uuid, p jsonb) to service_role;
 grant execute on function public.person_centre(p_person uuid) to service_role;
