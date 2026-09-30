@@ -875,29 +875,128 @@ it is not a failure.
 | Handover | **built** — 239 measures that hand over to a person, not to arithmetic |
 | Day → month → quarter | **built and tested** — 299 passed, 0 failed on a clean rebuild with 226 and 227 applied |
 
-### Not yet live — blocked, not forgotten
+---
 
-The Supabase connector reads `needs_reconnect`, so nothing in this session
-can reach the database. Everything else is written, tested and pushed, and
-the gap is now **one function wide**.
+## 9 · The live database had drifted from the repository
 
-The baseline was refreshed on `826be6c` and carries all of 226 and all of
-227 **except `plb_month_suggest`** — the one function that never reached the
-live database. `build/test/run.sh` therefore reports **303 passed, 1 failed**,
-and the single failure is `function plb_month_suggest(uuid, uuid, date) does
-not exist`. That is an accurate reading, not a flaky one: the baseline cannot
-rebuild what was never applied.
+Found while verifying 226 and 227 after the Supabase connector was
+reconnected. **Five of the seven functions in those two migrations were
+live at an earlier revision than the repository.** The previous session's
+apply had landed a partial draft and the connection dropped before the
+rest did — and because `build/schema` is snapshotted *from* the live
+database, the baseline faithfully copied the older code, so nothing
+downstream noticed.
 
-Two steps close it:
+| Function | Was live | Repository |
+|---|---|---|
+| `perf_handover` | 2,550 bytes, **no `summary` key at all** | 5,473 |
+| `perf_relink` | 2,343 | 2,422 |
+| `perf_quarter_value` | 826 | 996 |
+| `plb_actual_from_perf` | 2,471 | 2,559 |
+| `plb_month_suggest` | absent | 4,022 |
 
-1. **Apply the `plb_month_suggest` half of migration 227** to the live
-   database. The snapshot workflow then carries it into the baseline on the
-   next migration push and the suite goes green.
-2. **Redeploy `perf` as v3** so `/handover` and `/month` exist. The code for
-   both is in the repository. **It must be deployed with `verify_jwt: false`**
-   — the page sends `x-crux-token` and no Authorization header, and the
-   parameter's default of `true` 401s everything. Until then both routes 404
-   and the screen hides those sections rather than showing empty ones.
+The one that mattered most is `perf_handover`. The summary — the grouping
+that turns eighty-six rows into five — **was never live**. A Branch
+Manager would have got the wall it exists to replace.
+
+All seven now match the repository **by MD5**, which is the check that
+actually settles it; byte counts alone would not.
+
+### The lesson
+
+"I applied the migration" and "the database holds what the file says" are
+different sentences. From here, a migration is verified by hashing the
+live function against the file, not by the apply returning success.
+
+---
+
+## 10 · Thirty functions anybody could call — migration 228
+
+Found by the Supabase security advisor during the same verification. **Not
+by a test, and no test would have caught it.**
+
+Thirty `SECURITY DEFINER` functions were executable by `anon`. The
+publishable key is public on purpose — that is only safe while nothing
+reachable by `anon` grants anything. These did:
+
+* **`perf_org_rollup(p_actor, …)`** — the gate is *"is this person in
+  p_actor's line"*, and **the caller supplies `p_actor`**. Pass the id of
+  somebody senior and read whatever you like. This is the entire
+  visibility problem of §1 and §5 reopened at a different door.
+* **`task_assign` / `task_close` / `task_cancel` / `perf_seed_targets`** —
+  the same shape, but they **write**. Set a task as anyone, to anyone, or
+  re-seed every target in a cycle.
+* **`task_mine` / `task_evidence` / `perf_filed_days` /
+  `pms_weighting_for`** — take a person and never ask who is asking,
+  because the gate lives in the route, which `anon` does not go through.
+
+Migration 228 revokes all of them. **Nothing the application does is
+affected:** every Edge Function connects as the database owner over
+`SUPABASE_DB_URL`, never as `anon`.
+
+Two things deliberately keep their grants:
+
+* `app_is_admin`, `app_person_id`, `app_subtree`, `app_scope_clients` are
+  named inside **32, 20, 16 and 5 RLS policies**. Revoking them would
+  break every policy that calls them, and would tighten nothing — each
+  takes no argument and reports the *caller's own* identity.
+* `schema_snapshot()` is what the snapshot workflow calls with the
+  publishable key. Its seven helpers do **not** keep theirs, because
+  `schema_snapshot` is `SECURITY DEFINER` and reaches them as its owner.
+
+Two views flagged ERROR — `branch_without_place` and `kpi_registry_gap` —
+read through their owner's rights and so saw past every policy beneath
+them. Both are now closed too.
+
+### The first draft of 228 did nothing, and its own guard caught it
+
+It said `revoke … from anon, authenticated`. `EXECUTE` had been granted to
+**`PUBLIC`**, which `anon` belongs to, so there was no direct grant to
+take away and every revoke succeeded while changing nothing. The guard at
+the foot of the migration — which asks whether `anon` can *still call
+them*, rather than whether a revoke ran — failed the migration and rolled
+it back. That guard is now permanent: no `SECURITY DEFINER` function
+taking a `uuid` first argument may be reachable by `anon`.
+
+---
+
+### Now live
+
+Both blocked steps are done, and both were verified rather than assumed.
+
+1. **`plb_month_suggest` is applied**, along with the four other functions
+   that had drifted (§9). All seven of 226's and 227's functions match the
+   repository by MD5.
+2. **`perf` is deployed as v3** with **`verify_jwt: false`**, carrying
+   `/handover` and `/month`. The flag matters: the page sends
+   `x-crux-token` and no Authorization header, and the parameter's default
+   of `true` would 401 everything.
+
+`perf_handover` was then run against real data — 42 executives under one
+Branch Manager — and returns **5 grouped measures in place of 86 rows**,
+which is the behaviour the summary exists for and which was never live
+before today.
+
+### What is live and what is simply empty
+
+Two different things, and worth not confusing:
+
+| | |
+|---|---|
+| Assignments | **728**, every one with a target |
+| Climbing by arithmetic | **250** |
+| **Filings** | **0 — nobody has filed a number yet** |
+| **Goal sheets** | **0 — none issued for the quarter** |
+
+So the machinery is live and correct, and there is nothing flowing through
+it. On the screen today that means the handover shows *"nothing filed"*
+against every measure, and the month card **hides itself**, because
+`/perf/month` correctly answers `no_sheet`.
+
+Neither is a fault and neither is mine to fix by inventing data. They need
+two business acts: **people filing their daily numbers**, and **HR issuing
+goal sheets for the quarter** — the latter sets pay-linked targets, so it
+is a decision, not a backfill.
 
 ### One defect fixed along the way
 
@@ -927,3 +1026,6 @@ Both now rebase and retry. The fix was exercised on its first outing —
 | 2026-09-30 | Seven roll-up rows deleted after reading each one | Four crossed a type or a direction; three were a count feeding a percentage. Each would have overwritten somebody's target with a number that measured something else |
 | 2026-09-30 | Same-family tried before the mapped parents | `D3 → D8` was making a measure skip its own parent's copy of itself |
 | 2026-09-30 | The quarterly actual is computed; the monthly score is not | A fact and a judgement are different things, and a system that scores "partly or late" silently is inventing one |
+| 2026-09-30 | Five functions re-applied after the live database was found behind the repository | An apply that returns success is not evidence the database holds what the file says. Verified by MD5 from here on |
+| 2026-09-30 | Thirty SECURITY DEFINER functions revoked from anon | The gate reads "is this person in p_actor's line" and the caller supplied p_actor. With a public key, the caller is anybody |
+| 2026-09-30 | Revokes name PUBLIC, not only anon and authenticated | anon inherits from PUBLIC, so the first draft revoked nothing and every statement still succeeded |

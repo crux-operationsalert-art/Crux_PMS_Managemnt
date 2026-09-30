@@ -10,6 +10,11 @@
 // the split between KPIs and Attributes, and the fortnight strip.
 //
 // shim.ts here is a byte copy of plb's, never a second opinion.
+//
+// DEPLOY WITH verify_jwt: false. The page sends the session token as
+// x-crux-token and NO Authorization header, so the default of true 401s
+// every request before it reaches a line of this file. That has already
+// happened twice on this project.
 // =====================================================================
 import { CORS, Req, Res, one } from "./shim.ts";
 
