@@ -105,4 +105,17 @@ jobs:
           git commit \
             -m "Publish the tool from app_page ($sum, $bytes bytes)" \
             -m "Built by .github/workflows/publish-tool.yml. Edit the application in app_page and re-run that workflow; index.html is overwritten, so a change made here by hand is lost at the next publish."
-          git push
+
+          # Same race as the one "Snapshot the schema" fixes, in the other
+          # direction. One push touching both build/app and build/migration
+          # starts both jobs, and whichever commits second is rejected. They
+          # write disjoint files -- index.html here, build/schema there -- so
+          # rebasing onto the other cannot conflict.
+          for try in 1 2 3 4 5; do
+            git push && exit 0
+            echo "push rejected, rebasing onto whatever landed first (attempt $try)"
+            git pull --rebase --autostash origin main
+            sleep $(( try * 3 ))
+          done
+          echo "Five pushes rejected. Something other than the sibling job is writing to main."
+          exit 1

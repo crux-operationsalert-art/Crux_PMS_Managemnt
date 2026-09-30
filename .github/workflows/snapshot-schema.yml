@@ -138,4 +138,21 @@ jobs:
             -m "Snapshot the schema ($files files, $bytes bytes)" \
             -m "Built by .github/workflows/snapshot-schema.yml from public.schema_snapshot(). Do not edit build/schema by hand; change the database with a migration and re-run this workflow." \
             -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
-          git push
+
+          # This job and "Publish the tool" both commit to main and each is
+          # serialised only against ITSELF, so a push that touches both a
+          # migration and build/app races the other job and loses. That is
+          # exactly how this run failed: the baseline was built correctly
+          # from the database and then thrown away by a rejected push.
+          #
+          # A rebase is always safe here because the two jobs write disjoint
+          # files -- this one only build/schema, that one only index.html --
+          # so there is nothing for a rebase to conflict over.
+          for try in 1 2 3 4 5; do
+            git push && exit 0
+            echo "push rejected, rebasing onto whatever landed first (attempt $try)"
+            git pull --rebase --autostash origin main
+            sleep $(( try * 3 ))
+          done
+          echo "Five pushes rejected. Something other than the sibling job is writing to main."
+          exit 1
