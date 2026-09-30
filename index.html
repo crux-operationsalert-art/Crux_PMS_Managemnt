@@ -2852,12 +2852,24 @@ function pfMonthName(s){
   return d.toLocaleString("en-GB", { month:"long", year:"numeric", timeZone:"UTC" });
 }
 
+/* The registry codes a measure's FAMILY after a middle dot in its unit --
+   "% of working days filed · EX2". The roll-up engine reads that code; a
+   person reading their own target must never see it. It is bookkeeping,
+   and showing it makes the target look like a machine error.
+
+   Stripped in one place so no caller can forget. */
+function pfUnit(u){
+  if (!u) return "";
+  var i = u.lastIndexOf("·");
+  return (i < 0 ? u : u.slice(0, i)).trim();
+}
+
 function pfNum(v, unit){
   if (v === null || v === undefined || v === "") return "—";
   var n = Number(v);
   if (!isFinite(n)) return esc(v);
   var s = Math.abs(n) >= 1000 ? n.toLocaleString("en-IN") : String(Math.round(n * 100) / 100);
-  return esc(s) + (unit ? ' <span class="mute">' + esc(unit) + '</span>' : '');
+  return esc(s) + (unit ? ' <span class="mute">' + esc(pfUnit(unit)) + '</span>' : '');
 }
 
 /* A bar is a claim about proportion, so it stops at 100 even when the
@@ -3022,7 +3034,7 @@ function pfChips(){
 
   function chip(v, label, sub){
     return '<div class="pfchip"><div class="pfchipv">' +
-      (v === null || v === undefined ? '—' : esc(pfNum(v))) + '</div>' +
+      (v === null || v === undefined ? '—' : pfNum(v)) + '</div>' +
       '<div class="pfchipl">' + label + '</div>' +
       (sub ? '<div class="pfchips">' + sub + '</div>' : '') + '</div>';
   }
@@ -3094,8 +3106,8 @@ function pfDaily(){
           esc(String(d.cadence || "").toLowerCase().replace(/_/g, " ")) +
           (d.setBy ? ' · set by ' + esc(d.setBy) : '') +
         '</div></td>' +
-      '<td>' + (d.target ? esc(pfNum(d.target, d.unit)) : '<span class="mute">no target</span>') + '</td>' +
-      '<td>' + esc(pfNum(m.value, m.unit)) + '</td>' +
+      '<td>' + (d.target ? pfNum(d.target, d.unit) : '<span class="mute">no target</span>') + '</td>' +
+      '<td>' + pfNum(m.value, m.unit) + '</td>' +
       '<td>' + pct + '</td>' +
       '<td><input class="pfin" data-pffile="' + esc(d.assignmentId) + '" type="number" step="any" ' +
         'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '"></td>' +
@@ -3203,7 +3215,7 @@ function pfAttributes(){
     '<p class="mute">Each is worth two points of the ten. The score itself is monthly, not ' +
     'per attribute: ' +
     (m && m.attr !== null && m.attr !== undefined
-      ? 'this month it is ' + esc(pfNum(m.attr)) + ' out of 10.'
+      ? 'this month it is ' + pfNum(m.attr) + ' out of 10.'
       : 'this month has not been scored yet.') +
     ' Every point cites a specific record — never an opinion.</p></div>';
 }
@@ -3322,18 +3334,18 @@ function pfHandover(){
     var st = pfStand(m.team, m.target, m.direction);
     return '<div class="pfhcard">' +
       '<h4>' + esc(m.name) + '</h4>' +
-      '<div class="u">' + esc(m.unit || "") + '</div>' +
+      '<div class="u">' + esc(pfUnit(m.unit)) + '</div>' +
       '<p class="pfhbig">' + (m.team === null || m.team === undefined
           ? '<span class="mute" style="font-size:15px">nothing filed</span>'
-          : esc(pfNum(m.team)) +
+          : pfNum(m.team) +
             '<em>' + (m.kind === "SUM" ? "team total" : "team average") + '</em>') + '</p>' +
       pfMeter(m.team, m.target, m.direction) +
       '<div class="pfspread">' +
         '<span><b>' + m.atOrAbove + '</b> of ' + m.people + ' met it</span>' +
         (m.best === null || m.best === undefined ? '' :
-          '<span>best <b>' + esc(pfNum(m.best)) + '</b></span>') +
+          '<span>best <b>' + pfNum(m.best) + '</b></span>') +
         (m.worst === null || m.worst === undefined ? '' :
-          '<span>lowest <b>' + esc(pfNum(m.worst)) + '</b></span>') +
+          '<span>lowest <b>' + pfNum(m.worst) + '</b></span>') +
       '</div></div>';
   }).join("");
 
@@ -3342,9 +3354,9 @@ function pfHandover(){
     var rows = !open ? "" : '<tr><td colspan="2"><div class="scroll"><table>' +
       (p.measures || []).map(function(m){
         return '<tr><td><b>' + esc(m.name) + '</b>' +
-          '<div class="mute">' + esc(m.unit || "") + '</div></td>' +
+          '<div class="mute">' + esc(pfUnit(m.unit)) + '</div></td>' +
           '<td>' + (m.value === null || m.value === undefined
-            ? '<span class="mute">nothing filed</span>' : esc(pfNum(m.value))) +
+            ? '<span class="mute">nothing filed</span>' : pfNum(m.value)) +
             '<div>' + pfMeter(m.value, m.target, m.direction) + '</div></td></tr>';
       }).join("") + '</table></div></td></tr>';
     return '<tr><td><b>' + esc(p.name) + '</b>' +
@@ -3427,19 +3439,21 @@ function pfTargets(){
     var open = PF.tgtFor === m.assignmentId;
     return '<tr>' +
       '<td><b>' + esc(m.name) + '</b>' +
-        '<div class="mute">' + esc(m.unit || "") +
+        '<div class="mute">' + esc(pfUnit(m.unit)) +
           (m.feeders ? ' · ' + m.feeders + ' below feed it' : ' · nothing feeds it') +
         '</div></td>' +
       '<td>' + (m.target === null || m.target === undefined
-                 ? '<span class="mute">none</span>' : esc(pfNum(m.target))) +
+                 ? '<span class="mute">none</span>' : pfNum(m.target)) +
         '<div class="mute">' + src + '</div></td>' +
       '<td>' + (m.value === null || m.value === undefined
-                 ? '<span class="mute">nothing filed</span>' : esc(pfNum(m.value))) +
+                 ? '<span class="mute">nothing filed</span>' : pfNum(m.value)) +
         (m.pct === null || m.pct === undefined ? '' :
           '<div class="mute">' + esc(m.pct) + '% of target</div>') + '</td>' +
+      /* "Set and divide" was wrong on a person's OWN row: they may divide
+         it, they may not set it. The verb now says which. */
       '<td class="plact">' + (m.feeders
         ? '<button class="btn" data-pftgt="' + esc(m.assignmentId) + '">' +
-            (open ? 'Hide' : 'Set and divide') + '</button>'
+            (open ? 'Hide' : 'Divide across my team') + '</button>'
         : '<span class="mute">nobody to divide it across</span>') + '</td>' +
       '</tr>' +
       (open ? '<tr><td colspan="4">' + pfTargetPanel() + '</td></tr>' : '');
@@ -3459,11 +3473,23 @@ function pfTargetPanel(){
   if (!t) return '<p class="mute">Loading&hellip;</p>';
   if (t.error) return msg("warn", t.reason || t.error);
 
+  /* Nobody sets their own target -- perf_may_set refuses rel 'self' for
+     everybody, administrators included. The box used to be drawn anyway,
+     so the screen invited an edit the server was always going to refuse
+     and made it look as though a person could score themselves.
+
+     What IS yours on your own measure is dividing it across your team,
+     which is the rest of this panel. */
+  var maySetThis = t.measure && (t.measure.rel === "manage" || t.measure.rel === "admin");
+
   var head = '<div class="pfsays">' + esc(t.note || "") + '</div>' +
-    '<p><label>Set this measure to ' +
-      '<input id="pftgtval" type="number" step="any" value="' +
-        esc(t.measure && t.measure.target !== null ? t.measure.target : "") + '"></label> ' +
-      '<button class="btn primary" id="pftgtsave">Set and divide</button></p>';
+    (maySetThis
+      ? '<p><label>Set this measure to ' +
+          '<input id="pftgtval" type="number" step="any" value="' +
+            esc(t.measure && t.measure.target !== null ? t.measure.target : "") + '"></label> ' +
+          '<button class="btn primary" id="pftgtsave">Set and divide</button></p>'
+      : '<p class="mute">This target is your manager&rsquo;s to set, not yours. ' +
+        'What is yours is how it divides across your team &mdash; below.</p>');
 
   if (!t.team || !t.team.length) {
     return head + '<div class="empty">Nothing climbs into this measure, so there is ' +
@@ -3476,7 +3502,7 @@ function pfTargetPanel(){
         (x.feeders ? '<div class="mute">' + x.feeders + ' below them</div>' : '') +
       '</td>' +
       '<td>' + (x.target === null || x.target === undefined
-                 ? '<span class="mute">none</span>' : esc(pfNum(x.target))) + '</td>' +
+                 ? '<span class="mute">none</span>' : pfNum(x.target)) + '</td>' +
       '<td>' + (x.pinned
                  ? '<span class="pfpin">pinned &mdash; a later divide leaves it alone</span>'
                  : '<span class="mute">a share</span>') + '</td>' +
