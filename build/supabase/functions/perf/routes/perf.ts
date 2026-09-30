@@ -423,6 +423,52 @@ r.post("/split", async (req: any, res: any) => {
 });
 
 // =====================================================================
+// The quarter is the promise and the months are its phasing (migration 232).
+//
+// A target used to be stored twice -- monthly on perf_assignment and
+// quarterly on plb_goal_kpi -- with nothing comparing the two. These three
+// routes are the whole of the repair, and they are deliberately separate
+// verbs rather than one "sync":
+//
+//   /agreement  reports where the two disagree, and changes nothing.
+//   /phase      makes the months add up to the quarter, leaving anything
+//               somebody typed by hand exactly where they typed it.
+//   /sheet/seed issues a first sheet by READING the months that exist,
+//               instead of asking whoever is at the keyboard to retype
+//               numbers that are already written down.
+// =====================================================================
+
+r.get("/agreement", async (req: any, res: any) => {
+  const sheet = req.query.get("sheet");
+  if (!sheet) return res.status(400).json({ error: "missing_sheet" });
+  const o = await one(`select plb_target_agreement($1,$2::uuid) as o`,
+    [req.person.id, sheet]);
+  return out(res, o.o);
+});
+
+// A write, and the one that can surprise somebody: it changes monthly
+// targets. What it will NOT change is a target whose source is MANUAL,
+// and the reply counts those as leftPinned so the caller can say so.
+r.post("/phase", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.sheetId) return res.status(400).json({ error: "missing_sheet" });
+  const o = await one(`select plb_phase_targets($1,$2::uuid) as o`,
+    [req.person.id, b.sheetId]);
+  return out(res, o.o);
+});
+
+r.post("/sheet/seed", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.personId) return res.status(400).json({ error: "missing_person" });
+  const o = await one(
+    `select plb_sheet_from_perf($1,$2::uuid,
+              coalesce($3::date, date_trunc('quarter', current_date)::date),
+              $4::numeric) as o`,
+    [req.person.id, b.personId, b.quarter || null, b.plbValue ?? null]);
+  return out(res, o.o);
+});
+
+// =====================================================================
 // A warning is a record; a PIP is a plan with dates (migration 233).
 //
 // Two different shapes on purpose. There is no route to edit a warning,
