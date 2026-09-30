@@ -143,6 +143,24 @@ else
   echo "   says so rather than staying quiet."
 fi
 
+# The quarterly scorecard shows the numbers behind somebody's bonus, and its
+# denominators are not visible in a screenshot: a mean over months that were
+# excluded, a ratio not capped where the scheme caps it, a band boundary off
+# by one. Those are arithmetic, so they are checked as arithmetic. It needs no
+# database -- it reads the block straight out of the screen file.
+echo
+echo "== the quarterly scorecard, in OKR shape"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/okr_check.mjs"; then
+    pass=$((pass + 22))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing okr"
+fi
+
 # The navigation and the database are two readers of one access policy. They
 # are meant to agree, and nothing but this makes them.
 echo

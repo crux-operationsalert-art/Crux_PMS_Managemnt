@@ -861,11 +861,144 @@ PATCHES.append((
       ".tmq td{padding:5px 8px 5px 0;vertical-align:middle}\n"
       ".tmerrs{margin:5px 0 0;padding-left:18px}\n"
       ".tmerrs li{margin:2px 0}\n"
+      # ============================ the quarterly scorecard, in OKR shape
+      # One band vocabulary for the whole card -- met / on track / at risk
+      # / off track -- and every use of it carries the word beside the
+      # colour, so the card reads the same in greyscale and to somebody who
+      # does not see red and green apart.
+      ".pbokr{padding-bottom:14px}\n"
+      ".pbokrh{display:flex;gap:18px;align-items:flex-start;\n"
+      "  justify-content:space-between;flex-wrap:wrap}\n"
+      ".pbokrh h2{margin:0}\n"
+      ".pbokrring{display:flex;flex-direction:column;align-items:center;gap:1px;\n"
+      "  font-size:11px;text-align:center}\n"
+      ".pbokrw{font-size:11.5px;font-weight:600;letter-spacing:.02em}\n"
+      ".pbokrw.good{color:var(--green)} .pbokrw.part{color:var(--blue)}\n"
+      ".pbokrw.risk{color:var(--gold-ink)} .pbokrw.short{color:var(--terra-ink)}\n"
+      ".pbokrw.none{color:var(--mute)}\n"
+      ".pbring .pbrtrack{stroke:var(--line2)}\n"
+      ".pbring .pbrval{stroke:var(--mute)}\n"
+      ".pbring.good .pbrval{stroke:var(--green)}\n"
+      ".pbring.part .pbrval{stroke:var(--blue)}\n"
+      ".pbring.risk .pbrval{stroke:var(--gold)}\n"
+      ".pbring.short .pbrval{stroke:var(--terra)}\n"
+      ".pbring .pbrtx{font:600 17px/1 inherit;fill:var(--ink)}\n"
+      # ------------------------------------------------- the four figures
+      ".pbstats{display:flex;flex-wrap:wrap;gap:9px;margin:13px 0 4px}\n"
+      ".pbstat{flex:1 1 138px;border:1px solid var(--line);border-radius:6px;\n"
+      "  padding:8px 11px 9px;background:var(--panel2)}\n"
+      ".pbstat span{display:block;font-size:10.5px;letter-spacing:.05em;\n"
+      "  text-transform:uppercase;color:var(--mute)}\n"
+      ".pbstat b{display:block;font-size:20px;line-height:1.25;color:var(--ink);\n"
+      "  font-variant-numeric:tabular-nums}\n"
+      ".pbstat b u{font-size:12px;font-weight:400;color:var(--mute);\n"
+      "  text-decoration:none}\n"
+      ".pbstat i{font-style:normal;font-size:11px;color:var(--mute)}\n"
+      ".pbstat.pbpay{border-color:var(--green);background:var(--green-bg)}\n"
+      ".pbstat.pbpay b{color:var(--green)}\n"
+      # ----------------------------------------------------- an objective
+      ".pbobj{margin-top:16px;border-top:1px solid var(--line);padding-top:11px}\n"
+      ".pbobjh{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}\n"
+      ".pbobjh h3{margin:0;font-size:15.5px;color:var(--ink);flex:1 1 auto}\n"
+      ".pbobjt{font-size:9.5px;letter-spacing:.09em;text-transform:uppercase;\n"
+      "  color:var(--mute);border:1px solid var(--line2);padding:1px 5px}\n"
+      ".pbobjs{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}\n"
+      ".pbobjs i{font-style:normal;font-size:11px;font-weight:400;\n"
+      "  letter-spacing:.03em;margin-left:3px}\n"
+      ".pbobjs.good{color:var(--green)} .pbobjs.part{color:var(--blue)}\n"
+      ".pbobjs.risk{color:var(--gold-ink)} .pbobjs.short{color:var(--terra-ink)}\n"
+      ".pbobjs.none{color:var(--mute)}\n"
+      # ---------------------------------------------------- a key result
+      ".pbkr{border:1px solid var(--line);border-radius:6px;padding:9px 12px 10px;\n"
+      "  margin-top:8px;background:var(--panel)}\n"
+      ".pbkrh{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}\n"
+      ".pbkrn{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;\n"
+      "  color:var(--mute);border:1px solid var(--line2);padding:1px 4px}\n"
+      ".pbkrname{font-weight:600;color:var(--ink);flex:1 1 auto;font-size:13.5px}\n"
+      ".pbkrw{font-size:11px;color:var(--mute)}\n"
+      ".pbkrs{font-size:14.5px;font-weight:600;font-variant-numeric:tabular-nums}\n"
+      ".pbkrs i{font-style:normal;font-size:10.5px;font-weight:400;margin-left:2px}\n"
+      ".pbkrs.good{color:var(--green)} .pbkrs.part{color:var(--blue)}\n"
+      ".pbkrs.risk{color:var(--gold-ink)} .pbkrs.short{color:var(--terra-ink)}\n"
+      ".pbkrs.none{color:var(--mute)}\n"
+      # The bar runs to 1.50 because that is where the scheme stops giving
+      # credit, and the mark at two thirds is the target -- without it a
+      # full-looking bar could mean 1.00 or 1.50.
+      ".pbkrbar{position:relative;height:7px;border-radius:4px;margin:7px 0 5px;\n"
+      "  background:var(--line3);overflow:hidden}\n"
+      ".pbkrbar i{display:block;height:100%;border-radius:4px;background:var(--mute)}\n"
+      ".pbkrbar u{position:absolute;top:-2px;bottom:-2px;left:66.6%;width:1px;\n"
+      "  background:var(--ink);opacity:.45}\n"
+      ".pbkrbar.good i{background:var(--green)}\n"
+      ".pbkrbar.part i{background:var(--blue)}\n"
+      ".pbkrbar.risk i{background:var(--gold)}\n"
+      ".pbkrbar.short i{background:var(--terra)}\n"
+      ".pbkrf{font-size:12.5px;color:var(--body)}\n"
+      # The three months, as check-ins rather than a row of numbers: the
+      # quarter is three promises, not one.
+      ".pbchk{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}\n"
+      ".pbchki{font-size:11px;padding:2px 6px;border:1px solid var(--line2);\n"
+      "  border-radius:3px;color:var(--mute);background:var(--panel2)}\n"
+      ".pbchki.on{color:var(--body);border-color:var(--line)}\n"
+      ".pbchki b{font-weight:600;color:var(--ink);margin-right:3px}\n"
+      ".pbokrf{margin-top:14px;font-size:11.5px}\n"
+      "@media (max-width:560px){\n"
+      "  .pbokrh{gap:10px}\n"
+      "  .pbstat{flex:1 1 100%}\n"
+      "}\n"
       "@media (max-width:560px){\n"
       "  .tmcard{width:150px}\n"
       "  .tmoc{font-size:12px}\n"
       "}\n"
       "</style>", 1)],
+))
+
+# =====================================================================
+# 13. The quarterly scorecard, in OKR shape.
+#
+# "I don't see the Quarterly score cards -- this should look like a score
+# card in OKR format." The data has been there all along: plb_sheet_for
+# returns every measure with its target, actual and ratio, the attributes
+# with their milestones, the months with their points, and the calc with
+# Achievement and the payout factor. What was missing was the SHAPE. A
+# seven-column table is a correct statement of a quarter and it is not a
+# scorecard; an objective with key results under it, each carrying one
+# number between 0 and 1, is.
+#
+# Nothing here computes anything twice. Objective 1's score is Achievement,
+# which the scheme worked out; each key result's score is that measure's
+# own ratio over a hundred. Objective 2 is the mean of the attribute points
+# across the months that were actually scored, said in those words, because
+# attributes are scored monthly and never quarterly and there is no other
+# honest reading of them as a quarter.
+#
+# The code is lifted from build/app/screen-plb.js between two markers
+# rather than written out again here. That screen is already inside
+# app_page, so an addition to it must be injected -- and a copy of the
+# addition living in this file would be a second place to fix a bug in.
+# =====================================================================
+_PLB_SRC = io.open("build/app/screen-plb.js", encoding="utf-8").read()
+_A = _PLB_SRC.index("/* OKR-SCORECARD-START")
+_B = _PLB_SRC.index("/* OKR-SCORECARD-END */")
+PLB_OKR = _PLB_SRC[_A:_B]
+if "function pbOkr(" not in PLB_OKR:
+    sys.exit("::error::the OKR markers in screen-plb.js no longer bracket pbOkr")
+
+PATCHES.append((
+    "the quarterly scorecard in OKR shape",
+    "function pbOkr(",
+    [
+        # The four functions go in immediately above the table they sit on
+        # top of, so somebody reading the file finds them next to each other.
+        ("function pbGoalSheet(s){",
+         PLB_OKR + "\nfunction pbGoalSheet(s){", 1),
+
+        # And the card is composed FIRST, because it is the answer and the
+        # tables under it are the working. A scorecard below its own
+        # evidence is not a scorecard.
+        ("(s ? pbGoalSheet(s) + pbMonthTable(s)",
+         "(s ? pbOkr(s) + pbGoalSheet(s) + pbMonthTable(s)", 1),
+    ],
 ))
 
 for name, sentinel, rules in PATCHES:

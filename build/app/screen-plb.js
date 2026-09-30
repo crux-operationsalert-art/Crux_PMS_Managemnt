@@ -87,6 +87,222 @@ function pbScheme(){
 }
 
 /* --------------------------------------------------------- the goal sheet */
+/* OKR-SCORECARD-START
+   -- Everything between this marker and OKR-SCORECARD-END is lifted
+   verbatim by .github/build-tool.py and patched into the page. The markers
+   exist so the code lives in ONE file: this screen is already inside
+   app_page, so an addition to it has to be injected, and a copy kept in
+   the build script to inject would be a second place to fix a bug in.
+
+   =====================================================================
+   The quarterly scorecard, in OKR shape.
+
+   Not a second calculation. Every number on this card is one the scheme
+   already computed and the table below already shows -- the same ratio,
+   the same achievement, the same monthly points. What changes is the
+   shape: an objective with key results under it, each key result carrying
+   one score between 0 and 1, which is how an OKR scorecard reads and is
+   not how a seven-column table reads.
+
+   Two objectives, because the scheme has exactly two halves and says so:
+   KPIs are what you deliver and carry all of Achievement; attributes are
+   how you work and carry none of it. Putting them under one heading would
+   be inventing a third thing.
+
+   The score on a key result is the scheme's own ratio divided by a
+   hundred. 1.00 is the target met. The scheme gives credit above that up
+   to 1.50 and no further, so the bar is drawn against 1.50 and the line
+   at target is marked -- a bar that fills at 1.00 and then stops moving
+   would hide the difference between meeting a target and beating it.   */
+
+function pbOkrBand(v){
+  if (v === null || v === undefined) return { c:"none", w:"not yet scored" };
+  if (v >= 1)    return { c:"good",  w:"met" };
+  if (v >= 0.7)  return { c:"part",  w:"on track" };
+  if (v >= 0.4)  return { c:"risk",  w:"at risk" };
+  return { c:"short", w:"off track" };
+}
+
+/* A ring rather than a bar for the one headline number, and a ring drawn
+   as an arc with a number in the middle of it -- the number is the thing
+   being read; the ring is only how far round it is. */
+function pbRing(pct, band){
+  var p = pct === null || pct === undefined ? 0 : Math.max(0, Math.min(100, pct));
+  var r = 34, c = 2 * Math.PI * r;
+  return '<svg class="pbring ' + band.c + '" viewBox="0 0 80 80" width="80" height="80" ' +
+      'role="img" aria-label="' + esc(pct === null || pct === undefined ? "not yet scored"
+        : Math.round(pct) + " per cent, " + band.w) + '">' +
+    '<circle class="pbrtrack" cx="40" cy="40" r="' + r + '" fill="none" stroke-width="7"/>' +
+    '<circle class="pbrval" cx="40" cy="40" r="' + r + '" fill="none" stroke-width="7" ' +
+      'stroke-linecap="round" transform="rotate(-90 40 40)" ' +
+      'stroke-dasharray="' + (c * p / 100).toFixed(1) + ' ' + c.toFixed(1) + '"/>' +
+    '<text class="pbrtx" x="40" y="45" text-anchor="middle">' +
+      (pct === null || pct === undefined ? '&ndash;' : Math.round(pct) + '%') + '</text>' +
+    '</svg>';
+}
+
+/* One key result. The bar runs to 1.50 because that is where the scheme
+   stops counting, and the target line is drawn at two thirds of it. */
+function pbKr(n, name, unit, score, left, right, weight, checks){
+  var b = pbOkrBand(score);
+  var w = score === null || score === undefined ? 0
+        : Math.max(1.5, Math.min(100, (score / 1.5) * 100));
+  return '<div class="pbkr">' +
+    '<div class="pbkrh">' +
+      '<span class="pbkrn">KR' + n + '</span>' +
+      '<span class="pbkrname">' + esc(name) + '</span>' +
+      (weight ? '<span class="pbkrw">weight ' + pbNum(weight, 0) + '%</span>' : '') +
+      '<span class="pbkrs ' + b.c + '">' +
+        (score === null || score === undefined ? '&ndash;' : score.toFixed(2)) +
+        ' <i>' + esc(b.w) + '</i></span>' +
+    '</div>' +
+    '<div class="pbkrbar ' + b.c + '"><i style="width:' + w.toFixed(1) + '%"></i>' +
+      '<u title="target"></u></div>' +
+    '<div class="pbkrf">' + esc(left) +
+      (right ? ' <span class="mute">&middot; ' + esc(right) : '') +
+      (unit ? ' <span class="mute">' + esc(unit) + '</span>' : '') +
+      (right ? '</span>' : '') + '</div>' +
+    (checks && checks.length
+      ? '<div class="pbchk">' + checks.map(function(c){
+          return '<span class="pbchki' + (c.done ? ' on' : '') + '">' +
+            '<b>' + esc(c.when) + '</b> ' + esc(c.what) + '</span>';
+        }).join("") + '</div>'
+      : '') +
+    '</div>';
+}
+
+function pbOkr(s){
+  var c = s.calc || {}, kpis = s.kpis || [], attrs = s.attributes || [];
+  var months = (s.months || []).filter(function(m){ return !m.excluded; });
+  var mn = pbMonths(s.quarter);
+
+  /* Objective 1's score is Achievement, which the scheme already worked
+     out as the weighted ratio across every measure. Recomputing it here
+     from the same rows would be a second opinion about a number that is
+     not in doubt. */
+  var o1 = c.achievement === null || c.achievement === undefined
+         ? null : Number(c.achievement) / 100;
+
+  /* Objective 2 has no single figure in the scheme, because attributes
+     are scored monthly and never quarterly. The mean of the months that
+     were scored is the honest reading of it, and it says how many months
+     that is rather than presenting one month as a quarter. */
+  var ap = months.filter(function(m){ return m.attrPoints !== null && m.attrPoints !== undefined; });
+  var o2 = ap.length
+    ? ap.reduce(function(a, m){ return a + Number(m.attrPoints); }, 0) / ap.length / 10
+    : null;
+
+  var b1 = pbOkrBand(o1), b2 = pbOkrBand(o2);
+  var hb = pbOkrBand(o1);
+
+  var krs = kpis.map(function(k, i){
+    var sc = k.ratio === null || k.ratio === undefined
+           ? null : Math.min(Number(k.ratio) / 100, 1.5);
+    var split = k.split || [];
+    /* The monthly split IS the check-in cadence: the quarter divided into
+       three promises rather than one. Where phasing has written a share,
+       it is shown as the month's own number. */
+    var checks = mn.map(function(iso, j){
+      return { when: pbMonthName(iso).slice(0, 3),
+               what: split[j] === null || split[j] === undefined
+                     ? "not phased" : pbNum(split[j]),
+               done: split[j] !== null && split[j] !== undefined };
+    });
+    return pbKr(i + 1, k.name, k.unit, sc,
+      pbNum(k.actual) + " of " + pbNum(k.target),
+      k.ratio === null ? "no actual yet" : pbNum(k.ratio, 1) + "% of target",
+      k.weight, checks);
+  }).join("");
+
+  var akrs = attrs.map(function(a, i){
+    var ms = a.milestones || [];
+    var checks = mn.map(function(iso, j){
+      return { when: pbMonthName(iso).slice(0, 3),
+               what: ms[j] || (a.fixed ? "as published" : "not set"),
+               done: !!ms[j] || a.fixed };
+    });
+    /* An attribute has no ratio of its own -- only the month's points,
+       which cover all five together. So no per-attribute score is shown
+       rather than one invented by dividing something by five. */
+    var b = a.fixed ? { c:"none", w:"same for everyone" }
+          : a.state === "APPROVED" ? { c:"good", w:"approved" }
+          : a.proposal ? { c:"part", w:"waiting on your manager" }
+          : { c:"risk", w:"you propose this" };
+    return '<div class="pbkr">' +
+      '<div class="pbkrh">' +
+        '<span class="pbkrn">' + esc((a.unit || "").split(" ")[0] || ("A" + (i + 1))) + '</span>' +
+        '<span class="pbkrname">' + esc(a.proposal || a.name) + '</span>' +
+        '<span class="pbkrs ' + b.c + '"><i>' + esc(b.w) + '</i></span>' +
+      '</div>' +
+      (a.proposal && a.name !== a.proposal
+        ? '<div class="pbkrf mute">' + esc(a.name) + '</div>' : '') +
+      '<div class="pbchk">' + checks.map(function(x){
+        return '<span class="pbchki' + (x.done ? ' on' : '') + '">' +
+          '<b>' + esc(x.when) + '</b> ' + esc(x.what) + '</span>';
+      }).join("") + '</div>' +
+      '</div>';
+  }).join("");
+
+  return '<div class="card pbokr">' +
+    '<div class="pbokrh">' +
+      '<div>' +
+        '<h2>Quarterly scorecard</h2>' +
+        '<p class="plsub">' + esc(s.person || "") +
+          (s.chair ? ' &middot; ' + esc(s.chair) : '') +
+          ' &middot; ' + esc(pbQuarterName(s.quarter)) +
+          ' &middot; ' + esc((s.status || "").toLowerCase()) + '</p>' +
+      '</div>' +
+      '<div class="pbokrring">' + pbRing(c.achievement, hb) +
+        '<span class="pbokrw ' + hb.c + '">' + esc(hb.w) + '</span>' +
+        '<span class="mute">Achievement</span></div>' +
+    '</div>' +
+
+    '<div class="pbstats">' +
+      '<div class="pbstat"><span>Payout factor</span><b>' + pbNum(c.payoutFactor, 1) + '%</b>' +
+        '<i>what Achievement converts to</i></div>' +
+      '<div class="pbstat"><span>Monthly mean</span><b>' + pbNum(c.monthlyMean, 2) + '<u>/10</u></b>' +
+        '<i>' + esc(months.length) + ' month' + (months.length === 1 ? '' : 's') +
+        ' counted</i></div>' +
+      '<div class="pbstat"><span>Consistency</span><b>' + pbNum(c.consistency, 3) + '</b>' +
+        '<i>steady beats spiky</i></div>' +
+      '<div class="pbstat pbpay"><span>Bonus as it stands</span><b>' +
+        pbMoney(c.amount) + '</b><i>of ' + pbMoney(s.targetPlb) + ' target</i></div>' +
+    '</div>' +
+
+    '<div class="pbobj">' +
+      '<div class="pbobjh"><span class="pbobjt">Objective 1</span>' +
+        '<h3>Deliver the quarter</h3>' +
+        '<span class="pbobjs ' + b1.c + '">' +
+          (o1 === null ? '&ndash;' : o1.toFixed(2)) + ' <i>' + esc(b1.w) + '</i></span></div>' +
+      '<p class="mute">The measures of your chair. 75% of each monthly score, and ' +
+        'all of Achievement. 1.00 is the target met; the scheme counts up to 1.50 ' +
+        'and no further.</p>' +
+      (krs || '<p class="mute">No measures are on this sheet.</p>') +
+    '</div>' +
+
+    '<div class="pbobj">' +
+      '<div class="pbobjh"><span class="pbobjt">Objective 2</span>' +
+        '<h3>Work the way the scheme asks</h3>' +
+        '<span class="pbobjs ' + b2.c + '">' +
+          (o2 === null ? '&ndash;' : o2.toFixed(2)) + ' <i>' + esc(b2.w) + '</i></span></div>' +
+      '<p class="mute">The five attributes. 25% of each monthly score and none of ' +
+        'Achievement, so they change how you are scored and never what you are paid ' +
+        'for delivering. ' +
+        (ap.length
+          ? 'The figure is the mean of ' + esc(ap.length) + ' scored month' +
+            (ap.length === 1 ? '' : 's') + ' out of ten &mdash; attributes are scored ' +
+            'monthly and never quarterly, so there is no other honest reading.'
+          : 'No month has been scored yet, so there is no figure.') + '</p>' +
+      (akrs || '<p class="mute">No attributes are on this sheet.</p>') +
+    '</div>' +
+
+    '<p class="mute pbokrf">Every number here is the scheme&rsquo;s own &mdash; the same ' +
+      'ratio, the same Achievement, the same monthly points as the tables below. ' +
+      'Nothing on this card is computed a second way.</p>' +
+    '</div>';
+}
+/* OKR-SCORECARD-END */
+
 function pbGoalSheet(s){
   var kpis = s.kpis || [], attrs = s.attributes || [];
   var rows = kpis.map(function(k, i){
@@ -615,7 +831,7 @@ function pbRender(){
     '</div><div><select id="pbq">' + qs.join("") + '</select></div></div>' +
     '<div id="pbmsg"></div>' +
     pbScheme() +
-    (s ? pbGoalSheet(s) + pbMonthTable(s) + pbResult(s) + pbDisputes(s, true)
+    (s ? pbOkr(s) + pbGoalSheet(s) + pbMonthTable(s) + pbResult(s) + pbDisputes(s, true)
        : '<div class="card"><h2>Your goal sheet</h2>' +
          (d.inScheme
            ? '<div class="empty">No goal sheet has been issued to you for ' +
