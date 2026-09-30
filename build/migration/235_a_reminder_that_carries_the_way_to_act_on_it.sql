@@ -1,5 +1,9 @@
 -- A reminder that carries the way to act on it (235)
 --
+-- Applied live 2026-09-30 and verified by hashing each function against this
+-- file, which is the only check worth making: an apply that returns success
+-- is not evidence the database holds what the file says.
+--
 -- "The emails that have got triggered are good but should have hyperlinks in
 -- front of the activities for them to action those."
 --
