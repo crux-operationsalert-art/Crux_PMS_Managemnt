@@ -93,8 +93,8 @@ PLB figures the scheme already carries. Replacing the client-facing systems.
 | D8 | Who sees what, measured | `docs/WHO-SEES-WHAT.md` |
 | D9 | The service account is not an employee | 243 live, **245 pending** |
 | D10 | A manager can find and use target-setting | shipped |
-| D11 | **The PMS is usable every day of the month** | **open — §8** |
-| D12 | **Acting as somebody else is really being them** | **open — §8** |
+| D11 | The PMS is usable every day of the month | screen shipped; **246 pending** |
+| D12 | Acting as somebody else is really being them | shipped |
 
 ## 7. Methodology
 
@@ -103,7 +103,19 @@ The same loop every time, and it is not negotiable:
 1. **Measure first.** Never diagnose from the source alone. The claim
    "most of the buttons in PMS are not working" was settled by loading the
    published page in Chromium, signing a manager in against stubs, and
-   pressing every control — not by reading `pfWire`.
+   pressing every control — not by reading `pfWire`. That instrument is in
+   the repository as `build/test/page_probe.mjs`, so it can be run again:
+
+   ```
+   npm i playwright
+   git show origin/main:index.html > /tmp/published.html
+   node build/test/page_probe.mjs /tmp/published.html
+   SHUT=1 node build/test/page_probe.mjs /tmp/published.html
+   AS_HR=1 SHUT=1 node build/test/page_probe.mjs /tmp/published.html
+   ```
+
+   It is deliberately not in `run.sh`: it needs a browser and a copy of the
+   published page, and the suite has to run anywhere.
 2. **Write the migration with a guard that fails loudly.** Every migration
    in `build/migration/` asserts its own invariant at the end and raises if
    it does not hold.
@@ -204,7 +216,7 @@ committed.
 | O1 | Apply `build/migration/245_the_service_account_has_no_line_above_it_and_none_below.sql` | Until it lands the People upload template still carries the service account (104 rows, one of them the account), so the next upload puts it back as an employee. |
 | O2 | Redeploy the **plb** edge function, `verify_jwt: false` | HR is still handed 103 rows each with a Set-targets button that `perf_may_set` refuses; administrators are still offered the service account. |
 | O3 | Redeploy the **ops** edge function, `verify_jwt: false` | `/hr/overview` still counts the service account as an employee. |
-| O4 | Apply `build/migration/246_*` and redeploy **perf** | The P1 fix in §8. |
+| O4 | Apply `build/migration/246_the_month_can_be_reopened_and_a_measure_taken_back.sql` and redeploy **perf** | The database half of the P1 fix. The screen half is already published: the KPI controls now explain instead of refusing. Until 246 lands, `perf_assign_remove` is still missing (Remove returns SQLSTATE 42883) and nobody can reopen a shut month. |
 
 **`verify_jwt` must be false on every one of these.** The page sends
 `x-crux-token` and no `Authorization` header; leaving it true 401s every
@@ -258,19 +270,30 @@ request before a line of the function runs. It has happened twice.
 
 ## 15. Status and next actions
 
-**Done and live**: items #1–#39 and #43–#53 on the task list. 243 and 244 are
-applied; the `perf` edge function is at v8 with `/team/people`; the page is
-published and deployed.
+**Done and live.** Items #1–#39 and #43–#53. Migrations 243 and 244 are
+applied. The `perf` edge function is at v8 with `/team/people`. The page is
+published and deployed, and carries:
 
-**Next, in order**:
+- the flat **All people** list for the administrator and HR;
+- the manager's "whose targets are yours to set" band;
+- the **window-aware KPI controls** — where the clock refuses, the reason
+  stands in the control's place, with the date, and HR and administrators
+  get a "Reopen it" control;
+- **`forgetScreens()`**, so acting as somebody else no longer shows them the
+  administrator's team, chart and goal sheet.
 
-1. Migration 246 — `perf_assign_remove` (withdraw-only) and
-   `perf_cycle_extend`. §8.
-2. The Performance screen reads `assign_open`: explain instead of offer, and
-   give HR and administrators the extension control. §8.
-3. `start()` forgets every screen's state, with a check that the list cannot
-   go stale. §9.
-4. Suite, publish, and the owner applies O1–O4. §10.
+**Written, tested against the baseline, committed — waiting on the owner.**
+Everything in §10. The MCP approval gate in this session closed partway
+through and could not be answered from here; it refused `apply_migration`,
+`deploy_edge_function` and eventually `execute_sql` alike, so this is a
+limitation of the session and not of the work.
+
+Until O4 lands, two things on the live tool behave as follows and the screen
+is honest about both: **Remove** on a measure returns a message saying a
+migration has not been applied yet (`pfSaid` catches SQLSTATE 42883 by
+name), and **Reopen it** returns "the service does not have the route yet"
+until `perf` is redeployed.
 
 **Then**: #40 (raise an escalation about a person), #41 (merge the duplicate
-tiles), #42 (what a zero target means, and the direction defect).
+tiles), #42 (what a zero target means, and the `plb_compute` direction
+defect — Q2 and Q3).
