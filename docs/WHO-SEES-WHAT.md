@@ -3,7 +3,7 @@
 "Data leakage, on few tabs people are able to see the data of others, or
 full list of data creating confusion."
 
-Measured against the live database on 2026-10-06, after migrations 239-242.
+Measured against the live database on 2026-10-06, after migrations 239-245.
 The short answer is that there is no permission leak, and that the two
 things which looked like one are a data problem and a screen problem.
 
@@ -116,6 +116,60 @@ route returns a list of people without a gate in front of it.
 
 ---
 
+## All people, and why it is not a leak (migration 244)
+
+There is now one screen that deliberately shows every member of staff:
+**All people**, the second tab on My team & structure. It is the
+administrator's and Human Resources', on the same test the rest of the tool
+already applies to those two — `/access` uses `isAdmin or level = 'hr'`,
+`person_add` is HR's, and `org_move_person`'s own first question is
+`app_role = 'ADMIN' or department = 'Human Resources'`. Everybody else gets
+`{mayUse:false}` and a sentence saying their team is the chart.
+
+It exists because a chart cannot draw an absence. Measured the day it was
+built: of 103 staff, 3 have no manager, 2 hold no chair, 49 have no
+designation and 13 have no location — and not one of those facts is visible
+in a drawing of who reports to whom.
+
+**It widens nothing about performance.** `org_people_table` returns a name,
+an employee number, a designation, a chair, a place and a manager. It does
+not touch `perf_rel`, `perf_may_set` or `perf_line`, and 241 still stands:
+HR may not set a named person's KPIs or targets. `test_people.sql` asserts
+that as its last pair of checks, by asking `perf_may_set` for every person
+outside HR's own line.
+
+## Who is not in any of these lists (migrations 243 and 245)
+
+Two kinds of row in `person` are not somebody who works here:
+
+| | |
+|---|---|
+| `CLIENT_CONTACT` | the 531 bank contacts migration 238 took out |
+| `SERVICE_ACCOUNT` | operations.alert@cruxindia.co.in, which administers the tool |
+
+The service account keeps ADMIN and keeps signing in — `auth_login`,
+`auth_whoami` and `perf_rel`'s administrator branch read `app_role` and
+never `employee_type`. What it loses is being a person: the headcount, the
+org chart, the people pickers, the measure-setting lists and the People
+upload template.
+
+243 widened the thirteen functions that already carried the contact
+predicate. 245 closed the two it could not reach:
+
+- `is_staff` is a **second** staff test — employee number, OR our own
+  e-mail domain, OR a chair — and the domain arm said yes, so the People
+  upload template carried the service account and the next upload would have
+  put it back.
+- `org_subtree`, `app_subtree`, `org_team_tree`'s report count and
+  `perf_reminder_sweep` have **no** `employee_type` test at all. Rather than
+  write the predicate a fifth time, the rule is kept by the table: the check
+  constraint `person_service_account_reports_to_nobody` and the trigger
+  `person_manager_is_not_a_service_account` make the reporting line
+  structurally free of service accounts in both directions, so a walker
+  written next year is covered without being told.
+
+---
+
 ## Re-measuring
 
 ```sql
@@ -142,4 +196,26 @@ select p.full_name from person p
  where p.employment_status='ACTIVE' and p.superseded_by is null
    and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
    and p.manager_id is null;
+
+-- the gaps All people exists to find, as one row
+select (o->'summary') as gaps
+  from (select org_people_table(
+          (select id from person
+            where app_role='ADMIN' and employment_status='ACTIVE'
+              and superseded_by is null limit 1)) as o) t;
+
+-- the service account is out of the staff list by BOTH staff tests,
+-- out of the upload template, and still an administrator over everybody
+with a as (select id, full_name from person
+            where lower(work_email)='operations.alert@cruxindia.co.in')
+select (select full_name from a) as who,
+       is_staff((select id from a))        as is_staff_says,
+       person_is_staff((select id from a)) as person_is_staff_says,
+       (select count(*) from upload_seed('People') t
+         where t::text ilike '%operations.alert%') as rows_in_template,
+       (select count(*) from person p
+         where p.employment_status='ACTIVE' and p.superseded_by is null
+           and p.id <> (select id from a)
+           and perf_rel((select id from a), p.id) is distinct from 'admin')
+         as people_it_is_not_admin_over;
 ```
