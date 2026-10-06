@@ -3333,7 +3333,7 @@ begin
              order by q.full_name)
       from person q
      where q.employment_status = 'ACTIVE' and q.superseded_by is null
-       and coalesce(q.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+       and coalesce(q.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
        and q.id <> p_under
        and coalesce(q.manager_id, '00000000-0000-0000-0000-000000000000'::uuid) <> p_under
        and q.id <> p_actor
@@ -3635,6 +3635,152 @@ begin
             coalesce(m.full_name, 'nobody') || '. Who can see whose numbers '
             'changed with them.');
 end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_people_table(p_actor uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a person;
+  v_may boolean;
+  v_rows jsonb;
+  v_sum jsonb;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+
+  -- The same question org_move_person asks, in the same words (migration
+  -- 242's lesson). If this ever diverges, the table will offer a move the
+  -- move itself refuses.
+  v_may := a.app_role = 'ADMIN' or coalesce(a.department,'') = 'Human Resources';
+
+  if not v_may then
+    return jsonb_build_object(
+      'mayUse', false,
+      'reason', 'This list is every person in the company, so it is the '
+             || 'administrator''s and Human Resources''. Your own team is '
+             || 'the chart above.');
+  end if;
+
+  with staff as (
+    -- Not every row in `person` is somebody who works here: the client-bank
+    -- contacts (238) and the account the tool is administered from (243).
+    -- Written the same way the thirteen functions 243 swept write it.
+    select p.* from person p
+     where p.employment_status = 'ACTIVE' and p.superseded_by is null
+       and coalesce(p.employee_type,'EMPLOYEE')
+           not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
+  ), seat as (
+    -- The primary chair, and the seating that chair was placed in. One row
+    -- per person: somebody can hold two chairs and the table has one line.
+    select distinct on (h.person_id)
+           h.person_id, ch.title as chair, cs.scope_label
+      from chair_holder h
+      join chair ch on ch.id = h.chair_id
+      left join chair_seating cs on cs.id = h.seating_id
+     where h.to_date is null
+     order by h.person_id, h.is_primary desc nulls last, ch.title
+  ), cov as (
+    -- Where somebody is, when the chair does not say. The coverage rules
+    -- carry an operating node either directly or through the branch, and
+    -- its name is a place ("Mumbai", "JHARKHAND (Firoz+ Crux)"). It is a
+    -- rougher answer than the chair's and it is labelled as such on screen,
+    -- because a rough answer presented as an exact one is worse than a gap.
+    select distinct on (cr.person_id) cr.person_id, o.name as place
+      from coverage_rule cr
+      join op_node o on o.id = coalesce(cr.op_node_id,
+             (select b.op_node_id from branch b where b.id = cr.branch_id))
+     where cr.effective_to is null
+     order by cr.person_id, o.name
+  ), rep as (
+    select manager_id as id, count(*)::int as n
+      from staff where manager_id is not null group by 1
+  ), flat as (
+    select s.full_name,
+           jsonb_build_object(
+             'personId',    s.id,
+             'name',        s.full_name,
+             'employeeNo',  s.employee_no,
+             'workEmail',   s.work_email,
+             'mobile',      s.mobile,
+             'designation', d.title,
+             'department',  s.department,
+             'chair',       seat.chair,
+             'location',    coalesce(seat.scope_label, cov.place),
+             -- Which of the two answered, so the screen can say so rather
+             -- than let a coverage area pass for a posting.
+             'locationFrom', case
+               when seat.scope_label is not null then 'chair'
+               when cov.place is not null then 'coverage'
+               else null end,
+             'managerId',   s.manager_id,
+             'reportsTo',   m.full_name,
+             'reports',     coalesce(rep.n, 0),
+             'employeeType', coalesce(s.employee_type,'EMPLOYEE'),
+             'appRole',     s.app_role,
+             'joinedOn',    s.joined_on,
+             -- Nobody may be moved under themselves, and the actor may not
+             -- move themselves at all. Every other refusal org_move_person
+             -- makes is about a loop, which the screen works out from the
+             -- managerId column it already has.
+             'mayMove',     s.id <> p_actor
+           ) as line
+      from staff s
+      left join designation d on d.id = s.designation_id
+      left join seat on seat.person_id = s.id
+      left join cov  on cov.person_id  = s.id
+      left join person m on m.id = s.manager_id
+      left join rep on rep.id = s.id
+  )
+  select jsonb_agg(line order by full_name) into v_rows from flat;
+
+  -- The counts the chart cannot show. Each is a filter on the screen, so
+  -- the number and the list behind it are the same question asked twice.
+  select jsonb_build_object(
+           'people',        count(*)::int,
+           'noManager',     count(*) filter (where s.manager_id is null)::int,
+           'noChair',       count(*) filter (where seat.person_id is null)::int,
+           'noDesignation', count(*) filter (where s.designation_id is null)::int,
+           'noDepartment',  count(*) filter (where s.department is null)::int,
+           'noLocation',    count(*) filter
+             (where seat.scope_label is null and cov.person_id is null)::int)
+    into v_sum
+    from person s
+    left join (select distinct on (h.person_id) h.person_id, cs.scope_label
+                 from chair_holder h
+                 join chair ch on ch.id = h.chair_id
+                 left join chair_seating cs on cs.id = h.seating_id
+                where h.to_date is null
+                order by h.person_id, h.is_primary desc nulls last, ch.title) seat
+      on seat.person_id = s.id
+    left join (select distinct on (cr.person_id) cr.person_id
+                 from coverage_rule cr
+                 join op_node o on o.id = coalesce(cr.op_node_id,
+                        (select b.op_node_id from branch b where b.id = cr.branch_id))
+                where cr.effective_to is null
+                order by cr.person_id) cov
+      on cov.person_id = s.id
+   where s.employment_status = 'ACTIVE' and s.superseded_by is null
+     and coalesce(s.employee_type,'EMPLOYEE')
+         not in ('CLIENT_CONTACT','SERVICE_ACCOUNT');
+
+  return jsonb_build_object(
+    'mayUse',  true,
+    'asAdministrator', a.app_role = 'ADMIN',
+    'asHumanResources', coalesce(a.department,'') = 'Human Resources',
+    'people',  coalesce(v_rows, '[]'::jsonb),
+    'summary', v_sum,
+    'note',    'Everybody who works here, whether or not the chart can draw '
+            || 'them. Changing who somebody reports to is recorded and '
+            || 'changes who can read their numbers.');
+end
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.org_place_holder(p_actor uuid, p_holder uuid, p_seating uuid)

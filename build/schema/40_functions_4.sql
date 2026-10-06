@@ -1095,7 +1095,7 @@ begin
     select distinct pe.id as person_id, pe.full_name
       from person pe
      where pe.employment_status = 'ACTIVE' and pe.superseded_by is null
-       and coalesce(pe.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+       and coalesce(pe.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
        and (
             (p_in ? 'people'
                and pe.id in (select (jsonb_array_elements_text(p_in->'people'))::uuid))
@@ -4048,7 +4048,7 @@ AS $function$
     -- at a time, never through a broadcast to everybody with a number.
     'reachable', (select count(*) from person
                    where superseded_by is null and mobile is not null
-                     and coalesce(employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'),
+                     and coalesce(employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')),
     'contactsNotCounted', (select count(*) from person
                             where superseded_by is null and mobile is not null
                               and employee_type = 'CLIENT_CONTACT'),

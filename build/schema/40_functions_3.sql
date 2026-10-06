@@ -571,7 +571,7 @@ AS $function$
   select w.pid, min(w.d)::int
     from walk w join person p on p.id = w.pid
    where p.employment_status = 'ACTIVE' and p.superseded_by is null
-     and coalesce(p.employee_type, 'EMPLOYEE') <> 'CLIENT_CONTACT'
+     and coalesce(p.employee_type, 'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
      and w.pid <> p_actor
    group by w.pid
 $function$
@@ -971,7 +971,7 @@ begin
       join kpi_definition k on k.chair_id = ch.id and k.active and k.position < 100
      where h.to_date is null
        and pe.employment_status = 'ACTIVE' and pe.superseded_by is null
-       and coalesce(pe.employee_type, 'EMPLOYEE') <> 'CLIENT_CONTACT'
+       and coalesce(pe.employee_type, 'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
        and h.id = (select h2.id from chair_holder h2
                     where h2.person_id = pe.id and h2.to_date is null
                     order by h2.is_primary desc nulls last, h2.id limit 1)
@@ -1033,7 +1033,7 @@ begin
         left join chair_holder h on h.person_id = pe.id and h.to_date is null
         left join chair ch on ch.id = h.chair_id
        where pe.employment_status = 'ACTIVE' and pe.superseded_by is null
-         and coalesce(pe.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+         and coalesce(pe.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
          and not exists (select 1 from perf_assignment a
                           where a.cycle_id = c.id and a.person_id = pe.id)
          and exists (select 1 from chair_holder h3
@@ -1875,7 +1875,7 @@ AS $function$
     select p.*, lower(regexp_replace(p.full_name, '[^a-zA-Z]', '', 'g')) as key
       from person p
      where p.superseded_by is null and p.employment_status = 'ACTIVE'
-       and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+       and coalesce(p.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
        and length(regexp_replace(p.full_name, '[^a-zA-Z]', '', 'g')) >= 4),
   dup as (select key from live group by key having count(*) > 1),
   side as (
@@ -1931,7 +1931,7 @@ AS $function$
     select 1 from person p
      where p.id = p_person
        and p.superseded_by is null
-       and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT')
+       and coalesce(p.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT'))
 $function$
 ;
 
@@ -2347,7 +2347,7 @@ AS $function$
         order by q.full_name)
       from person q
      where q.superseded_by is null and q.employment_status = 'ACTIVE'
-       and coalesce(q.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'), '[]'::jsonb),
+       and coalesce(q.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')), '[]'::jsonb),
     'designations', coalesce((select jsonb_agg(jsonb_build_object('id', d.id, 'title', d.title)
         order by d.seniority, d.title) from designation d), '[]'::jsonb),
     'departments', coalesce((select jsonb_agg(distinct btrim(q.department))
@@ -2927,7 +2927,7 @@ AS $function$
       select 1 from audit_entry a where a.actor_id = p.id) as acct) z
    where p.superseded_by is null and p.employment_status = 'ACTIVE'
      and p.employee_no is null
-     and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+     and coalesce(p.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
   ) t;
 $function$
 ;

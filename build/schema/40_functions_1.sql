@@ -73,7 +73,7 @@ begin
   if n > 0 then
     select count(*) into n from person p
      where p.employment_status = 'ACTIVE' and p.superseded_by is null
-       and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+       and coalesce(p.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
        and access_may_open(p.id, 'rates');
     perform ops_alert_raise(
       'ACCESS_POLICY',
@@ -483,7 +483,7 @@ begin
              order by p.full_name)
         from person p
        where p.superseded_by is null and p.employment_status = 'ACTIVE'
-         and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'), '[]'::jsonb),
+         and coalesce(p.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')), '[]'::jsonb),
     'chairs', coalesce((
       select jsonb_agg(jsonb_build_object(
                'chairId', ch.id, 'chair', ch.title, 'code', ch.code,
@@ -1864,7 +1864,7 @@ AS $function$
       from person p
      where p.superseded_by is null
        and p.employment_status = 'ACTIVE'
-       and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'),
+       and coalesce(p.employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')),
   measured as (
     select distinct h.person_id
       from chair_holder h
@@ -2176,7 +2176,7 @@ AS $function$
     from person p
    where p.employment_status = 'ACTIVE'
      and p.superseded_by is null
-     and coalesce(p.employee_type, 'EMPLOYEE') <> 'CLIENT_CONTACT'
+     and coalesce(p.employee_type, 'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
      and p.id <> p_actor
      and (exists (select 1 from person a
                    where a.id = p_actor and a.app_role = 'ADMIN'

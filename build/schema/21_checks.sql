@@ -71,7 +71,7 @@ alter table public.perf_cycle add constraint perf_cycle_period_kind_check CHECK 
 alter table public.perf_cycle add constraint perf_cycle_state_check CHECK ((state = ANY (ARRAY['OPEN'::text, 'ASSIGNED'::text, 'ENTRY'::text, 'SCORING'::text, 'CLOSED'::text])));
 alter table public.person add constraint person_email_shape CHECK (((work_email IS NULL) OR (work_email ~ '^[^@[:space:]]+@[^@[:space:]]+\.[a-zA-Z]{2,}$'::text)));
 alter table public.person add constraint person_employee_no_shape CHECK (((employee_no IS NULL) OR (btrim(employee_no) ~ '^[A-Za-z0-9][A-Za-z0-9/_-]{0,19}$'::text)));
-alter table public.person add constraint person_employee_type_check CHECK ((employee_type = ANY (ARRAY['EMPLOYEE'::text, 'PARTNER'::text, 'INTERN'::text, 'CONTRACT'::text, 'CLIENT_CONTACT'::text])));
+alter table public.person add constraint person_employee_type_check CHECK ((employee_type = ANY (ARRAY['EMPLOYEE'::text, 'PARTNER'::text, 'INTERN'::text, 'CONTRACT'::text, 'CLIENT_CONTACT'::text, 'SERVICE_ACCOUNT'::text])));
 alter table public.person add constraint person_mobile_shape CHECK (((mobile IS NULL) OR (person_mobile(mobile) ~ '^[6-9][0-9]{9}$'::text)));
 alter table public.person add constraint person_not_own_manager CHECK (((manager_id IS NULL) OR (manager_id <> id)));
 alter table public.person_document add constraint person_document_kind_check CHECK ((kind = ANY (ARRAY['ID_PROOF'::text, 'ADDRESS_PROOF'::text, 'QUALIFICATION'::text, 'BANK_DETAILS'::text])));
