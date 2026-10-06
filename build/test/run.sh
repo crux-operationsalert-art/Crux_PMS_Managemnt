@@ -196,6 +196,23 @@ else
   missing="$missing help"
 fi
 
+# The dashboard is the screen most people open first, and almost everything
+# that could be wrong on it looks fine: an arc that does not account for the
+# circle, a bar drawn past its own track, a null printed as a nought, a
+# threshold written in two places that drift apart.
+echo
+echo "== the dashboard"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/today_check.mjs"; then
+    pass=$((pass + 28))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing today"
+fi
+
 # The navigation and the database are two readers of one access policy. They
 # are meant to agree, and nothing but this makes them.
 echo

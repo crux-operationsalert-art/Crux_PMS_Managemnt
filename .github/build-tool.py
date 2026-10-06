@@ -1104,6 +1104,155 @@ PATCHES.append((
     ],
 ))
 
+# =====================================================================
+# 15. THE DASHBOARD, IN THE CONSOLE'S INFORMATION DESIGN
+#
+# "Giving you an example on how efficiently the Dashboard should represent
+# the data that people would be updating daily:
+# https://cruxindia.github.io/crux-console/"
+#
+# That page is one HTML file in cruxindia/crux-console, and what makes it
+# work is the ORDER, not the palette: a row of stat tiles each carrying
+# one number and a coloured edge, then a wide panel of detail beside a
+# narrow one that summarises it, then the things waiting to be done.
+#
+# Taken here into this tool's own tokens rather than the console's navy,
+# and without its 200KB of inlined Chart.js -- a doughnut of three states
+# and a row of progress bars are two arcs and a div each, and a charting
+# library is not worth a third of the page weight to draw them.
+#
+# The old vToday is replaced whole, by span, rather than edited: it led
+# with escalations and OGL, which is other people's work arriving, and the
+# scheme the company is about to run on is measured monthly and paid
+# quarterly. The first thing on opening the tool should be whether you
+# have filed today and whether you are on track. The operational counts
+# keep their place, lower down.
+SCREEN_TODAY = io.open("build/app/screen-today.js", encoding="utf-8").read()
+
+PATCHES.append((
+    "the dashboard, in the console's shape",
+    "function tdRender(",
+    [
+        # From the old screen up to the helper that follows it. tile() goes
+        # with it: nothing else in the page calls it.
+        (("async function vToday(){", "function tile(v,l){"),
+         SCREEN_TODAY + "\n", 1),
+
+        ('.hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}',
+         '.hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}\n'
+         '/* --------------------------------- the three states, as colour\n'
+         '   on target / part of the way / behind, used by the tiles, the\n'
+         '   bars, the doughnut and its legend so one measure cannot be two\n'
+         '   colours in two places.\n'
+         '\n'
+         '   These are NOT --green/--gold/--terra. Those were tried first\n'
+         '   and fail the one test a doughnut has to pass: --gold #8a6d1f\n'
+         '   and --terra #b4562f are 9.6 apart to a reader with full colour\n'
+         '   vision and 1.8 apart under deuteranopia, which is to say the\n'
+         '   middle arc and the behind arc are one arc. The tool\'s palette\n'
+         '   is deliberately muted and no three steps of it separate, so\n'
+         '   these are stepped out until they do: 30.3 and 24.7 on the\n'
+         '   worst adjacent pair, both ways.\n'
+         '\n'
+         '   The middle step sits below 3:1 against the panel, so it is\n'
+         '   never the only thing saying what a figure means -- the legend\n'
+         '   carries the words and the counts, every bar carries its own\n'
+         '   percentage in ink beside it, and the table names every\n'
+         '   measure. */\n'
+         ':root{--c-ok:#2f7355;--c-part:#d6b24a;--c-behind:#a03f18;\n'
+         '  --c-none:#5c6470}\n'
+         '/* ------------------------------------------------- the dashboard\n'
+         '   Five tiles across at full width, two on a phone. The edge is\n'
+         '   4px and carries the state; the figure is tabular so a column\n'
+         '   of them reads as a column. */\n'
+         '.tdkpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;\n'
+         '  margin:0 0 16px}\n'
+         '.tdk{position:relative;overflow:hidden;background:var(--panel);\n'
+         '  border:1px solid var(--line);border-radius:12px;padding:12px 14px}\n'
+         '.tdk .edge{position:absolute;left:0;top:0;bottom:0;width:4px;\n'
+         '  background:var(--c-none)}\n'
+         '.tdk-ok .edge{background:var(--c-ok)}\n'
+         '.tdk-part .edge{background:var(--c-part)}\n'
+         '.tdk-behind .edge{background:var(--c-behind)}\n'
+         '.tdk .k{font-size:10.5px;font-weight:700;text-transform:uppercase;\n'
+         '  letter-spacing:.5px;color:var(--mute)}\n'
+         '.tdk .v{font-size:25px;line-height:1.15;margin:3px 0 1px;color:var(--ink);\n'
+         '  font-variant-numeric:tabular-nums}\n'
+         '.tdk .v .of{font-size:14px;color:var(--mute)}\n'
+         '.tdk .s{font-size:11.5px;color:var(--mute)}\n'
+         '.tdgrid{display:grid;gap:14px;align-items:start;margin:0 0 14px}\n'
+         '.tdg2{grid-template-columns:1.6fr 1fr}\n'
+         '.tdg11{grid-template-columns:1fr 1fr}\n'
+         '.tdgrid .card{margin:0}\n'
+         '.tdgrid h3{margin:0 0 10px;font-size:14px;display:flex;\n'
+         '  align-items:baseline;gap:8px}\n'
+         '.tdgrid h3 .sub{font-size:11.5px;color:var(--mute);font-weight:400}\n'
+         '/* The table. Numbers right, text left, and the bar in its own\n'
+         '   column so the figures above and below it still line up. */\n'
+         '.tdt{width:100%;border-collapse:collapse;font-size:13px}\n'
+         '.tdt th{text-align:left;font-size:10px;text-transform:uppercase;\n'
+         '  letter-spacing:.5px;color:var(--mute);font-weight:700;padding:5px 7px;\n'
+         '  border-bottom:1px solid var(--line)}\n'
+         '.tdt td{padding:7px;border-bottom:1px solid var(--line3)}\n'
+         '.tdt th.r,.tdt td.r{text-align:right}\n'
+         '.tdt .num{font-variant-numeric:tabular-nums}\n'
+         '.tdprog{display:flex;align-items:center;gap:9px;min-width:150px}\n'
+         '.tdprog .num{font-size:12px;width:46px;text-align:right}\n'
+         '.tdbar{flex:1;height:6px;border-radius:4px;background:var(--line2);\n'
+         '  overflow:hidden;min-width:60px}\n'
+         '.tdbar i{display:block;height:100%;border-radius:4px}\n'
+         '.tdbar i.ok{background:var(--c-ok)}\n'
+         '.tdbar i.part{background:var(--c-part)}\n'
+         '.tdbar i.behind{background:var(--c-behind)}\n'
+         '.tdbar i.none{background:var(--line)}\n'
+         '/* The doughnut. Three arcs, started at twelve o\'clock, with the\n'
+         '   words in the legend -- nobody reads this by colour alone. */\n'
+         '.tddonut{position:relative;height:156px;margin:2px 0 10px}\n'
+         '.tddonut svg{width:100%;height:100%;transform:rotate(-90deg)}\n'
+         '.tddonut .trk{fill:none;stroke:var(--line2);stroke-width:11}\n'
+         '.tddonut .seg{fill:none;stroke-width:11}\n'
+         '.tddonut .mid{position:absolute;inset:0;display:flex;\n'
+         '  flex-direction:column;align-items:center;justify-content:center;\n'
+         '  pointer-events:none}\n'
+         '.tddonut .mid b{font-size:24px;color:var(--ink);\n'
+         '  font-variant-numeric:tabular-nums;line-height:1}\n'
+         '.tddonut .mid span{font-size:11px;color:var(--mute);margin-top:2px}\n'
+         '.tdleg{list-style:none;margin:0;padding:0;font-size:12.5px}\n'
+         '.tdleg li{display:flex;align-items:center;gap:8px;padding:4px 0;\n'
+         '  color:var(--body);border-top:1px solid var(--line3)}\n'
+         '.tdleg li:first-child{border-top:0}\n'
+         '.tdleg li b{margin-left:auto;font-variant-numeric:tabular-nums;\n'
+         '  color:var(--ink)}\n'
+         '.tdleg .dot{width:9px;height:9px;border-radius:3px;flex:0 0 9px}\n'
+         '.tdleg .dot.ok{background:var(--c-ok)}\n'
+         '.tdleg .dot.part{background:var(--c-part)}\n'
+         '.tdleg .dot.behind{background:var(--c-behind)}\n'
+         '.tdwait{list-style:none;margin:0;padding:0;font-size:13.5px}\n'
+         '.tdwait li{display:flex;align-items:center;gap:10px;padding:8px 0;\n'
+         '  border-top:1px solid var(--line3);color:var(--body)}\n'
+         '.tdwait li:first-child{border-top:0}\n'
+         '.tdwait li b{font-size:19px;color:var(--ink);min-width:28px;\n'
+         '  font-variant-numeric:tabular-nums}\n'
+         '.tdwait li a{margin-left:auto;font-size:12.5px}\n'
+         '.tdq{display:grid;grid-template-columns:1fr auto;gap:7px 12px;margin:0;\n'
+         '  font-size:13.5px}\n'
+         '.tdq dt{color:var(--mute)}\n'
+         '.tdq dd{margin:0;text-align:right;color:var(--ink);\n'
+         '  font-variant-numeric:tabular-nums}\n'
+         '.tdq dd .of{color:var(--mute);font-size:12px}\n'
+         '@media (max-width:1040px){\n'
+         '  .tdkpis{grid-template-columns:repeat(3,1fr)}\n'
+         '  .tdg2,.tdg11{grid-template-columns:1fr}\n'
+         '}\n'
+         '@media (max-width:620px){\n'
+         '  .tdkpis{grid-template-columns:repeat(2,1fr)}\n'
+         '  .tdk .v{font-size:22px}\n'
+         '  .tdt{min-width:420px}\n'
+         '  .tdprog{min-width:110px}\n'
+         '}', 1),
+    ],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
