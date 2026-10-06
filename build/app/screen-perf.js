@@ -831,6 +831,20 @@ function pfFindAnyone(){
     '</div>';
 }
 
+/* Editing and removing a measure arrived with migration 240 and a new
+   pair of routes. Until the plb function carrying them is deployed the
+   call comes back no_route, and "no_route" on a button somebody just
+   pressed is the tool blaming them for its own deployment. */
+function pfSaid(o, good){
+  if (!o || !o.error) return msg("ok", (o && o.note) || good);
+  if (o.error === "no_route") {
+    return msg("warn", "This needs the performance service redeployed \u2014 " +
+      "the screen has the button and the service does not have the route yet. " +
+      "Nothing was changed.");
+  }
+  return msg("bad", o.reason || o.error);
+}
+
 /* ------------------------- I · my team: targets, tasks and eligibility */
 function pfTeamSection(){
   /* An administrator with nobody reporting to them still gets this card:
@@ -1362,7 +1376,7 @@ function pfWire(){
     if (f.cadence) body.cadence = f.cadence;
     var o = await plb("/plb/perf/edit", { method:"POST", body: body });
     PF.busy = false;
-    PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note || "Changed.");
+    PF.says = pfSaid(o, "Changed.");
     if (!o.error) { PF.editForm = null; PF.whoTree = null; }
     if (PF.who && !PF.whoTree) {
       PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
@@ -1382,7 +1396,7 @@ function pfWire(){
       PF.busy = true; b.disabled = true;
       var o = await plb("/plb/perf/remove", { method:"POST", body:{ assignmentId: id } });
       PF.busy = false;
-      PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note || "Removed.");
+      PF.says = pfSaid(o, "Removed.");
       PF.editForm = null; PF.whoTree = null;
       if (PF.who) {
         PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
