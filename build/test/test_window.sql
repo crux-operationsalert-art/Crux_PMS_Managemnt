@@ -254,6 +254,62 @@ begin
   end if;
   raise notice 'PASS  the same measure can be given again, and only once';
 
+  -- ------------------------------------- 5. the other door onto the same act
+  -- "Carry last month forward" gives somebody measures exactly as setting one
+  -- does, but perf_carry_forward writes perf_assignment rows directly rather
+  -- than through perf_assign -- so it carried no window guard at all and
+  -- stayed open after Set a KPI had shut. Two doors, one act, two rules.
+  update perf_cycle set assign_closes = current_date - 1 where id = v_cycle;
+  o := perf_carry_forward(p_boss, v_cycle, p_rep, true);
+  if o->>'error' is distinct from 'window_closed' then
+    raise exception 'FAIL  carrying last month forward still works after the '
+                    'window shut, while setting a KPI does not: %', o;
+  end if;
+  raise notice 'PASS  carrying last month forward answers the same clock';
+
+  o := perf_carry_forward(p_adm, v_cycle, p_rep, true);
+  if o->>'error' is not null then
+    raise exception 'FAIL  an administrator could not carry forward: %', o;
+  end if;
+  raise notice 'PASS  and lets an administrator through, the same way';
+
+  -- And it must not hand back the measures a manager took back. This is this
+  -- change''s own doing: with measures withdrawn rather than deleted, a
+  -- carry-forward that reads every row of last month would resurrect them.
+  declare
+    v_prev uuid; v_dead uuid; n_back int;
+  begin
+    insert into perf_cycle (period_start, period_kind, assign_opens,
+                            assign_closes, entry_closes, opened_by)
+    values ((date_trunc('month', current_date) - interval '10 months')::date,
+            'MONTH',
+            (date_trunc('month', current_date) - interval '10 months')::date,
+            current_date + 10, current_date + 40, p_adm)
+    returning id into v_prev;
+
+    o := perf_assign(p_boss, jsonb_build_object('cycleId', v_prev,
+           'personId', p_rep, 'name','WN taken back','unit','COUNT'));
+    v_dead := (select id from perf_assignment
+                where cycle_id = v_prev and person_id = p_rep
+                  and name = 'WN taken back' limit 1);
+    if v_dead is null then
+      raise exception 'FAIL  the fixture could not set a measure to take back';
+    end if;
+    if not coalesce((perf_assign_remove(p_boss, v_dead)->>'ok')::boolean, false) then
+      raise exception 'FAIL  the fixture could not take that measure back';
+    end if;
+
+    -- Now carry THAT month forward into the one after it.
+    o := perf_carry_forward(p_adm, v_cycle, p_rep, true);
+    select count(*) into n_back from perf_assignment
+     where cycle_id = v_cycle and person_id = p_rep and name = 'WN taken back';
+    if n_back > 0 then
+      raise exception 'FAIL  a measure the manager took back was carried '
+                      'forward into the next month';
+    end if;
+    raise notice 'PASS  and never carries back a measure that was taken back';
+  end;
+
   raise notice '--- the month and the measure: every assertion passed ---';
 end $t$;
 

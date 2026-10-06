@@ -175,6 +175,92 @@ comment on function perf_assign_remove(uuid, uuid) is
   'is the evidence the manager asked for it, and perf_tree and '
   'perf_kpi_score already read WITHDRAWN as "no longer asked for".';
 
+-- -------------------------------------- the other door onto the same act
+-- "Carry last month forward" gives somebody measures, exactly as setting one
+-- does, and perf_carry_forward writes perf_assignment rows directly rather
+-- than going through perf_assign. So it carried no window guard at all: once
+-- the month shut, Set a KPI refused and Carry last month forward did not.
+-- Two doors onto one act with two different rules is the shape of defect
+-- this whole file is about, so it is given the same guard, in the same words.
+--
+-- And it has to learn about WITHDRAWN, which is this file's own doing. With
+-- measures withdrawn rather than deleted, a carry-forward that reads every
+-- row of last month would hand back the very measures a manager took back.
+--
+-- Both changes are made by substitution over the live source rather than by
+-- retyping the body, for the reason migration 239 learned: a function
+-- retyped from memory loses a clause nobody notices.
+do $carry$
+declare
+  r record; v_src text; v_n int := 0;
+  k_anchor constant text := 'if c.id is null then return jsonb_build_object(''error'',''no_such_cycle''); end if;';
+  k_rows   constant text := 'where cycle_id = prev.id and person_id = p_person and part_of_id is null';
+begin
+  select p.prosrc, p.provolatile, p.prosecdef, l.lanname,
+         -- pg_get_function_ARGUMENTS, not identity_arguments. The identity
+         -- form drops parameter defaults, and perf_carry_forward has one, so
+         -- create-or-replace refuses with "cannot remove parameter defaults
+         -- from existing function".
+         pg_get_function_arguments(p.oid) as args,
+         pg_get_function_result(p.oid) as ret
+    into r
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    join pg_language l on l.oid = p.prolang
+   where n.nspname = 'public' and p.proname = 'perf_carry_forward';
+
+  if r.prosrc is null then
+    raise exception 'Migration 246: perf_carry_forward is not there.';
+  end if;
+
+  v_src := r.prosrc;
+
+  if position('assign_closes' in v_src) > 0 then
+    raise notice 'perf_carry_forward already asks the clock';
+  else
+    if position(k_anchor in v_src) = 0 then
+      raise exception 'Migration 246: perf_carry_forward does not read the way '
+                      'this expected, so the window guard has nowhere to go.';
+    end if;
+    v_src := replace(v_src, k_anchor, k_anchor || E'\n'
+      || '  -- Added by 246. Carrying measures forward IS giving measures, so '
+      || 'it' || E'\n'
+      || '  -- answers the clock in the same words perf_assign does.' || E'\n'
+      || '  if current_date > c.assign_closes' || E'\n'
+      || '     and not exists (select 1 from person where id = p_actor and app_role = ''ADMIN'') then' || E'\n'
+      || '    return jsonb_build_object(''error'',''window_closed'','
+      || E'\n'
+      || '      ''reason'',''KPIs for '' || c.period_start || '' had to be set by '' ||' || E'\n'
+      || '               c.assign_closes || ''. HR or an administrator can reopen the month.'');' || E'\n'
+      || '  end if;');
+    v_n := v_n + 1;
+  end if;
+
+  if position('WITHDRAWN' in v_src) > 0 then
+    raise notice 'perf_carry_forward already skips withdrawn measures';
+  else
+    if position(k_rows in v_src) = 0 then
+      raise exception 'Migration 246: perf_carry_forward does not select last '
+                      'month''s rows the way this expected.';
+    end if;
+    v_src := replace(v_src, k_rows,
+      k_rows || E'\n' || '              and state is distinct from ''WITHDRAWN''');
+    v_n := v_n + 1;
+  end if;
+
+  if v_n > 0 then
+    execute format(
+      'create or replace function perf_carry_forward(%s) returns %s language %s %s %s '
+      'set search_path to ''public'' as %L',
+      r.args, r.ret, r.lanname,
+      case r.provolatile when 's' then 'stable' when 'i' then 'immutable' else '' end,
+      case when r.prosecdef then 'security definer' else 'security invoker' end,
+      v_src);
+    raise notice 'perf_carry_forward: % change(s) -- the clock, and withdrawn '
+                 'measures are not carried back', v_n;
+  end if;
+end $carry$;
+
 -- ------------------------------------------------- reopening the month
 -- The same three the scheme already belongs to, written the same way
 -- perf_cycle_open writes it. Migration 242's rule: when a screen offers a

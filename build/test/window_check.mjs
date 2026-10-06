@@ -41,7 +41,7 @@ const esc = (s) => String(s ?? "")
 const harness = `
 ${src}
 return { PF, pfSetWindowOpen, pfMayExtend, pfShutHere, pfReopenForm,
-         pfSaid, pfTeamSection, pfPersonPanel, pfMeasureAdmin,
+         pfSaid, pfTeamSection, pfPersonPanel, pfMeasureAdmin, pfWatchBlock,
          setMe: function(x){ me = x; } };
 `;
 let me = null;
@@ -58,7 +58,7 @@ const mod = new Function(
   (n) => "₹" + n, (s) => String(s), () => {}, () => "", () => {}, null);
 
 const { PF, pfSetWindowOpen, pfMayExtend, pfShutHere, pfReopenForm,
-        pfSaid, pfPersonPanel, pfMeasureAdmin, setMe } = mod;
+        pfSaid, pfPersonPanel, pfMeasureAdmin, pfTeamSection, setMe } = mod;
 
 const OPEN  = { id: "c1", period_start: "2026-10-01", assign_closes: "2026-10-08",
                 entry_closes: "2026-11-06", assign_open: true, entry_open: true };
@@ -140,6 +140,35 @@ setMe(ADMIN); PF.cycle = SHUT;
 ok("an administrator is still offered all three outside the window",
    pfPersonPanel().includes('id="pfadd"') &&
    pfMeasureAdmin(PF.whoTree.measures).includes("data-pfrm"));
+
+// ------------------------------------- and so does the live team card
+// This is the one that caught the author out: there used to be a SECOND,
+// dead drawing of the team card, and the window rule landed in that one.
+// So the assertion is made against the function the screen actually calls,
+// and the dead copy is gone.
+setMe(MANAGER);
+PF.team = [{ personId: "p1", name: "Manish Shukla", chair: "Zonal Manager" }];
+PF.watch = []; PF.wider = []; PF.sel = {}; PF.who = null; PF.form = null;
+PF.taskForm = null; PF.elig = false; PF.find = "";
+
+PF.cycle = OPEN;
+const openCard = pfTeamSection();
+ok("inside the window the team card offers bulk and carry-forward",
+   openCard.includes('id="pfbulk"') && openCard.includes('id="pfcarry"'));
+
+PF.cycle = SHUT;
+const shutCard = pfTeamSection();
+ok("outside it, neither is offered",
+   !shutCard.includes('id="pfbulk"') && !shutCard.includes('id="pfcarry"'));
+ok("and the card says why", shutCard.includes("pfshut"));
+// Asking somebody for a task is not giving them a measure, and task_assign
+// carries no window guard, so it must not be hidden with the others.
+ok("but asking for a task is not a measure and stays",
+   shutCard.includes('id="pftaskall"') && shutCard.includes('id="pfelig"'));
+
+ok("there is only one drawing of the team card",
+   (src.match(/function pfTeamSection\(/g) || []).length === 1 &&
+   !/function pfTeam\(\)/.test(src));
 
 // ------------------------------------------------------ the reopen form
 setMe(HR); PF.cycle = SHUT; PF.reopen = { until: "2026-10-20", why: "" };

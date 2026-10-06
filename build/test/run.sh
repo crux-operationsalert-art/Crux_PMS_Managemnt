@@ -237,7 +237,7 @@ echo
 echo "== the window for setting KPIs"
 if [ -x "$NODE" ]; then
   if "$NODE" "$REPO/build/test/window_check.mjs"; then
-    pass=$((pass + 30))
+    pass=$((pass + 35))
   else
     fail=$((fail + 1))
   fi
