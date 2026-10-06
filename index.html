@@ -5955,13 +5955,21 @@ function pfTeamSection(){
       'whose targets are yours to set.' +
       ((PF.wider || []).length ? ' Use the search below to reach somebody.' : '') +
       '</p>') +
+    /* Two of these four give somebody a MEASURE and so answer the clock:
+       perf_assign_bulk runs perf_assign for each person, and
+       perf_carry_forward writes the same rows by another door. Asking
+       somebody for a task and reading the eligibility matrix are not
+       measures and are not gated, so they stay either way. */
     '<div class="plbar">' +
-      '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
-        (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
-      '<button class="btn" id="pfcarry"' + (n ? '' : ' disabled') + '>Carry last month forward</button>' +
+      (pfSetWindowOpen()
+        ? '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
+            (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
+          '<button class="btn" id="pfcarry"' + (n ? '' : ' disabled') + '>Carry last month forward</button>'
+        : '') +
       '<button class="btn" id="pftaskall">Assign a task to ' + (n ? n + ' selected' : 'the whole team') + '</button>' +
       '<button class="btn" id="pfelig">Eligibility matrix</button>' +
     '</div>' +
+    (pfSetWindowOpen() ? '' : pfShutHere('Giving KPIs in bulk, and carrying last month forward')) +
     (rows ? '<div class="scroll"><table>' + rows + '</table></div>' : '') +
     pfWatchBlock() +
     pfFindAnyone() +
@@ -6169,39 +6177,11 @@ function pfNode(m, depth, isTeam){
   return head + body;
 }
 
-/* ------------------------------------------------------------------ team */
-function pfTeam(){
-  var rows = PF.team.map(function(p){
-    var open = PF.who === p.personId;
-    return '<tr><td><b>' + esc(p.name) + '</b>' +
-      (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
-      '<div class="mute">' + esc(p.chair || "no chair") + '</div></td>' +
-      '<td class="plact">' +
-        '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
-          (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
-        '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
-          (open ? 'Hide' : 'Open') + '</button></td></tr>' +
-      (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
-  }).join("");
-
-  var n = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; }).length;
-
-  return '<div class="card"><h2>Setting your team’s KPIs</h2>' +
-    '<p class="mute">A KPI you give somebody climbs into one of yours. Pick which one ' +
-    'as you set it — that link is what makes the numbers add up to a branch, and a ' +
-    'branch to a zone.</p>' +
-    (pfSetWindowOpen()
-      ? '<div class="plbar">' +
-          '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
-            (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
-          '<button class="btn" id="pfcarry"' + (n ? '' : ' disabled') + '>Carry last month forward</button>' +
-        '</div>'
-      : pfShutHere('Giving KPIs in bulk')) +
-    '<div class="scroll"><table>' + rows + '</table></div>' +
-    (PF.form ? pfForm() : '') +
-    '</div>';
-}
-
+/* pfTeam() used to live here: a SECOND drawing of the team card that
+   nothing has called since pfTeamSection() replaced it. It was removed
+   when the window rule went in and landed in the dead copy by mistake --
+   which is the whole argument against keeping one. A card drawn in two
+   places is a card that gets fixed in one.                             */
 function pfPersonPanel(){
   var t = PF.whoTree;
   if (!t) return '<p class="mute">Loading…</p>';
