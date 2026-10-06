@@ -450,6 +450,14 @@ PATCHES.append((
       '.pfsel input[type=checkbox]{width:15px;height:15px;min-height:0;padding:0;\n'
       '  margin:0;flex:0 0 15px;accent-color:var(--blue)}\n'
       '.pfpanel{padding:2px 0 6px}\n'
+      '/* The clock said no. Said where the control was, in the control\'s\n'
+      '   place, because somebody looking for a button needs the answer\n'
+      '   where they are looking -- not at the top of the page. */\n'
+      '.pfshut{margin:8px 0;padding:10px 13px;border-radius:9px;\n'
+      '  background:var(--gold-bg);border-left:3px solid var(--gold);\n'
+      '  font-size:13px;color:var(--body)}\n'
+      '.pfshut b{color:var(--gold-ink)}\n'
+      '.pfwin button{margin-left:10px}\n'
       '/* Whose targets are mine, at the top of the screen. A band rather\n'
       '   than a card: it is a pointer to a card further down, not a place\n'
       '   where anything is decided. */\n'
@@ -1325,6 +1333,75 @@ PATCHES.append((
          '  .tdprog{min-width:110px}\n'
          '}', 1),
     ],
+))
+
+# ================================================ 16. SIGNING IN FORGETS
+# "when Admin uses 'Look at Crux as someone else', this should actually log
+#  in the admin to that person's account and use it as that person."
+#
+# The SESSION already is that person's. auth_act_as mints a real auth_session
+# row for them with acting_actor_id set, hands back their app_role,
+# department, chair, scope_level and screens, and writes an ACTED_AS audit
+# row naming both people. The page keeps the administrator's own token under
+# cruxAdminToken and swaps `token`.
+#
+# THE SCREENS ARE NOT. start() sets `me`, repaints the navigation and routes
+# -- and clears no screen state at all. Twelve screens keep their data in a
+# module-level object that survives the swap, and vPerf only re-reads the
+# team `if (!PF.team)`. So after acting as somebody else the tool showed the
+# ADMINISTRATOR'S team under "whose targets are yours to set", the
+# administrator's chart on My team & structure, the administrator's goal
+# sheet, and whoever the administrator last had open, still open.
+#
+# So signing in as anybody -- the first sign-in, acting as somebody, and
+# stopping acting, all three of which go through start() -- forgets every
+# screen first.
+#
+# HOW THE INITIAL VALUES ARE KNOWN. Not by listing them again here, which
+# would be a second copy to keep in step. The first call to forgetScreens()
+# happens inside the first start(), which is before route() and therefore
+# before any screen has fetched anything -- so what the objects hold at that
+# moment IS their initial value. It is snapshotted then and restored on every
+# later call.
+#
+# The objects are restored IN PLACE rather than reassigned, because the
+# screen files close over them.
+#
+# build/test/forget_check.mjs asserts this list against every `var XX = {` in
+# build/app/, so adding a screen cannot quietly leave one behind.
+PATCHES.append((
+    "signing in forgets the last person's screens",
+    'function forgetScreens(',
+    [('async function start(person){\n'
+      '  me = person;',
+      '/* Every screen that keeps what it fetched. */\n'
+      'var SCREEN_STATE = ["AA","HE","HRA","MG","MX","MY","PB","PF","PL","QH","TD","TM"];\n'
+      'var SCREEN_FRESH = null;\n'
+      'function forgetScreens(){\n'
+      '  if (!SCREEN_FRESH) {\n'
+      '    /* First sign-in: nothing has been fetched, so this IS the start. */\n'
+      '    SCREEN_FRESH = {};\n'
+      '    SCREEN_STATE.forEach(function(n){\n'
+      '      try { SCREEN_FRESH[n] = JSON.stringify(window[n]); } catch (e) {}\n'
+      '    });\n'
+      '    return;\n'
+      '  }\n'
+      '  SCREEN_STATE.forEach(function(n){\n'
+      '    var was = SCREEN_FRESH[n], now = window[n];\n'
+      '    if (was === undefined || !now || typeof now !== "object") return;\n'
+      '    try {\n'
+      '      var fresh = JSON.parse(was);\n'
+      '      Object.keys(now).forEach(function(k){ delete now[k]; });\n'
+      '      Object.keys(fresh).forEach(function(k){ now[k] = fresh[k]; });\n'
+      '    } catch (e) { /* a screen that cannot be reset is left alone */ }\n'
+      '  });\n'
+      '}\n'
+      '\n'
+      'async function start(person){\n'
+      '  /* Before anything reads `me`: the person has changed, so nothing\n'
+      '     any screen is still holding belongs to them. */\n'
+      '  forgetScreens();\n'
+      '  me = person;', 1)],
 ))
 
 for name, sentinel, rules in PATCHES:

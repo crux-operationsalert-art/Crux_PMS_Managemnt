@@ -309,6 +309,21 @@ r.get("/month", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// Reopening a month for KPI setting (migration 246).
+//
+// perf_cycle_open sets assign_closes five working days after the first, and
+// perf_assign refuses after it for anybody but an administrator -- so for
+// three weeks in four every manager's KPI controls were offered and refused,
+// with no way back except SQL. perf_cycle_extend is that way back: the same
+// three who may open a cycle, a reason, audited, and only ever later.
+r.post("/cycle/extend", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.cycleId) return res.status(400).json({ error: "missing_cycle" });
+  const o = await one(`select perf_cycle_extend($1,$2::uuid,$3::date,$4) as o`,
+    [req.person.id, b.cycleId, b.until || null, b.why || null]);
+  return out(res, o.o);
+});
+
 // =====================================================================
 // The team, as a structure (migration 229).
 //

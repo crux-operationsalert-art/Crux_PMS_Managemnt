@@ -1,1069 +1,276 @@
-# Statement of Work — the tab-by-tab audit against the blueprint
+# Crux — Statement of Work
 
-Living document. Updated as decisions are made, not after.
+**Living document. It is the single source of truth for this engagement.**
+Everything below is either measured, decided, or explicitly listed as an open
+question. Where a number appears, the command that produced it is in
+`docs/WHO-SEES-WHAT.md` or in the migration that asserts it.
 
-Last updated: 2026-09-28.
+Owner: Crux Risk Management Pvt Ltd (India).
+Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
+`crux-operationsalert-art/Crux_PMS_Managemnt`, branch `main`.
 
-Previous SOWs, closed:
-* `docs/SOW_2026-09-28_make_the_data_live.md` — load the workbook, place the branches, answer the completion %.
-* `docs/SOW_2026-09-27_scope_and_measure_sets.md` — enforce scope in the services; give every seated chair a measure set.
-
----
-
-## Objective
-
-*"Still not matching the original design. So lets do one tab at a time or one
-process at a time."*
-
-Stop making claims about the whole tool. Take one screen, put the blueprint and
-the running tool side by side, list every difference, fix what should be fixed,
-and record what was deliberately not. Then the next screen. A screen is not
-"done" until every element the blueprint has is accounted for — present,
-deliberately absent with a reason, or listed as an open question.
-
-## Scope and boundaries
-
-**In scope**
-
-* `Crux App v2.dc.html` — the design blueprint at the repository root, 1,112,870
-  bytes, of which **474,875 bytes is template markup** across 34 screen
-  sections. This is the authority. Where it and the tool disagree, it is right.
-* `index.html` / `app_page` — the running tool.
-* The services behind each screen (`ops`, `api`, `crux`) where a screen is
-  wrong because the data behind it is wrong.
-
-**Out of scope, and why**
-
-* The prototype's illustrative numbers. The blueprint's sign-in is simulated and
-  its figures are invented; the shape is the contract, not the values.
-* `docs/Crux Rebuild Blueprint.dc.html` (124 KB) — an earlier, smaller file,
-  superseded by v2.
-* Re-litigating the completion percentage. It is in the previous SOW.
-
-## Inputs — the index of the design
-
-Every screen in the blueprint is an `<sc-if value="{{ isX }}">` section. This is
-all 34 of them, in file order, with what each one actually contains. Counts are
-measured, not estimated.
-
-| # | Section | bytes | buttons | tables | loops | fields | Built tool |
-|---:|---|---:|---:|---:|---:|---:|---|
-| 1 | `isSignin` | 2,048 | 5 | 0 | 0 | 0 | sign-in |
-| 2 | `isSignup` | 7,206 | 8 | 0 | 5 | 1 | sign-in |
-| 3 | `isPassword` | 1,630 | 3 | 0 | 0 | 2 | sign-in |
-| 4 | `isActivate` | 3,236 | 2 | 0 | 0 | 6 | sign-in |
-| 5 | `isForgot` | 4,186 | 5 | 0 | 1 | 1 | sign-in |
-| 6 | `isDesk` | 3,220 | 3 | 0 | 3 | 0 | shell |
-| 7 | `isMobile` | 22,043 | 17 | 0 | 11 | 11 | shell |
-| 8 | **`isDash`** | 18,813 | 9 | 1 | 8 | 0 | `today` |
-| 9 | `isEsc` | 10,281 | 4 | 1 | 6 | 0 | `cases` |
-| 10 | **`isOgl`** | 53,401 | 30 | 0 | 26 | 40 | `ogl` |
-| 11 | `isOrg` | 46,303 | 19 | 1 | 30 | 3 | `org` (under `people`) |
-| 12 | `isAuto` | 16,356 | 10 | 0 | 9 | 7 | `auto` |
-| 13 | `isPms` | 28,439 | 14 | 1 | 10 | 7 | `perf` |
-| 14 | `isProfile` | 3,516 | 3 | 0 | 3 | 0 | `profile` |
-| 15 | `isVisits` | 5,311 | 3 | 1 | 2 | 0 | `visits` |
-| 16 | `isIdeathon` | 3,760 | 2 | 0 | 3 | 0 | `ideas` |
-| 17 | `isHr` | 4,878 | 1 | 1 | 3 | 0 | `hr` |
-| 18 | `isAppraisal` | 7,197 | 6 | 0 | 1 | 2 | `pms` (under `perf`) |
-| 19 | `isHRHere` | 20,459 | 18 | 0 | 12 | 3 | `hr` |
-| 20 | `isAudit` | 3,702 | 1 | 0 | 2 | 1 | `history` |
-| 21 | `isHiring` | 12,087 | 8 | 0 | 6 | 2 | `hiring` |
-| 22 | `isMsg` | 6,268 | 5 | 0 | 2 | 0 | `mail` |
-| 23 | `isJoin` | 7,564 | 5 | 0 | 4 | 0 | `joining` |
-| 24 | `isClients` | 23,967 | 13 | 1 | 8 | 4 | `clients` |
-| 25 | `isPeople` | 16,564 | 8 | 0 | 7 | 18 | `people` |
-| 26 | `isPenalties` | 9,205 | 7 | 1 | 4 | 0 | `penalties` |
-| 27 | `isAccess` | 8,842 | 7 | 0 | 5 | 1 | `access` (under `reports`) |
-| 28 | **`isMis`** | 48,009 | 27 | 5 | 23 | 0 | `mis` (under `reports`) |
-| 29 | `isTen` | 9,598 | 3 | 1 | 5 | 0 | `tenday` (under `reports`) |
-| 30 | `isSetup` | 29,619 | 17 | 4 | 12 | 0 | `data` |
-| 31 | `isCoverage` | 8,034 | 4 | 2 | 3 | 0 | `coverage` |
-| 32 | `isRates` | 7,957 | 5 | 1 | 2 | 0 | `rates` (under `reports`) |
-| 33 | `isReports` | 1,822 | 1 | 0 | 1 | 0 | `reports` |
-| 34 | `isConfig` | 12,572 | 6 | 0 | 5 | 6 | `config` |
-| | **total** | **474,875** | **285** | **21** | **224** | **115** | |
-
-## What already matches
-
-Checked first, so the audit does not start by re-proving it:
-
-* **All 20 navigation tabs exist**, under the right keys. The blueprint's keys
-  and the tool's differ in spelling only — `dash`/`today`, `escalations`/`cases`,
-  `pms`/`perf`, `ideathon`/`ideas`, `join`/`joining`, `audit`/`history`,
-  `msg`/`mail`, `setup`/`data`.
-* **The grouping matches**: Ideathon alone and first, then *Mine*
-  (Dashboard, My profile, Performance, Visits & claims), *Work* (OGL Assignment,
-  Escalations, Clients, My team & structure), *Company* (the other eleven).
-* **The colour and button contract** is already measured and recorded in
-  `docs/DESIGN-CONTRACT.md`.
-
-Two label differences found on the first pass, both in the tool's favour or
-neutral — held for the relevant tab rather than changed here:
-
-| key | blueprint | tool |
-|---|---|---|
-| `pms` | Performance & appraisal | Performance |
-| `coverage` | Coverage & handlers | Places, coverage & owners |
-
-## Methodology — what "audited" means for one tab
-
-For each tab, in this order:
-
-1. **Extract** the blueprint section verbatim: every button label, every column
-   heading, every loop, every field, every empty-state sentence.
-2. **Extract** the same from `index.html` for the matching route.
-3. **Diff them element by element** and classify each difference:
-   * *missing* — the blueprint has it, the tool does not;
-   * *extra* — the tool has it, the blueprint does not;
-   * *different* — both have it, and they disagree;
-   * *deliberate* — a difference with a reason, recorded here.
-4. **Check the data path**: a control that exists but reads an empty table is
-   not built. Every list is run against the live database.
-5. **Fix**, then **re-diff**, then record the counts.
-
-A tab is closed when the difference list is empty or every remaining line has a
-reason next to it.
-
-## Deliverables
-
-One section per tab, appended below as each is closed: what differed, what was
-changed, what was left and why, and the re-measured counts.
+Last reconciled against the live database: **2026-10-06**.
 
 ---
 
-# Tab 1 — Performance (`pms`) · audited 2026-09-28
+## 1. Objective
 
-## What the blueprint says this screen is
+One tool that runs Crux's operations and its performance scheme, so that:
 
-One route, `pms`, labelled **"Performance & appraisal"**, rendered from two
-sections that are both on it — `isPms` (28,439 bytes) and `isAppraisal` (7,197).
-**35,636 bytes, 20 buttons, 1 table, 11 loops, 9 fields, one screen, no
-sub-tabs.** `isAppraisal:true` is set inside the same `route === 'pms'` branch;
-it is not a separate destination.
+- a person can see what they are measured on, file it, and be scored fairly;
+- a manager can set their team's measures, watch them, and act on them;
+- HR and an administrator can run the scheme and keep the organisation's
+  record straight;
+- and nothing about somebody's pay or performance is readable by anybody who
+  is not entitled to it.
 
-In order down the page:
+## 2. Scope
 
-| | Section | What it holds |
-|---|---|---|
-| A | Header | "Performance", a note, and three score chips: **KPIs · weight**, **Attributes · weight**, **Final · out of 10** |
-| B | Daily update | Cadence note, filing window and its penalty; a table with **KPI · Monthly target · Achieved · % · Today's count**, each row carrying its category, its cadence and note, who set it, and "achieved of target" |
-| C | Anything else about today · optional | A free-text note that counts towards Attributes; an assistant that proposes **Files as** and a **Heading**, with its reason, both overridable; **On your record this month** listing what has already been filed |
-| D | Submit daily update | One submission for the whole day, not one per KPI |
-| E | Your last fourteen days | Fourteen day cells with a streak note and a legend |
-| F | My KPIs · 3 mandatory, 2 optional | Who set them, **Request a KPI change**, per-KPI **Edit this KPI** / **Remove** / **Save**, sub-categories under each with their own target and achieved, **Add a KPI**, **Undo my changes**, and the rule in words: *"Five is the design: three mandatory, two optional."* |
-| G | Attributes · everything beyond the KPIs | Each attribute's name, source, weight and score; an **Open note · today** box and **Add to my record** |
-| H | KPI change requests · N with HR | The queue: who, their chair, its state, the KPI, from → to, why, who raised it and when, and the action |
-| I | My team · targets, tasks and eligibility | Per person: last month, this month, and **Set targets** / **Assign a task** / **Eligibility matrix** |
-| J | PMS weighting · Admin and HR | The KPI/Attributes split, the eligibility default when a gate is missed, and what an escalation, warning or appreciation does to a score — **Open weighting** |
-| K | Appraisal · this month | Window, basis and clock; **stage**; the self-lock note; KPI, Attributes and Final out of 10; contribution; the evidence list with each item's effect; the gate note and **Ask HR for an exception**; self-evaluation and **Save my self-evaluation**; **Send the review request**; **Accept my score** / **Dispute it**; *"Why should HR reopen your window?"* and **Send the request to HR** |
+**In scope.** The application (one row of `app_page`, published to GitHub
+Pages), the Postgres schema and its functions, the Supabase edge functions,
+the data migrations, the test suite, and the documents in `docs/`.
 
-## What the tool has
+**Out of scope.** Payroll. Anything that computes or stores pay beyond the
+PLB figures the scheme already carries. Replacing the client-facing systems.
 
-**Three screens, not one.** `FAMILY` in `index.html:812` puts three routes under
-Performance — `perf` "This month", `pms` "Appraisal", `plb` "Bonus" — a sub-tab
-row the blueprint does not have. Two of the three are titled "Performance"
-(`index.html:2816` and `:4351`) and the third "Performance & bonus" (`:1839`).
-The design's single screen was built three times, in three passes, and never
-joined up.
-
-## The difference list
-
-| | Blueprint section | Verdict | Where it is now |
-|---|---|---|---|
-| A | Header + three score chips | **different** | The numbers exist as a *table* on Bonus ("Your monthly scores": Month, KPI /10, Attributes /10, Monthly score). The three chips at the head of Performance do not exist |
-| B | Daily table, 5 columns | **different** | `perf` "Due today" has the KPI name, its cadence and its target — **2 of 5 columns**. No Achieved, no %, no category, no "set by" |
-| C | Day note + assistant classification | **missing** | Nowhere. `/attr/propose` exists in the `plb` service and nothing calls it from here |
-| D | One "Submit daily update" | **different** | `perf` files one KPI at a time; `pms` has a single "File" for all figures. Neither is the blueprint's single daily submission |
-| E | Your last fourteen days | **missing** | Nowhere. `/perf/history` exists and is unused |
-| F | My KPIs, with edit, sub-categories, request and undo | **different** | `pms` has "Add a KPI" and a mandatory/optional chip. No "Request a KPI change", no "Edit this KPI", no "Undo my changes", no sub-categories, and it is on a different tab |
-| G | Attributes + Open note | **different** | Bonus has "Attributes — how you work · 25% of the monthly score" read-only. No "Open note · today", no "Add to my record" |
-| H | KPI change requests with HR | **missing** | Nowhere |
-| I | My team: targets, tasks, eligibility | **different** | `perf` team tab does bulk assign and "Carry last month forward". No "Set targets", no "Assign a task", no "Eligibility matrix", no last-month/this-month column |
-| J | PMS weighting | **missing** | Nowhere on this screen. `pms_cfg` exists in the database |
-| K | Appraisal | **different** | Bonus has Acknowledge, "If you disagree", "Submit a self-evaluation" and "Your result" — framed around the quarterly bonus scheme, not the monthly appraisal. No stage, no evidence list with effects, no "Accept my score", no exception request |
-
-**Four sections missing outright. Seven present but different. None matching.**
-
-Of the blueprint's 20 button labels on this screen, three appear in the tool —
-`Save`, `Remove`, `Add a KPI`, and two of those are generic. **Seventeen do
-not**: Request a KPI change · Edit this KPI · Undo my changes · Add to my
-record · Submit daily update · Set targets · Assign a task · Eligibility
-matrix · Open weighting · Ask HR for an exception · Save my self-evaluation ·
-Send the review request · Accept my score · Dispute it · Send the request to HR
-(and the two whose label the blueprint computes).
-
-## What is behind it, and does work
-
-The screen is the gap, not the engine. The `plb` Edge Function already serves
-32 routes for exactly this: `/perf/tree`, `/perf/due`, `/perf/file`,
-`/perf/score`, `/perf/history`, `/perf/measures`, `/perf/assign`,
-`/perf/assign/bulk`, `/perf/carry`, `/perf/team`, `/self`, `/acknowledge`,
-`/dispute` (+ respond, decide, escalate, withdraw), `/attr/propose`,
-`/attr/decide`, `/certify`, `/countersign`, `/score`, `/score/lock`,
-`/quarter`, `/registry`. The database carries `pms_cfg`, `pms_cap_shadow`,
-`plb_payout_factor`, `perf_history` and 173 measure definitions.
-
-So most of section C, E, G, H, J and K is a screen calling endpoints that are
-already there — not new engineering underneath.
-
-## Decisions for this tab
-
-| # | Decision | Why |
-|---|---|---|
-| P1 | Rebuild Performance as **one** screen, in the blueprint's order A→K | The blueprint sets `isAppraisal` inside `route === 'pms'`. Three tabs is not a styling difference, it is a different information architecture |
-| P2 | Keep the three existing routes alive as redirects | Links, bookmarks and the mobile bar already point at them; breaking those to match a layout would trade one defect for another |
-| P3 | Build every section, including the four missing ones, with honest empty states | A control that is absent and a control that says "nothing yet" are different failures, and only the first is mine |
-| P4 | Restore the blueprint's label, **"Performance & appraisal"** | It is the design's word and it describes the merged screen |
-
-## Both open questions, answered
-
-### P-Q1 — it is monthly **and** quarterly. Two layers, not a choice between them.
-
-Answered 2026-09-28: *"scoring and targets is done monthly and then the
-Quarterly scorecard is different… this is a two layer performance management
-system. Also KPI numbers to be updated as per the cadence."* Re-read against
-the PLB Constitution V2.0, Annexure F and the Scorecard Guide by Department.
-
-**Layer 1 — the month.** `Monthly Score = 0.75 × KPI /10 + 0.25 × Attribute /10`.
-The KPI half asks one question per KPI: did this month's registered share of the
-quarterly plan land *in this month*? — 2.0 landed, 1.0 partly or late but still
-inside the month, 0.0 not, or only at quarter end. The Attribute half is five
-slots worth 2 points each: A-1 process and control discipline, A-2 data and
-reporting hygiene, A-3 contribution beyond your chair (the same three for
-everyone), A-4 capability and A-5 institutional build (yours to propose). Self
-evaluation opens on the last working day and closes at the end of WD 1; the
-manager cannot score until it closes or you submit; **SCORE LOCK at WD 3**. If
-the manager differs from the self-evaluation by 2.0 or more they must write one
-line naming the component — compulsory, not approvable.
-
-**Layer 2 — the quarter.** `PLB = Target × Payout Factor × Consistency Factor`.
-The goal sheet is issued and acknowledged by day 10 and locked at the end of it;
-day 15 is the backstop — no sheet and the chair's standard one applies and you
-cannot be scored below it. Achievement against the sheet sets the **Payout
-Factor** (under 50% nothing, 85% full, 115% and above 125%). The mean of the
-monthly scores sets the **Consistency Factor** (8/10 releases 80%, 10/10 all of
-it, floor 30%). Data freezes at WD 3 after quarter end, the result is certified
-and published at WD 5, and the dispute window is the 10 working days after that.
-
-So the monthly layer decides *how much of what you earned is released*, and the
-quarterly layer decides *how much you earned*. Neither replaces the other, and
-the screen has to show both without pretending they are the same number.
-
-**And the arithmetic is already right.** Both curves were checked against the
-Constitution at every published point, and all five of its worked examples were
-run through the live functions on its own base case:
-
-| Quarter | Achievement | Monthly mean | Constitution | `plb_payout_factor` × `plb_consistency` |
-|---|---:|---:|---:|---:|
-| Standard delivery | 100% | 8.0 | ₹44,000 | **₹44,000** |
-| Steady, under target | 78% | 9.0 | ₹36,000 | **₹36,000** |
-| Quarter-end spike, weak months | 110% | 5.0 | ₹30,000 | **₹30,000** |
-| Strong on both | 110% | 9.5 | ₹57,000 | **₹57,000** |
-| Below half target | 49% | 10.0 | ₹0 | **₹0** |
-
-The engine is not the gap. **Every table it fills is empty** — no goal sheet has
-ever been issued, no month has ever been scored, `perf_assignment` has no rows,
-and `pms_weighting` had none either, so the 75/25 split existed only as two
-numbers typed into a heading in the page.
-
-### P-Q2 — a task is one person asking another for something by a date.
-
-Answered 2026-09-28: *"this is someone giving task to someone, like I can create
-a task for a specific manager or all the managers to visit the SBI branches…
-these gets considered in the attributes if done on time or escalations get
-raised."*
-
-The `task` table was already here with exactly that shape — `person_id`,
-`assigned_by`, `title`, `detail`, `due_on`, `period`, `status`, `outcome`,
-**`attribute_weight`**, `closed_at` — and not one row in it. No service route,
-no screen, and no database function so much as mentioned it. Migration 214 gives
-it verbs.
-
-It lands on **A-3, contribution beyond your chair**, which is the one the
-Scorecard Guide says must cite "a named artefact ID — a ticket, a sign-off, a
-document reference" and never "a generic description". A task closed on time is
-that artefact. `task_evidence()` returns the month's record and what A-3 would
-be if scored from it alone — a suggestion with its working shown, because the
-Guide is equally clear that the manager scores and HR cannot move it.
-
-## What was built for this tab so far — migration 214
+**Boundaries that have been tested and must hold.**
 
 | | |
 |---|---|
-| `task_assign(actor, in)` | One instruction to named people, to everybody in a chair, to a department, or to your whole subtree. Refuses anybody outside it **by name** rather than dropping them quietly |
-| `task_close(actor, task, outcome)` | DONE or LATE is decided by the due date against today, not by whoever closes it |
-| `task_cancel(actor, task, why)` | Only whoever asked can call it off |
-| `task_sweep()` | Overdue becomes MISSED and tells the two people it concerns, once each |
-| `task_evidence(person, period)` | The month's tasks and the A-3 they suggest. Null, not zero, for a month nobody asked anything of you |
-| `task_mine(person, period)` | Both sides: what I owe and what I asked for |
-| `crux_task_tick()` + `crux-task-sweep` | Daily at 07:15 India time, after the penalty sweep and before anybody opens the tool |
-| `pms_weighting` | The Constitution's 75/25, as a row, effective 1 October 2026 |
+| The application lives in the database | `index.html` is GENERATED by `.github/build-tool.py` from `app_page` + 15 ordered patches + a shim. Editing `index.html` directly is futile. |
+| `design-handoff/` never reaches a remote | It is gitignored. |
+| The commercial rates CSV is never published | The repository is public and deliberately so. |
+| The publishable key in the repo is not a secret | `sb_publishable_…` is intentional. |
+| Every "personal" row in the sample data is sample data | No leakage risk. |
 
-**A missed task raises no `ops_alert`.** That screen is filtered by role and not
-by person, so `ops_alert_open()` would show one manager's forgotten instruction
-to whoever holds ADMIN. It writes a `notification` to the person (pushed — it
-moves their score) and to whoever asked (not pushed — they are the only one who
-can call it off). The first version did raise an alert; the test caught it.
+## 3. Constraints
 
-**It opens no case either.** A case in this tool belongs to a client and a
-branch and carries an SLA clock. A task has none of those. If a missed task
-should also open a formal case, that needs a client attached to it and is a
-policy decision — recorded here rather than assumed.
+- **Egress.** This session reaches the Supabase host only through the MCP
+  tools. `gh api` and anonymous `git clone` work; `github.io` does not.
+- **The MCP approval gate.** Some calls need an approval this session cannot
+  answer. When that happens the work is written, tested locally against the
+  baseline, committed, and listed in §10 for the owner to apply.
+- **One row, many patches.** A patch rule is `(old, new, want)`; a span rule
+  is `((from, upto), new, want)`. Patches go in **before** the
+  `for name, sentinel, rules in PATCHES:` loop. CSS comments inside a patch
+  string must be `/* */`.
+- **Local proving ground.** PG16 on port 55432, socket `/home/crux/pg`,
+  user `crux`. `build/schema/load.sh` rebuilds the baseline; the scratchpad's
+  `suite.sh` applies 239–246 on top and runs the suite.
 
-`build/test/test_task.sql` holds 16 assertions covering all of it, including the
-two curves and the five worked examples, and runs on a database rebuilt from
-`build/schema` alone.
+## 4. Inputs and sources
 
-## Still open from this tab
+- `app_page` (slug `app`), the application itself.
+- `build/schema/*` — the snapshot of the live schema, regenerated by the
+  "Snapshot the schema" workflow on every push.
+- `build/migration/NNN_*.sql` — the ordered record of every change.
+- The owner's org chart, the KPI registry, the rates workbook, the
+  Constitution and the Scorecard Guide.
+- `https://cruxindia.github.io/crux-console/` — the information design the
+  dashboard follows.
 
-| # | Question | Why it is yours |
+## 5. Assumptions
+
+1. The Constitution's 75/25 KPI/Attribute split applies from 1 Oct 2026.
+2. The reporting line in `person.manager_id` is the authority on who may set
+   and see whose numbers. Everything since migration 218 is built on it.
+3. The owner applies migrations and redeploys edge functions when the gate
+   blocks this session.
+4. `operations.alert@cruxindia.co.in` is the account the tool is
+   administered from and is **not** a member of staff.
+
+## 6. Deliverables
+
+| # | Deliverable | State |
 |---|---|---|
-| P-Q3 | Should a missed task also open a case? | A case needs a client and a branch; a task has neither. Saying yes means deciding which |
-| P-Q4 | No goal sheet has ever been issued, for anybody | Targets "come from a fixed hierarchy" and are a business input. The engine is ready and idle |
-| P-Q5 | `pms_impact` — what an escalation, warning or appreciation does to a score — has no rows | The blueprint puts it on the weighting panel. The Constitution scores from the A-1 rubric instead, so these two may be the same thing said twice |
+| D1 | The Performance & appraisal screen, in the blueprint's order | shipped |
+| D2 | The PLB scheme: issue, score, certify, publish, dispute | shipped |
+| D3 | The monthly cycle: assign, file, roll up, score | shipped, **§8 defects open** |
+| D4 | My team & structure: the people tree and the moves | shipped |
+| D5 | All people — the flat list for admin and HR | shipped (244) |
+| D6 | The dashboard, in the crux-console information design | shipped |
+| D7 | The floating help button | shipped |
+| D8 | Who sees what, measured | `docs/WHO-SEES-WHAT.md` |
+| D9 | The service account is not an employee | 243 live, **245 pending** |
+| D10 | A manager can find and use target-setting | shipped |
+| D11 | **The PMS is usable every day of the month** | **open — §8** |
+| D12 | **Acting as somebody else is really being them** | **open — §8** |
 
-## The screen, as rebuilt
+## 7. Methodology
 
-`build/app/screen-perf.js` — 20,349 → 49,183 bytes — is now one page in the
-blueprint's order, published at 460,432 bytes with every patch assertion
-passing. The three tabs are gone; what is left beside it is **Running the
-scheme** (issuing sheets, certifying, closing a quarter), which is HR's and
-Business Excellence's job and which the design does not place anywhere.
+The same loop every time, and it is not negotiable:
 
-| | Section | State |
+1. **Measure first.** Never diagnose from the source alone. The claim
+   "most of the buttons in PMS are not working" was settled by loading the
+   published page in Chromium, signing a manager in against stubs, and
+   pressing every control — not by reading `pfWire`.
+2. **Write the migration with a guard that fails loudly.** Every migration
+   in `build/migration/` asserts its own invariant at the end and raises if
+   it does not hold.
+3. **Substitute over live source, never retype from memory.** Migration 239
+   was written from memory and lost a clause. Since then every function
+   rewrite either carries the live `prosrc` or is checked against it.
+4. **Test what the user does, not what the code says.** A test that restates
+   the predicate passes whenever the predicate is self-consistently wrong
+   (`test_offer.sql` attempts all 96 moves for real).
+5. **An offer must equal what the write allows.** Migration 242's rule. A
+   control that is always refused is a defect, not a message.
+6. **Run the whole suite before committing.** 494 SQL assertions over 19
+   files plus six JavaScript checks.
+
+## 8. Current work — P1: the PMS is not ready
+
+> "PMS is not ready, set KPI is still not working and just like that most of
+> the Buttons in PMS are not working. this is P1 to finish"
+
+### What was measured, 2026-10-06
+
+Loaded the published page in Chromium, signed in as a manager with stubbed
+services, and pressed every control on Performance & appraisal.
+
+- **No JavaScript error. No console error. Every control is wired and
+  clickable.** The front end is not dead.
+- 19 controls on first draw; opening a person adds 3; "Set a KPI" adds 8.
+- The one control with no handler, `data-pffile`, is a number box read in
+  bulk by "Submit daily update". That is by design.
+
+So "not working" is the **server refusing the writes**, and there are four
+distinct causes.
+
+| | Cause | Evidence |
 |---|---|---|
-| A | Three score chips, KPIs / Attributes / Final | **built** — weights read from `pms_weighting_for()`, not typed into a heading |
-| B | Daily table, five columns | **built** — was two; now KPI, Monthly target, Achieved, %, Today's count |
-| C | Day note + assistant classification | **stated gap** — see below |
-| D | One "Submit daily update" | **built** — was one button per row; a blank box is still left alone, not filed as zero |
-| E | Your last fourteen days | **built** — `perf_filed_days()` (217). A run breaks only on a *working* day nobody filed on |
-| F | My KPIs | **built**, with the design's own rule: five is the design |
-| G | Attributes | **built** — shown as the sheet actually holds them |
-| H | KPI change requests | **stated gap** — see below |
-| I | My team: targets, tasks, eligibility | **built** — Assign a task and the Eligibility matrix now exist |
-| J | PMS weighting | **built** — reads and writes the split |
-| K | Appraisal | **built** — reusing the Bonus screen's own renderers rather than rewriting 900 correct lines |
+| **C1** | The window for setting KPIs is **5 working days per month**, and the screen never says so where the buttons are | `perf_cycle_open` sets `assign_closes = plb_wd_after(period_start, 5)`. October closes **2026-10-08**; September's closed 2026-09-07 and is shut now. `perf_assign`, `perf_assign_edit` and `perf_assign_remove` all return `window_closed` for anybody but an administrator. The screen reads `entry_open` (to lock the filing boxes) but reads `assign_open` **only to print a sentence**. |
+| **C2** | `perf_assign_remove` **does not exist in the live database** | The last block of migration 240 never landed. The Remove button returns SQLSTATE 42883. |
+| **C3** | Once the window shuts there is **no way to extend it** except SQL | `perf_cycle_open` answers "that cycle was already open" and changes nothing. |
+| **C4** | **91 of 103 staff have nobody reporting to them**, so most people correctly see no team section at all | 12 managers have reports. Reads as "the buttons are missing". The cure is the data, which is what **All people** (244) was built for. |
 
-**The two gaps are findings, not omissions.** Section C has nowhere to write:
-the only attribute writing this database has is the quarterly A-4 / A-5
-proposal, which carries three milestones and an evidence reference and is not a
-place for a dated note. Section H has no table at all. Both say so on the
-screen, and say what would make them work. The field shapes for G and A were
-checked against `plb_sheet()` rather than assumed — attributes carry
-name/fixed/state/proposal/evidence, not the weight and score I had first
-guessed, and the attribute score is monthly rather than per attribute.
+C1 is the one that makes the tool unusable: from **9 October** every manager
+in the company is offered four KPI controls that all refuse.
 
-One latent trap closed on the way past: `build/app/*.js` was **not** in the
-publish workflow's trigger paths, so changing a screen the build reads from the
-repository did not republish — the change sat in git looking applied.
+### The decision
 
-## Still to do on this tab — closed 2026-09-29
+Keep the rule — it is the Constitution's and it is what makes a month's
+measures mean something — and fix the three things that make it unworkable:
 
-The three routes the screen's new sections call are deployed. They did **not**
-go into `plb`. `plb` computes what people are paid and deploys all-or-none, so
-adding three routes meant re-uploading the whole quarterly scheme — issue,
-acknowledge, lock, score, certify, publish, disputes — to gain a task list. A
-slip anywhere in that upload takes the scheme down for a feature nobody is
-waiting on.
+1. **The screen stops offering what the clock refuses.** Migration 242's rule
+   applied to the clock instead of the relationship: when `assign_open` is
+   false and the viewer is not an administrator, the KPI controls say why
+   instead of being offered.
+2. **The window can be extended by the people who own the scheme** — HR,
+   Business Excellence, an administrator — with a reason, recorded.
+   `perf_cycle_extend`.
+3. **`perf_assign_remove` lands**, as **withdraw-only**. A measure that was
+   given and taken back is a fact about that month; deleting the row erases
+   that the manager ever set it, and leaves the audit entry pointing at
+   nothing. `WITHDRAWN` already exists (240 widened the state check and swept
+   `perf_tree` and `perf_kpi_score` to filter it).
 
-So the decision `build-tool.py` patch 8 recorded for the despatch, made again
-for the same reason: a **sixth front door**. `perf` carries `GET /filed`,
-`GET|POST /weighting` and the six `/task/*`, and is deployed as v1.
-`plb/routes/plb.ts` went back byte-for-byte to the running v5
-(sha256 `09207a9e…`), so the repository and the deployed function agree again.
-Patch 11 defines `PERF` and `perfApi` beside `PACK` and `packApi`, anchored on
-patch 7/8's line, which is why it is last in the list. The screen calls
-`perfApi` for the eleven calls that moved and `plb` for the eleven that did not.
+## 9. Current work — acting as somebody else
 
-Published at 460,624 bytes.
+> "when Admin uses 'Look at Crux as someone else', this should actually log in
+> the admin to that person's account and use it as that person."
 
-## Status
+**The session already is theirs.** `auth_act_as` mints a real `auth_session`
+row for the target with `acting_actor_id` set, returns their `app_role`,
+`department`, `chair_title`, `scope_level` and `screens`, and writes an
+`ACTED_AS` audit row naming both people. The page stores the administrator's
+own token under `cruxAdminToken` and swaps `token`.
 
-| | |
-|---|---|
-| Audited | yes — 11 sections, 20 buttons, element by element |
-| Both open questions | answered, and written into the design above |
-| Built | 214 the task engine · 215 the baseline carries the split · 216 whose split applies · 217 the fortnight · the screen itself |
-| Published | yes — 460,624 bytes, parses, every patch assertion passed |
-| Tests | 220 passed, 0 failed, on a database rebuilt from `build/schema` alone |
-| Blocking | nothing |
+**The screens are not.** `start(person)` sets `me`, repaints the navigation
+and routes — and clears **no screen state at all**. `PF`, `TM`, `PB`, `MX`,
+`PL`, `TD`, `AA` and `QH` are module-level objects that survive the swap, and
+`vPerf` only re-reads the team `if (!PF.team)`. So after acting as somebody
+else the tool shows:
 
----
+- the **administrator's** team under "whose targets are yours to set";
+- the administrator's chart on My team & structure;
+- the administrator's goal sheet;
+- whoever the administrator last had open, still open.
 
-# The three defects reported 2026-09-29
+That is the whole of the complaint. The fix is that signing in as anybody —
+the first sign-in, acting as somebody, and stopping acting — forgets every
+screen's cached state first. A JavaScript check asserts the list of state
+objects covers every `build/app/*.js`, so adding a screen cannot silently
+leave one behind.
 
-## 1 · "People are seeing the team of other people"
+## 10. Open items the owner must apply
 
-> *"One should only be able to see and update things for his team and see the
-> details and progress from level 2 and below. So 1st layer/level I work as a
-> manager and below my level I just see and see the progress performance etc."*
+This session's MCP approval gate refuses some calls and cannot be answered
+from here. Each item below is written, tested against the local baseline, and
+committed.
 
-**This was the most serious thing found in this project so far, and it was
-worse than reported.**
-
-`kpi_subtree_people(actor)` walked the **chair** tree. There is one Branch
-Manager chair held in thirty-nine places, so walking chairs puts every branch
-manager in the country one step below every zonal manager. The only narrowing
-was a place filter that opened itself whenever the actor had no place on record
-— true for eighty-two of the hundred and one seated holders.
-
-Measured on the live database before the fix:
-
-| | |
-|---|---|
-| (actor, person) pairs visible | **5,579** |
-| people who could see somebody | **97** |
-
-An Executive on SG1 with no reports — ABHIJEET KORI, and sixty others like him
-— came back with sixty-two people. A Team Leader got seventy-one. A Branch
-Manager got eighty-two.
-
-That function is also the **write** gate in `kpi_save`, `kpi_retire` and
-`task_assign`, so an SG1 Executive could define and retire KPIs for sixty-two
-colleagues and assign them tasks.
-
-Three read routes were worse still. `GET /perf/tree`, `GET /perf/history` and
-`GET /perf/score` took `?person=` off the query string and passed it straight
-through to a `SECURITY DEFINER` function. **Anyone who could sign in could read
-anyone's performance by knowing their id.**
-
-### What is true now — migration 218
-
-`perf_line(actor) → (person_id, depth)` over the **reporting line**, which is
-the union of two edges that both mean "A manages B":
-
-* the **seating tree** — `chair_seating.reports_to_seating_id`, place-aware, and
-  what the org chart draws; and
-* `person.manager_id`.
-
-The union is deliberate. Neither is complete alone: the seating tree supplied
-three of the hundred and two edges before defect 2 was fixed, and manager_id
-supplied the rest. Dropping either would blank somebody's team for a reason
-that has nothing to do with who they manage.
-
-| depth | what it means |
-|---|---|
-| 1 | my team — **seen and set** |
-| 2 and beyond | below my team — **seen only** |
-| absent | nothing at all. Not their name, not their numbers. |
-
-After, measured the same way: **478 pairs visible, 102 of them updatable, 13
-people able to see somebody.** ABHIJEET KORI 62 → 0. Parag Mayekar 82 → 0.
-ROOPA R 71 → 0. Aniket Chalke keeps his 42 direct reports.
-
-### Deliberately removed
-
-`perf_may_set` said yes to anyone whose `department` is `Human Resources` or
-`Business Excellence`, for **every person in the company**. Two people hold
-that today. The rule as given has no room for it — setting a score for somebody
-who does not report to you is the thing being complained about. Running the
-scheme (issue, lock, certify, publish, decide a dispute) is a different act and
-is untouched; `maySetUp` keeps that meaning and loses the other one.
-
-An administrator still sees and sets everything. That is the tool's
-administrator, not a department, and there are two.
-
-### A performance defect found by the fix
-
-The first `kpi_subtree_people` was written `and perf_may_set(p_actor, p.id)`,
-which reads better and walks the reporting line **once per person in the
-company** — 635 recursive walks for one screen. It took a verification query
-past a sixty-second timeout on the live database. It is now an uncorrelated
-`in (select …)`, evaluated once, with the administrator case lifted out. Same
-rule, one walk.
-
-## 2 · The ~100 people the org chart cannot seat
-
-The real count was **82 of the 101 seated holders**, and the report's own
-headline reason was the smaller half of it:
-
-| why | how many |
-|---|---|
-| the chair has no seating at all | **69** |
-| no coverage to place them by | 11 |
-| coverage in a place the chart has no seat for | 1 |
-| coverage spans four regions | 1 |
-
-Sixty-nine were not a missing-data problem. Seven chairs — `EXECUTIVE` (63
-holders), `CEO_MD`, `VP_FINANCE`, `HEAD_HR_OPERATIONS`,
-`HEAD_FINANCE_OPERATIONS`, `HR_EXECUTIVE`, `SALES_MANAGER` — have no row in
-`chair_seating` at all. There was no seat to put anybody in, and migration 114
-places a holder into a seating the chart already drew, so it could only ever
-report that.
-
-Since 218 this stopped being a gap on a drawing: the seating tree is half the
-reporting line, so an unplaced holder is a person **in nobody's team with no
-team of their own**. 218 fails closed, which is the right way round, and 219 is
-the other half of it.
-
-### The rule — migration 219
-
-**A person sits where their manager sits**, unless their own coverage already
-said otherwise (114 runs first and decides that). It is not a guess: of the
-thirteen holders on chairs that do have seats, eight resolve to a place their
-own chair already has, and the sixty-three Executives resolve to the place
-their own Team Leader sits in.
-
-Where the manager's place has no seat on the person's chair, **the seat is made
-rather than the person left out**, and every made seat carries a note saying it
-came from the reporting line and not from the chart. Three Branch Manager and
-Location Partner holders report to the West zonal manager, and the chart draws
-branch seats as cities and never as zones; a Location Partner who reports to
-the West zone is a fact about the company whether or not the chart drew a box
-for it.
-
-It runs in **passes** because Ashwini Reddy's manager is SHASHIKALA BHASKAR K,
-who is herself unplaced until this runs — one pass would leave Ashwini behind
-for a reason that has nothing to do with Ashwini. Twelve at most, so a loop in
-the manager chain cannot spin.
-
-**Vrunda Potdar is deliberately not decided.** She is a Zonal Manager covering
-four of the chart's regions, and the chart gives Zonal Manager one seat per
-zone and none that means four of them. She is seated with the place left open
-and a note saying which four, rather than assigned to whichever region sorted
-first. She is then in the reporting line — the thing that was actually broken —
-and the label stays a question for whoever owns the chart.
-
-Run on the live database: **5 passes, 81 placed, 12 seats made, none left.**
-`org_unplaced()` returns zero for the first time. The reporting line grew from
-478 visible pairs to 494 and from 102 first-level pairs to 119, which is the
-seating tree carrying weight it could not carry before.
-
-## 3 · "You have not pre uploaded the KPIs"
-
-Correct, and the shape of it is worth being exact about, because two
-different things get called "the KPIs":
-
-| | | |
+| # | What | Why it matters |
 |---|---|---|
-| `kpi_definition` | **173 rows across 42 chairs** | the **registry** — what a *chair* is measured on. Loaded, and has been. |
-| `perf_assignment` | **0** | what one **person** is measured on, this cycle, with a target |
-| `kpi_target` | 0 | |
-| `plb_goal_sheet` | 0 | |
+| O1 | Apply `build/migration/245_the_service_account_has_no_line_above_it_and_none_below.sql` | Until it lands the People upload template still carries the service account (104 rows, one of them the account), so the next upload puts it back as an employee. |
+| O2 | Redeploy the **plb** edge function, `verify_jwt: false` | HR is still handed 103 rows each with a Set-targets button that `perf_may_set` refuses; administrators are still offered the service account. |
+| O3 | Redeploy the **ops** edge function, `verify_jwt: false` | `/hr/overview` still counts the service account as an employee. |
+| O4 | Apply `build/migration/246_*` and redeploy **perf** | The P1 fix in §8. |
 
-So the registry was there and not one person had been given anything out of
-it. Everybody opened Performance to an empty screen, and the screen was
-telling the truth.
+**`verify_jwt` must be false on every one of these.** The page sends
+`x-crux-token` and no `Authorization` header; leaving it true 401s every
+request before a line of the function runs. It has happened twice.
 
-### What the Constitution already said to do — migration 221
+## 11. Risks and known limitations
 
-This is not a new policy. The PLB Constitution issues a goal sheet by day 10
-and has a **day-15 backstop: where no sheet has been issued, the chair's
-standard sheet applies.** `perf_seed_from_registry(actor, cycle)` is that
-backstop written down — every seated person gets the measures their own chair
-is measured on.
-
-**The target arrives blank, deliberately.** A KPI without a target is a
-person who knows what they are measured on and is waiting to agree how much.
-A KPI with a target nobody agreed is a person held to a figure they never
-saw, and at the end of the quarter that figure is multiplied into their pay.
-The first is an honest starting point; the second is the failure the whole
-scheme exists to prevent, and it would be the tool that caused it.
-
-`weight_pct` **is** filled, because it is not a judgement: the registry's own
-rule, the one `/registry` has always shown, is equal weighting across a
-chair's measures — `round(100 / count, 2)`.
-
-Run on the live database, for September and for October:
-
-> **364 measures given to 101 people, both months. Nobody left without a
-> measure set. Targets blank. 10 of them climb into a manager's.**
-
-Only ten climb, and that is reported rather than hidden: the registry names
-measures per chair, so a Branch Manager's "Cases closed" and a Zonal
-Manager's are two different rows. The link is matched on **name and unit**,
-not on `kpi_id` — matching on the id linked *nothing at all*, which is what
-`build/test/test_seed.sql` caught before it reached the live database.
-
-### One thing that will look like a fault and is not
-
-`perf_due` returns **nothing for anybody today**. That is correct. Every one
-of the 173 registry measures has cadence `MONTHLY`, and a monthly measure
-falls due on the cycle's own closing date — **7 October** for September, when
-every person has between four and six things to file. There is not one
-`DAILY` measure in the registry. If a daily rhythm is wanted, that is a
-change to the registry's cadences, not to the engine.
-
-## 4 · Five tables open to the publishable key — found, not reported
-
-Found by the project's own security advisor while working on defect 3.
-
-`perf_cycle`, `perf_assignment`, `perf_entry`, `matrix_dispatch` and
-`person_document` had **row level security off**. Every other table here —
-156 of them — has it on, and `build/schema/70_rls.sql` says why in its own
-header: the tool reaches the database through `SECURITY DEFINER` functions
-and the service role, so RLS on with no policy is closed to `anon` and to
-`authenticated`, which is what it should be. These five were created after
-that convention settled and did not get it.
-
-**This is defect 1 again, through a different door.** The publishable key is
-in the public repository on purpose; it grants nothing *because* every table
-is closed to it. These five were open, so
-`/rest/v1/perf_assignment` would have returned every person's KPIs and every
-number they had filed, to anybody, with no sign-in, bypassing `perf_line`,
-`perf_rel` and every gate migration 218 put in.
-
-Two things kept it from being a live breach: those tables were empty, and the
-application makes no PostgREST call at all — `index.html` contains zero
-`/rest/v1` references. The first stops being true the moment the KPIs are
-seeded, which is defect 3. **So migration 220 went first, before 221.**
-
-Migration 220 turns RLS on for all five and adds no policy, which is the
-intent and is checked rather than assumed. It also ends with an assertion, so
-a later migration that turns one back off fails the rebuild rather than
-waiting for the advisor to notice again.
-
----
-
-## Assumptions
-
-* The blueprint is the contract for *shape*: which controls exist, what they are
-  called, what columns a table has, what a screen says when it has nothing to
-  show. It is not the contract for its own invented numbers.
-* Where the blueprint shows a control the live data cannot yet feed, the control
-  is still built and shows its own empty state. A missing control and an honest
-  empty state are different failures, and only the first is mine.
-
-## Risks and known limitations
-
-* **475 KB of markup across 34 sections.** At one tab per pass this is real
-  work; the index above exists so progress is countable rather than felt.
-* **`app_page` is the tool.** Every change ships through
-  `.github/build-tool.py`, whose patches assert exact occurrence counts. A patch
-  whose anchor has moved fails loudly rather than silently — which is the
-  intent, but it means edits land in the order the patches run.
-* **`api` cannot be assumed redeployable** (108 KB, untested). A screen whose fix
-  needs an `api` change carries that risk.
-
-## Status
-
-| | |
-|---|---|
-| Index of the design | **built — 34 sections, 474,875 bytes, counted** |
-| Tab mapping | **confirmed — all 20 routes present** |
-| Tabs audited | 1 of 34 — Performance |
-| Defect 1 · over-broad visibility | **closed** — 218 · 5,579 pairs → 478 · 97 people → 13 |
-| Defect 2 · the unplaced org chart | **closed** — 219 · 82 → 0, `org_unplaced()` returns nothing |
-| Defect 3 · the KPIs not pre-uploaded | **closed** — 221 · 364 measures to 101 people, two months |
-| Defect 4 · five tables open to anon | **closed** — 220 · found by the advisor, not reported |
-| The `plb` redeploy | **done** — v7, verify_jwt off. See the note below |
-
-### The `plb` redeploy — landed, with one scare
-
-`plb` is now **v7** and the three ungated reads go through the wrappers.
-`GET /perf/tree`, `/perf/history` and `/perf/score` call `perf_tree_for`,
-`perf_history_for` and `perf_kpi_score_for`, which take the asker as their
-first argument and refuse a person outside their line. `GET /sheet/:id` asks
-`plb_sheet_rel` instead of the old HR-or-administrator test, which fixes both
-halves of it: a manager can now open their own report's sheet, and an HR
-executive can no longer open the chief executive's. `GET /perf/team` returns
-the line with `depth` and `maySet` on every row, so the screen can draw the
-difference between somebody I manage and somebody I only watch.
-
-**The scare, recorded because it will happen again.** The MCP deploy tool's
-`verify_jwt` parameter defaults to `true`, and I omitted it. v6 went out with
-the gateway demanding a JWT — and `call()` in the page sends `x-crux-token`
-and **no Authorization header at all**, so every request to `plb` would have
-been refused with 401 before the function ran. That is exactly the incident
-this project has already had once ("plb and hr redeployed with verify_jwt
-off, which is what was ejecting people on #plb"). v7 went out about two and a
-half minutes later with `verify_jwt: false`, and `plb/index.ts` now carries a
-comment saying so at the top, where the next person to deploy it will read it.
-
-# The daily flow, and the leak that was still open · 2026-09-30
-
-## 5 · "Data leakage still exists, managers are seeing everyone's data"
-
-Correct, and I had checked one half of one screen. Migration 218 closed the
-Performance screen's **KPI** half. The **appraisal** half goes through a
-different door and I did not look at it:
-
-> `GET /plb/quarter` → `plb_quarter(p_quarter date)` — **no actor at all.**
-
-It returned, to anybody who could sign in: every goal sheet in the company,
-with name, employee number, chair, status, **target PLB in rupees**, months
-scored, disputes open and overdue, whether it was certified and published,
-and **the amount paid**. Plus `inScheme` — every seated person on a chair
-that carries a measure set.
-
-Migration 222 gives it the actor and asks `perf_rel` about every row, so the
-two halves of one screen cannot disagree about who somebody may see. The old
-one-argument form is left standing and made to **refuse** rather than
-dropped, so a stale caller gets an empty answer instead of everybody's.
-
-`plb_sheet` got the same treatment. 218 gated it *at the route*, which works
-and is a gate exactly one route remembers — 222's own assertion caught that,
-which is what it is for, so the gate moved into the database as
-`plb_sheet_for`.
-
-Checked on the live data with real accounts, counting what each sees in the
-quarter now:
-
-| | now | before |
+| | Risk | Standing |
 |---|---|---|
-| ABHIJEET KORI · Executive, no reports | **1** (themselves) | 101 |
-| ROOPA R · Team Leader | **1** | 101 |
-| Parag Mayekar · Branch Manager | **17** — themselves + 16 | 101 |
-| Aniket Chalke · Branch Manager | **43** — themselves + 42 | 101 |
-| Nitish Bhope · Zonal Manager | **26** — themselves + 25 | 101 |
-| Virendra Pal · Chief Executive | **100** — the whole line | 101 |
+| R1 | The application is one 378 KB row with 15 patches applied at build time | Every patch asserts its own call-site count, so a build fails loudly rather than publishing a page it did not understand. |
+| R2 | A function rewritten from memory loses a clause | Migration 239 did exactly this. Mitigated by substituting over live `prosrc`. |
+| R3 | Three independent line walkers — `perf_line`, `org_subtree`, `app_subtree` | They can disagree. 245 keeps the service-account rule in the table so none of them needs to know about it. |
+| R4 | 49 of 103 staff have no designation, 13 no location, 3 no manager | Not a code defect. **All people** exists to find and fix it. |
+| R5 | Aniket Chalke has 42 direct reports; the company has two roots | A data shape nobody chose. Worth the owner's decision. |
+| R6 | `plb_compute`'s direction defect: 181 goal KPIs reward being worse | Open, item #42. |
 
-## 6 · The daily flow — bottom to top, and targets top to bottom
+## 12. Validation and acceptance
 
-### What was already there, and what was not
+- **Suite green**: 494 SQL assertions over 19 files, six JavaScript checks
+  (`driver_check` 10, `okr_check` 22, `linkify_check` 14, `help_check` 20,
+  `today_check` 28, `list_check` 34) plus `check_access_matches_nav.py`.
+- **The published page carries the change**: after every publish, the new
+  function names are grepped out of the deployed `index.html`.
+- **The guard in each migration passes against live data**, not only against
+  the baseline.
+- **For P1 specifically**: a manager on a month whose window has shut sees
+  an explanation where the button was, and an administrator still sees the
+  button. Asserted by `test_window.sql` and by the browser probe.
 
-`perf_value()` has walked `rolls_into_id` and added a measure's filings into
-everything above it since migration 190, and `perf_accrual_kind()` already
-decided sum-versus-average the right way round. **The arithmetic was never
-the problem.** Two things were:
+## 13. Decision and change log
 
-**Nothing climbed.** Of the 364 measures seeded in 221, **ten** did. 221
-linked by NAME, and the registry does not name that way — it names per chair
-and codes the family in the unit after a middle dot:
-
-| Chair | Measure | Family |
+| Date | Decision | Why |
 |---|---|---|
-| Executive | Cases completed against target | `EX1` |
-| Team Leader | Daily target achievement | `D3` |
-| Branch Manager | Cases completed within TAT | `D3` |
-| Zonal Manager | Branches at or above plan | `D8` |
+| 2026-10-06 | **Keep migration 218's rule**: HR runs the scheme and may not set a named person's KPIs or targets | Owner's choice when 239 was found to have reversed it. 241 reverts 239. |
+| 2026-10-06 | The service account is a sixth `employee_type`, not a new mechanism | `CLIENT_CONTACT` already meant "a row in `person` who is not staff" and 13 functions already read it (243). |
+| 2026-10-06 | The service-account rule is kept **by the table**, not by a predicate in each walker | `org_subtree`, `app_subtree`, `org_team_tree` and `perf_reminder_sweep` carry no `employee_type` test; a fifth copy is how `is_staff` and `person_is_staff` came to disagree (245). |
+| 2026-10-06 | **All people** is for the administrator and HR, on the same test `org_move_person` asks | 242's rule: the offer must equal what the write allows (244). |
+| 2026-10-06 | The reporting line is edited through `org_move_person`, not a second write | One set of rules, one audit row, one refusal. |
+| 2026-10-06 | **Keep the 5-working-day KPI window; make it visible and extendable** | The rule is the Constitution's. What was broken was offering controls it refuses and having no way to extend it (246). |
+| 2026-10-06 | **`perf_assign_remove` withdraws, it does not delete** | A measure given and taken back is a fact about the month; deleting it erases that the manager set it and orphans the audit row. |
+| 2026-10-06 | Signing in as anybody **forgets every screen's cached state** | `start()` swapped `me` and left `PF`/`TM`/`PB` holding the previous person's data. |
 
-One pyramid, no two sharing a name. So the link is by **family**, and where
-the code changes going up it changes by `perf_rollup_map` — a table with the
-sentence justifying every row, because **that map is a judgement about the
-business and correcting it must be an UPDATE, not a deploy.**
+## 14. Open questions
 
-**Nothing was ever due.** All 173 registry measures said `MONTHLY`, and a
-monthly measure falls due exactly once, on the closing date. That is why
-`perf_due` returned nothing on any ordinary day and the fortnight strip was
-empty for everybody. Every measure is now `DAILY`; the cadence stays a
-per-measure column, so a measure that genuinely is monthly is one UPDATE from
-being monthly again.
-
-### Three rules, each added after the one before let something through
-
-Two were caught by the tests. **The third was caught on the live data**,
-which is worth recording as a failure of my own testing:
-
-| Rule | What it stops | How it was found |
+| | Question | Blocking? |
 |---|---|---|
-| **Family** | Linking by name, which linked almost nothing | designing |
-| **Direction** | A ceiling into a floor — "work returned" (want low) into "quality score" (want high). The cascade was overwriting a 5% ceiling with a 90% floor | `test_flow.sql` |
-| **Kind** | A percentage into a count. A plan of **100 branches** divided by 62 feeders gave sixty-three real executives a target of **1.61% of cases** | reading the live chain back |
-
-All three must agree or the chain stops and says it stopped. 140 of 364
-climb. The rest are tops of chains, and every one of those is a place where
-the registry changes family, direction or type going up.
-
-### Targets, the other way
-
-`perf_target_set` sets one and pushes it down, **dividing the way the roll-up
-adds** — or a team's targets would not reconcile with their manager's:
-
-* **a count divides** — 600 cases across four people is 150 each
-* **a percentage is copied** — 95% across four is 95 each, not 23.75
-
-A share typed by hand is `MANUAL`: it comes off the top first, the rest
-divide what is left, and **no later cascade from above ever overwrites it.**
-Pin one of four at 300 of 600 and the other three get 100 each; raise the
-parent to 800 and the pin stays at 300 while the others move to 166.67.
-
-### Dummy targets
-
-Every blank target has a starting number, marked `SEEDED`, read out of the
-registry's own words where it states one ("target 95%", "target below 3%",
-"target zero"). A ceiling measure is seeded at 5 and a floor at 90, so an
-error rate is not seeded as a goal to miss nine times in ten. The screen says
-which of the three a number is — **agreed**, **a share from above**, or **a
-starting number nobody has agreed**.
-
-### What this exposes about the registry
-
-Worth saying plainly, because it is theirs to decide and not mine:
-
-* **The measures change type going up.** A percentage at the bottom, a count
-  at the top. The pyramid can only be built where family, direction and type
-  line up.
-* **`D21` names two opposite things.** "Error rate" at Team Leader, "Branch
-  quality score" at Branch Manager. The quality chain therefore stops at Team
-  Leader, because there is no ceiling-facing quality measure at branch level.
-* **`perf_rollup_map` has 20 rows and each is a guess I can defend, not a
-  fact I was given.** It is the one part of this that should be read and
-  corrected by somebody who knows the business.
-
----
-
-## 7 · The roll-up map, read row by row — migration 226
-
-Asked for directly: *"check the rollup map rows and fix the ones that are
-wrong."* So each of the 20 was read against what the two measures actually
-count, and **seven were deleted, three were redundant, and thirteen stand.**
-
-| Deleted | Why it was wrong |
-|---|---|
-| `D3 → D8` | Sent an executive's own family past its own parent's copy of it |
-| `F4 → F4b`, `X3 → CEO2` | Two different quantities with a similar name |
-| `HRE1 → HRO1`, `HRE3 → HRO3` | Crossed a floor into a ceiling — a 5% ceiling was being overwritten by a 90% goal |
-| `K4 → K1`, `M1 → HFO4`, `F9 → AC4`, `D2 → L1`, `D8 → L1` | A count feeding a percentage, or a percentage feeding a count |
-| `D1 → D1`, `D21 → D21`, `G4 → G4` | Redundant: a code that does not change needs no row. Same-family is tried first |
-
-Two structural changes came out of the reading:
-
-1. **The key is now (child, parent) with a `priority`,** because one family
-   legitimately has several parents — "days filed" climbs into three.
-2. **`perf_relink` tries the same family first and the mapped parents
-   second.** The old order is what made `D3 → D8` silently skip a level.
-
-### The handover — the step the pyramid cannot take
-
-Asked for: *"if the managers or a layer or chair where the KPI changes there
-the chair must see the roll up and then update his own."*
-
-**239 measures hand over to a person rather than climbing.** They measure
-something the chair above does not hold, so no arithmetic can add them in.
-`perf_handover(actor, cycle, person)` returns them grouped by measure —
-people, filed, target, team total or mean, best, worst, how many met it —
-with the per-person detail underneath. A Branch Manager with forty-two
-executives gets a briefing, not eighty-six rows.
-
----
-
-## 8 · The day, the month and the quarter — migration 227
-
-Until now the same quantity was entered twice: filed daily by the person,
-and retyped quarterly by somebody else, with nothing checking they agreed.
-
-**The line this draws is where facts stop and judgements start.**
-
-| | |
-|---|---|
-| A quarterly **actual** is a fact — what was filed, rolled up | `plb_actual_from_perf` **writes** it |
-| A monthly **score** is a judgement — the Constitution's "partly or late" is a person's call about a person | `plb_month_suggest` **writes nothing** |
-
-Both halves are asserted in `build/test/test_link.sql`, including that a
-measure nobody filed is left **blank rather than scored as zero**, and that a
-frozen quarter is frozen against arithmetic and not only against typing.
-
-### The screen
-
-The blueprint's sections gained three, and the CSS follows the app's existing
-status palette rather than introducing hues:
-
-* **Today, as a headline** — one ring, filed against due, the run of working
-  days behind it, and one sentence that is true rather than encouraging.
-* **What came up from below** — the handover, as cards then detail.
-* **This month, out of ten** — the suggestion and its working, marked as a
-  suggestion, writing nothing.
-
-Status never travels as colour alone: every bar ships the percentage and the
-word beside it, and nothing due reads green because a day with no measures on
-it is not a failure.
-
-## Status · 2026-09-30
-
-| | |
-|---|---|
-| Defect 5 · the quarter leak | **closed** — 222, plb v8, verified per account |
-| The daily climb | **built** — 140 measures climb, every measure due daily |
-| Targets down | **built** — divides or copies, a hand edit pins |
-| Dummy targets | **728 seeded** across two months, all marked SEEDED |
-| Screen | **published** — 467,960 bytes, Targets section live |
-| Functions | plb v8, **perf v3**, both `verify_jwt` off |
-| Tests | **309 passed, 0 failed** on a clean rebuild from `build/schema` alone |
-| Roll-up map | **corrected** — 7 wrong rows deleted, 3 redundant, 13 stand |
-| Handover | **built** — 239 measures that hand over to a person, not to arithmetic |
-| Day → month → quarter | **live** — every function matches the repository by MD5 |
-| Reachable by `anon` | **30 → 5**, and the 5 are the RLS helpers and `schema_snapshot`, kept on purpose |
-| Advisor ERRORs | **2 → 0** |
-
----
-
-## 9 · The live database had drifted from the repository
-
-Found while verifying 226 and 227 after the Supabase connector was
-reconnected. **Five of the seven functions in those two migrations were
-live at an earlier revision than the repository.** The previous session's
-apply had landed a partial draft and the connection dropped before the
-rest did — and because `build/schema` is snapshotted *from* the live
-database, the baseline faithfully copied the older code, so nothing
-downstream noticed.
-
-| Function | Was live | Repository |
-|---|---|---|
-| `perf_handover` | 2,550 bytes, **no `summary` key at all** | 5,473 |
-| `perf_relink` | 2,343 | 2,422 |
-| `perf_quarter_value` | 826 | 996 |
-| `plb_actual_from_perf` | 2,471 | 2,559 |
-| `plb_month_suggest` | absent | 4,022 |
-
-The one that mattered most is `perf_handover`. The summary — the grouping
-that turns eighty-six rows into five — **was never live**. A Branch
-Manager would have got the wall it exists to replace.
-
-All seven now match the repository **by MD5**, which is the check that
-actually settles it; byte counts alone would not.
-
-### The lesson
-
-"I applied the migration" and "the database holds what the file says" are
-different sentences. From here, a migration is verified by hashing the
-live function against the file, not by the apply returning success.
-
----
-
-## 10 · Thirty functions anybody could call — migration 228
-
-Found by the Supabase security advisor during the same verification. **Not
-by a test, and no test would have caught it.**
-
-Thirty `SECURITY DEFINER` functions were executable by `anon`. The
-publishable key is public on purpose — that is only safe while nothing
-reachable by `anon` grants anything. These did:
-
-* **`perf_org_rollup(p_actor, …)`** — the gate is *"is this person in
-  p_actor's line"*, and **the caller supplies `p_actor`**. Pass the id of
-  somebody senior and read whatever you like. This is the entire
-  visibility problem of §1 and §5 reopened at a different door.
-* **`task_assign` / `task_close` / `task_cancel` / `perf_seed_targets`** —
-  the same shape, but they **write**. Set a task as anyone, to anyone, or
-  re-seed every target in a cycle.
-* **`task_mine` / `task_evidence` / `perf_filed_days` /
-  `pms_weighting_for`** — take a person and never ask who is asking,
-  because the gate lives in the route, which `anon` does not go through.
-
-Migration 228 revokes all of them. **Nothing the application does is
-affected:** every Edge Function connects as the database owner over
-`SUPABASE_DB_URL`, never as `anon`.
-
-Two things deliberately keep their grants:
-
-* `app_is_admin`, `app_person_id`, `app_subtree`, `app_scope_clients` are
-  named inside **32, 20, 16 and 5 RLS policies**. Revoking them would
-  break every policy that calls them, and would tighten nothing — each
-  takes no argument and reports the *caller's own* identity.
-* `schema_snapshot()` is what the snapshot workflow calls with the
-  publishable key. Its seven helpers do **not** keep theirs, because
-  `schema_snapshot` is `SECURITY DEFINER` and reaches them as its owner.
-
-Two views flagged ERROR — `branch_without_place` and `kpi_registry_gap` —
-read through their owner's rights and so saw past every policy beneath
-them. Both are now closed too.
-
-### The first draft of 228 did nothing, and its own guard caught it
-
-It said `revoke … from anon, authenticated`. `EXECUTE` had been granted to
-**`PUBLIC`**, which `anon` belongs to, so there was no direct grant to
-take away and every revoke succeeded while changing nothing. The guard at
-the foot of the migration — which asks whether `anon` can *still call
-them*, rather than whether a revoke ran — failed the migration and rolled
-it back. That guard is now permanent: no `SECURITY DEFINER` function
-taking a `uuid` first argument may be reachable by `anon`.
-
----
-
-### Now live
-
-Both blocked steps are done, and both were verified rather than assumed.
-
-1. **`plb_month_suggest` is applied**, along with the four other functions
-   that had drifted (§9). All seven of 226's and 227's functions match the
-   repository by MD5.
-2. **`perf` is deployed as v3** with **`verify_jwt: false`**, carrying
-   `/handover` and `/month`. The flag matters: the page sends
-   `x-crux-token` and no Authorization header, and the parameter's default
-   of `true` would 401 everything.
-
-`perf_handover` was then run against real data — 42 executives under one
-Branch Manager — and returns **5 grouped measures in place of 86 rows**,
-which is the behaviour the summary exists for and which was never live
-before today.
-
-### What is live and what is simply empty
-
-Two different things, and worth not confusing:
-
-| | |
-|---|---|
-| Assignments | **728**, every one with a target |
-| Climbing by arithmetic | **250** |
-| **Filings** | **0 — nobody has filed a number yet** |
-| **Goal sheets** | **0 — none issued for the quarter** |
-
-So the machinery is live and correct, and there is nothing flowing through
-it. On the screen today that means the handover shows *"nothing filed"*
-against every measure, and the month card **hides itself**, because
-`/perf/month` correctly answers `no_sheet`.
-
-Neither is a fault and neither is mine to fix by inventing data. They need
-two business acts: **people filing their daily numbers**, and **HR issuing
-goal sheets for the quarter** — the latter sets pay-linked targets, so it
-is a decision, not a backfill.
-
-### One defect fixed along the way
-
-`Snapshot the schema` failed on `3f892e7` for no reason to do with the
-database: it read the schema, built the baseline, and then had its push
-rejected because `Publish the tool` had committed in the same seconds. Each
-job was serialised against itself and against nothing else, so any push
-touching both `build/app` and `build/migration` started both and one lost.
-Both now rebase and retry. The fix was exercised on its first outing —
-`aeb1909` triggered both jobs and both succeeded.
-
----
-
-## Change log
-
-| When | What changed | Why |
-|---|---|---|
-| 2026-09-28 | New SOW; previous one archived | The method changed: whole-tool claims replaced by one screen at a time |
-| 2026-09-28 | Blueprint indexed into 34 measured sections | "Not matching the design" cannot be worked on until the design is enumerable |
-| 2026-09-29 | Performance routes moved to a sixth front door, `perf` | `plb` computes pay and deploys all-or-none; three new routes are not worth risking the quarterly scheme |
-| 2026-09-29 | Visibility is the reporting line, not the chair tree | The chair tree put every branch manager one step below every zonal manager, and the place filter that narrowed it opened itself for four in five people |
-| 2026-09-29 | HR and Business Excellence lose the blanket over every person | The rule as given has no room for it. Running the scheme is a different act and is untouched |
-| 2026-09-29 | A person sits where their manager sits | 69 of 82 unplaced holders were on chairs with no seat at all, so no amount of coverage data would have placed them |
-| 2026-09-29 | Vrunda Potdar seated with the place left open | She covers four regions and the chart has no seat that means four. Being in the line matters more than the label |
-| 2026-09-29 | RLS turned on for five tables the convention missed | Found by the advisor. Had to go before the KPI seed, which would have filled two of them |
-| 2026-09-29 | Targets seeded blank, on purpose | A target nobody agreed is multiplied into somebody's pay at the end of the quarter |
-| 2026-09-30 | Seven roll-up rows deleted after reading each one | Four crossed a type or a direction; three were a count feeding a percentage. Each would have overwritten somebody's target with a number that measured something else |
-| 2026-09-30 | Same-family tried before the mapped parents | `D3 → D8` was making a measure skip its own parent's copy of itself |
-| 2026-09-30 | The quarterly actual is computed; the monthly score is not | A fact and a judgement are different things, and a system that scores "partly or late" silently is inventing one |
-| 2026-09-30 | Five functions re-applied after the live database was found behind the repository | An apply that returns success is not evidence the database holds what the file says. Verified by MD5 from here on |
-| 2026-09-30 | Thirty SECURITY DEFINER functions revoked from anon | The gate reads "is this person in p_actor's line" and the caller supplied p_actor. With a public key, the caller is anybody |
-| 2026-09-30 | Revokes name PUBLIC, not only anon and authenticated | anon inherits from PUBLIC, so the first draft revoked nothing and every statement still succeeded |
-| 2026-09-30 | 531 "people" found to be client-bank contacts, not employees | They have no employee number, no department, have never signed in, and are already in branch_contact. 84% of the staff list was not staff |
-| 2026-09-30 | A person's reporting line becomes a guarded write | Dragging a tile changes person.manager_id, which is what every visibility rule is built on. A ring in that column would hang a recursive walk |
-| 2026-09-30 | "My team" becomes the PEOPLE tree; Structure keeps the chair tree | Both were drawing chairs. The thing a manager needs is who reports to whom, which is also what every visibility rule is built on |
-| 2026-09-30 | The design's language adopted, its content not | Its cards carry level frameworks; ours carry the people holding the chairs and what they filed. What was taken is the paper surface, the CSS connectors, the depth tint and the small-caps tags |
-| 2026-09-30 | Client splits built on machinery that already existed | part_of_id, split_kind, split_ref and split_label were in perf_assignment from the start; perf_value summed and weighted them; perf_due listed them and hid the parent. Nothing created them, so zero rows used any of it |
-| 2026-09-30 | A commit message claimed 346/0 before the run said so | It was 329/1 at the time — the baseline lagged one migration. The number was right an hour later, which is not the same as being right when written |
-| 2026-09-30 | A target was found stored twice, monthly and quarterly, with nothing comparing them | plb_sheet_issue took its targets from whatever the caller typed and never read the monthly ones. Of every function touching plb_goal_kpi, exactly one also touched perf_assignment, and it read them independently |
-| 2026-09-30 | The quarter is the promise; the months are its phasing | PLB is earned quarterly, so the quarterly number is the commitment. m1_share/m2_share/m3_share existed on the goal sheet to say so and nothing ever wrote them |
-| 2026-09-30 | 200 goal sheets issued with PLB value zero | Targets came from the monthly ones already seeded. The rupee figure is a commercial decision and was left blank rather than invented |
-| 2026-09-30 | A warning and a PIP given different shapes on purpose | A warning is issued once and never edited, because a record that can be rewritten is not evidence. A plan is edited throughout and closed with a reason |
-| 2026-09-30 | PIP reviews are rows booked when the plan opens | A plan with a review DATE has one review that gets missed. A plan whose reviews are rows can be asked which of them has not happened |
-| 2026-09-30 | The `+` on a tile offers two things, not one | Moving somebody who already works here is the manager's outright: the identity exists and nothing is created. Adding somebody who does not makes an ACCOUNT, and that stays HR's |
-| 2026-09-30 | `person_request` written to for the first time | The table had approval states, a reject-reason constraint, finance columns, an index and a foreign key from `onboarding` — and in the whole history of the project not one function had ever inserted a row. It was designed and never built |
-| 2026-09-30 | Approval calls `person_add`, it does not duplicate it | A queue in front of a guarded function, never a way around it. The request's own name, address, chair and manager overwrite anything passed at approval, so approving cannot become approving somebody else |
-| 2026-09-30 | `org_may_add_under` is true for self, unlike `perf_may_set` | Nobody sets their own targets, which is why `perf_may_set` is false for self. Everybody adds to their own team, which is the whole point of the button |
-| 2026-09-30 | The quarterly scorecard gets an OKR shape and no new arithmetic | The data was always there — plb_sheet_for returns every target, actual, ratio, milestone and monthly point. What was missing was the shape. A seven-column table is a correct statement of a quarter and is not a scorecard |
-| 2026-09-30 | Two objectives, because the scheme has exactly two halves | KPIs carry all of Achievement; attributes carry none of it. One heading over both would be inventing a third thing |
-| 2026-09-30 | Objective 2 is the mean of the months that were SCORED, and says so | Attributes are scored monthly and never quarterly. Any single quarterly figure for them is a reading, so the card states which months it read and how many |
-| 2026-09-30 | The key-result bar runs to 1.50, with the target marked at two thirds | The scheme gives credit above target up to 150% and no further. A bar that fills at 1.00 hides the difference between meeting a target and beating it |
-| 2026-09-30 | The scorecard block lives in one file and is lifted by the build | screen-plb.js is already inside app_page, so an addition must be injected. A copy of it in build-tool.py would be a second place to fix the same bug |
-| 2026-09-30 | The scorecard is tested as arithmetic, not looked at | Its denominators are invisible in a screenshot: a mean over excluded months, a ratio not capped, a band boundary off by one. 22 assertions, reading the block out of the screen file at run time so it cannot pass against a stale copy |
-| 2026-09-30 | The reminders gain a link beside each activity, and `app_url` to point it | Every message ended "Open Performance in Crux" and left the reader to find it. There was nowhere in the database that said where the tool lives |
-| 2026-09-30 | `app_url` ships EMPTY and `app_link` returns null while it is | A reminder sent to a hundred people every morning with a link that goes nowhere is worse than the same reminder with no link: one asks them to open the tool, the other tells them it is broken. Setting it once turns links on everywhere with nothing redeployed |
-| 2026-09-30 | The URL could not be verified from here, so it was not guessed | The egress proxy refuses github.io. An unverified address in 101 people's inbox is not a default worth having |
-| 2026-09-30 | `· EX2` was leaking into the e-mail bodies too | The same roll-up family code that was stripped from the screen. The e-mail builds its own strings, so fixing the screen never touched it. `perf_unit_plain` is the database's half, written once |
-| 2026-09-30 | The HTML twin was the half where the link did not work | It escapes the body and turns newlines into `<br>`, so a URL sat there as dead text. `linkify` runs after escaping, links only http and https, and gives a trailing full stop back to the sentence |
-| 2026-09-30 | A welcome e-mail, with the password as an opt-in parameter | Two things were asked for with opposite risk profiles. A one-off before a demo can carry a password; a standing job that fires on every new joiner for years cannot, because the mailbox gets forwarded, backed up and eventually breached. The recurring path is the safe one by default |
-| 2026-09-30 | The welcome fires on INSERT on person, not inside person_add | That is the one place every route into the company passes through: the HR form, the joiner request a manager files, and a bulk upload alike. Wiring it to one caller would have missed the other two |
-| 2026-09-30 | It is silent, not failing, when app_url is unset | A welcome that cannot be written is not a reason to refuse somebody a job. The insert succeeds and no message is queued |
-| 2026-09-30 | The blast filters on holding a chair | Without that it writes to the 531 client-bank contacts in the same table. A test asserts a contact with no chair is not written to |
-| 2026-09-30 | app_url set to the GitHub Pages address, unverified from here | The egress proxy refuses github.io and the GitHub API, so it could not be confirmed to answer. One message was sent to the owner's own address to check before a hundred went out |
-| 2026-09-30 | 531 client-bank contacts set inactive, not deleted | Seven reference counts checked to zero first, then re-checked inside the migration because the survey and the write are different moments. 639 active people became 104. A person_event on each says why, and the way back is one statement |
-| 2026-09-30 | The contact test is four things at once, not the e-mail domain | No employee number, no chair, a non-company address AND already in branch_contact. The 56 employees on personal gmail addresses fail the last one and were left alone |
-| 2026-09-30 | The mail redeploy was proved by sending, not by the deploy returning success | A deploy replaces every file in the function; the only check worth making is whether mail still leaves the building. It does |
-| 2026-09-30 | The `hiring` screen has never worked | It posts to /people/request, but person_request held zero rows and zero functions touched it before migration 234. A shell over a table that was itself designed and never built |
-| 2026-09-30 | Nothing deleted from the screen list the night before a demo | The duplicate-tile audit is written down and acted on after the presentation. Removing a screen is how a demo breaks |
+| Q1 | Aniket Chalke has 42 direct reports and the company has two roots (Virendra Pal reaches 11, Arun Bodupali reaches 101). Is that the intended shape? | No |
+| Q2 | What does a **zero target** mean for a bonus — no entitlement, or full payout? (#42) | Blocks #42 |
+| Q3 | 181 goal KPIs are scored so that being worse pays more. Correct the direction, or the registry? | Blocks #42 |
+| Q4 | Should the KPI window be 5 working days, or longer while the tool is being rolled out? 246 makes it extendable either way. | No |
+
+## 15. Status and next actions
+
+**Done and live**: items #1–#39 and #43–#53 on the task list. 243 and 244 are
+applied; the `perf` edge function is at v8 with `/team/people`; the page is
+published and deployed.
+
+**Next, in order**:
+
+1. Migration 246 — `perf_assign_remove` (withdraw-only) and
+   `perf_cycle_extend`. §8.
+2. The Performance screen reads `assign_open`: explain instead of offer, and
+   give HR and administrators the extension control. §8.
+3. `start()` forgets every screen's state, with a check that the list cannot
+   go stale. §9.
+4. Suite, publish, and the owner applies O1–O4. §10.
+
+**Then**: #40 (raise an escalation about a person), #41 (merge the duplicate
+tiles), #42 (what a zero target means, and the direction defect).

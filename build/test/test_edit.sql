@@ -180,15 +180,26 @@ begin
   end if;
   raise notice 'PASS  nor is a measure removed while others climb into it';
 
-  -- Nothing filed: deleted outright.
+  -- Nothing filed. This used to be deleted outright and migration 246
+  -- changed it: a measure that was given and taken back is a fact about that
+  -- month -- it is the evidence the manager set it, which is exactly what
+  -- somebody asks about afterwards -- and the audit row 240 wrote for the
+  -- delete pointed at a perf_assignment id that no longer existed.
+  --
+  -- One state, one meaning: WITHDRAWN is "no longer asked for", whether or
+  -- not anything was filed.
   r := perf_assign_remove(p_mgr, v_a);
-  if (r->>'withdrawn')::boolean is not false then
-    raise exception 'FAIL  an unfiled measure was withdrawn rather than removed: %', r;
+  if (r->>'withdrawn')::boolean is not true then
+    raise exception 'FAIL  an unfiled measure was not withdrawn: %', r;
   end if;
-  if exists (select 1 from perf_assignment where id = v_a) then
-    raise exception 'FAIL  the measure survived its own removal';
+  if not exists (select 1 from perf_assignment where id = v_a) then
+    raise exception 'FAIL  the measure was deleted. It is the evidence the '
+                    'manager asked for it, and the audit row points at it.';
   end if;
-  raise notice 'PASS  a measure nothing was filed against is removed outright';
+  if (select state from perf_assignment where id = v_a) <> 'WITHDRAWN' then
+    raise exception 'FAIL  it survived but is not marked WITHDRAWN';
+  end if;
+  raise notice 'PASS  a measure nothing was filed against is withdrawn, not deleted';
 
   -- Something filed: withdrawn, and the figure survives.
   r := perf_assign(p_mgr, jsonb_build_object(

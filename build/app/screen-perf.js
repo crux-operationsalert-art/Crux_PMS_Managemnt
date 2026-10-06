@@ -37,7 +37,10 @@ var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
            org:null, tgt:null, tgtFor:null, hand:null, month:null, handOpen:{},
            split:null, splitFor:null,
-           taskForm:null, weightForm:null, elig:false };
+           taskForm:null, weightForm:null, elig:false,
+           /* the open "reopen this month for setting KPIs" form, which only
+              HR, Business Excellence and an administrator ever see. */
+           reopen:null };
 
 function pfMonth(d){ d = d || new Date();
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString().slice(0,10); }
@@ -250,7 +253,95 @@ function pfWindowBanner(){
     ? 'numbers may be filed until <b>' + day(c.entry_closes) + '</b>'
     : 'filing closed on ' + day(c.entry_closes));
   return '<div class="pfwin' + (c.entry_open ? '' : ' shut') + '">' +
-    bits.join(' · ') + '</div>';
+    bits.join(' · ') +
+    (pfMayExtend() && !pfSetWindowOpen()
+      ? ' <button class="btn" id="pfreopen">Reopen it</button>' : '') +
+    '</div>' +
+    (PF.reopen ? pfReopenForm() : '');
+}
+
+/* ====================================================== the clock, and who it binds
+
+   "set KPI is still not working and just like that most of the Buttons in
+   PMS are not working."
+
+   Measured rather than guessed: the published page was loaded in a browser,
+   a manager signed in, and every control on this screen pressed. All of them
+   are wired and all of them are clickable. What was failing was the SERVER,
+   and the reason is the clock.
+
+   perf_cycle_open sets assign_closes to five working days after the first of
+   the month, and perf_assign, perf_assign_edit and perf_assign_remove all
+   answer window_closed for anybody but an administrator after that. So for
+   roughly three weeks in four, every KPI control on this screen was offered
+   and every one of them refused.
+
+   That is the defect migration 242 was written for, said about the clock
+   instead of about the reporting line: a control that is always refused is
+   worse than no control, because it tells somebody the tool does a thing it
+   does not and they stop trusting the ones that work.
+
+   So the question is asked once, here, in the same words the database asks
+   it -- `current_date > assign_closes and the actor is not an administrator`
+   -- and every KPI control reads the answer. */
+function pfSetWindowOpen(){
+  var c = PF.cycle;
+  if (!c) return false;
+  /* An administrator may still set after the window, and it is recorded.
+     That is perf_assign's own exception, repeated here so the screen and
+     the function agree rather than the screen guessing. */
+  if (me && me.app_role === "ADMIN") return true;
+  return c.assign_open !== false;
+}
+
+/* Said where the control was, not at the top of the page. Somebody looking
+   for the button needs the answer where they are looking. */
+function pfShutHere(what){
+  var c = PF.cycle || {};
+  return '<p class="pfshut"><b>' + esc(what) + ' is shut for ' +
+    esc(pfMonthName(PF.period)) + '.</b> KPIs for this month had to be set by ' +
+    esc(day(c.assign_closes)) + '. ' +
+    (pfMayExtend()
+      ? 'You can reopen the month at the top of this screen; it is recorded.'
+      : 'HR, Business Excellence or an administrator can reopen the month.') +
+    '</p>';
+}
+
+/* The three the scheme belongs to, in the same words perf_cycle_extend and
+   perf_cycle_open both use. */
+function pfMayExtend(){
+  if (!me) return false;
+  return me.app_role === "ADMIN" ||
+         me.department === "Human Resources" ||
+         me.department === "Business Excellence";
+}
+
+function pfReopenForm(){
+  var c = PF.cycle || {};
+  return '<div class="plform" id="pfreopenform">' +
+    '<h4 class="plh">Reopen ' + esc(pfMonthName(PF.period)) + ' for setting KPIs</h4>' +
+    '<div class="hragrid">' +
+      '<label class="hrafield"><span>Set KPIs until</span>' +
+        '<input id="pfreopenday" type="date" min="' + esc(pfToday0()) + '"' +
+        ' max="' + esc(c.entry_closes || "") + '" value="' + esc(PF.reopen.until || "") + '"></label>' +
+      '<label class="hrafield"><span>Why</span>' +
+        '<input id="pfreopenwhy" placeholder="The team were still being given managers."' +
+        ' value="' + esc(PF.reopen.why || "") + '"></label>' +
+    '</div>' +
+    '<p class="mute">Only ever later, and never past ' + esc(day(c.entry_closes)) +
+    ' — a KPI first asked for after filing has closed is one nobody could meet. ' +
+    'Who reopened it and why is recorded.</p>' +
+    '<div class="plbar">' +
+      '<button class="btn primary" id="pfreopensave">Reopen it</button>' +
+      '<button class="btn" id="pfreopencancel">Cancel</button>' +
+    '</div></div>';
+}
+
+function pfToday0(){
+  var d = new Date();
+  return d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
 }
 
 /* ---------------------------------------------------------- A · the chips
@@ -900,6 +991,13 @@ function pfSaid(o, good){
       "applied yet \u2014 the screen and the service have the button and the " +
       "database does not have the function behind it. Nothing was changed.");
   }
+  /* The clock refused, not the person. It reads as an explanation rather
+     than a fault, and it names the way out, because there is one: HR,
+     Business Excellence or an administrator can reopen the month. */
+  if (o.error === "window_closed") {
+    return msg("warn", (o.reason || "The window for setting KPIs has closed.") +
+      (pfMayExtend() ? " You can reopen it at the top of this screen." : ""));
+  }
   return msg("bad", o.reason || o.error);
 }
 
@@ -1208,11 +1306,13 @@ function pfTeam(){
     '<p class="mute">A KPI you give somebody climbs into one of yours. Pick which one ' +
     'as you set it — that link is what makes the numbers add up to a branch, and a ' +
     'branch to a zone.</p>' +
-    '<div class="plbar">' +
-      '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
-        (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
-      '<button class="btn" id="pfcarry"' + (n ? '' : ' disabled') + '>Carry last month forward</button>' +
-    '</div>' +
+    (pfSetWindowOpen()
+      ? '<div class="plbar">' +
+          '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
+            (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
+          '<button class="btn" id="pfcarry"' + (n ? '' : ' disabled') + '>Carry last month forward</button>' +
+        '</div>'
+      : pfShutHere('Giving KPIs in bulk')) +
     '<div class="scroll"><table>' + rows + '</table></div>' +
     (PF.form ? pfForm() : '') +
     '</div>';
@@ -1228,7 +1328,9 @@ function pfPersonPanel(){
       ? '<div class="pftree">' + ms.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>' +
         pfMeasureAdmin(ms)
       : '<div class="empty">' + esc(t.says || "Nothing set for them this period.") + '</div>') +
-    '<p><button class="btn" id="pfadd">Set a KPI for ' + esc(t.person.name) + '</button></p>' +
+    (pfSetWindowOpen()
+      ? '<p><button class="btn" id="pfadd">Set a KPI for ' + esc(t.person.name) + '</button></p>'
+      : pfShutHere('Setting a KPI for ' + t.person.name)) +
     (PF.editForm ? pfEditForm(ms) : '') +
     '</div>';
 }
@@ -1240,6 +1342,13 @@ function pfPersonPanel(){
 function pfMeasureAdmin(ms){
   var top = ms.filter(function(m){ return !m.splitOf; });
   if (!top.length) return "";
+  /* Edit and Remove go through perf_assign_edit and perf_assign_remove, and
+     both refuse once the month's window has shut. Drawing them anyway is
+     drawing two buttons that always refuse. */
+  if (!pfSetWindowOpen()) {
+    return '<div class="pfadmin"><h4>Change what they are measured on</h4>' +
+      pfShutHere('Changing what they are measured on') + '</div>';
+  }
   return '<div class="pfadmin"><h4>Change what they are measured on</h4>' +
     '<div class="scroll"><table><tbody>' + top.map(function(m){
       return '<tr><td><b>' + esc(m.name) + '</b>' +
@@ -1453,6 +1562,40 @@ function pfWire(){
     if (!card) return;
     try { card.scrollIntoView({ behavior: "smooth", block: "start" }); }
     catch (e) { card.scrollIntoView(); }
+  };
+
+  /* ------------------------------------------ reopening a shut month */
+  if (el("pfreopen")) el("pfreopen").onclick = function(){
+    var c = PF.cycle || {};
+    /* A week from today, bounded by the day filing closes -- the same two
+       limits perf_cycle_extend applies, so the box opens on a date it will
+       accept rather than on one it will refuse. */
+    var d = new Date(); d.setDate(d.getDate() + 7);
+    var want = d.toISOString().slice(0, 10);
+    if (c.entry_closes && want > c.entry_closes) want = c.entry_closes;
+    PF.reopen = { until: want, why: "" };
+    pfRender();
+  };
+  if (el("pfreopencancel")) el("pfreopencancel").onclick = function(){
+    PF.reopen = null; pfRender();
+  };
+  if (el("pfreopensave")) el("pfreopensave").onclick = async function(){
+    if (PF.busy) return;
+    PF.busy = true;
+    var o = await perfApi("/perf/cycle/extend", { method:"POST", body:{
+      cycleId: PF.cycle.id,
+      until: el("pfreopenday").value,
+      why: el("pfreopenwhy").value } });
+    PF.busy = false;
+    PF.says = pfSaid(o, "Reopened.");
+    if (o && !o.error) {
+      PF.reopen = null;
+      /* The cycle the whole screen reads is now wrong, so it is re-read
+         rather than patched: assign_open is what every KPI control asks. */
+      var c = await plb("/plb/perf/cycle?period=" + PF.period);
+      PF.cycle = c.cycle || PF.cycle;
+    }
+    pfRender();
   };
 
   if (el("pfwatchopen")) el("pfwatchopen").onclick = function(){

@@ -115,7 +115,7 @@ echo "== behaviour"
 # set -e that killed the script before it could print WHICH one. A test runner
 # that dies silently on a failing test is worse than no runner.
 out=""
-for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit test_offer test_people test_account; do
+for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit test_offer test_people test_account test_window; do
   out="$out
 $(psq -q -f "$REPO/build/test/$t.sql" 2>&1 | sed 's/^psql:[^ ]* //' || true)"
 done
@@ -228,6 +228,37 @@ if [ -x "$NODE" ]; then
 else
   echo "   skipped: node is not on this machine."
   missing="$missing list"
+fi
+
+# The clock. For three weeks in four the KPI controls were offered and the
+# database refused them, which is migration 242's defect said about the
+# calendar instead of the reporting line.
+echo
+echo "== the window for setting KPIs"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/window_check.mjs"; then
+    pass=$((pass + 30))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing window"
+fi
+
+# Signing in as somebody else has to forget the last person's screens, and
+# the list of screens it forgets has to keep covering all of them.
+echo
+echo "== signing in forgets the last person"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/forget_check.mjs"; then
+    pass=$((pass + 15))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing forget"
 fi
 
 # The navigation and the database are two readers of one access policy. They
