@@ -387,6 +387,116 @@ input.pbtg,input.pbbl{width:92px}
 .mxl{width:28px;color:var(--mute);font-variant-numeric:tabular-nums}
 #mxperiod{width:auto;min-width:170px}
 .hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}
+/* --------------------------------- the three states, as colour
+   on target / part of the way / behind, used by the tiles, the
+   bars, the doughnut and its legend so one measure cannot be two
+   colours in two places.
+
+   These are NOT --green/--gold/--terra. Those were tried first
+   and fail the one test a doughnut has to pass: --gold #8a6d1f
+   and --terra #b4562f are 9.6 apart to a reader with full colour
+   vision and 1.8 apart under deuteranopia, which is to say the
+   middle arc and the behind arc are one arc. The tool's palette
+   is deliberately muted and no three steps of it separate, so
+   these are stepped out until they do: 30.3 and 24.7 on the
+   worst adjacent pair, both ways.
+
+   The middle step sits below 3:1 against the panel, so it is
+   never the only thing saying what a figure means -- the legend
+   carries the words and the counts, every bar carries its own
+   percentage in ink beside it, and the table names every
+   measure. */
+:root{--c-ok:#2f7355;--c-part:#d6b24a;--c-behind:#a03f18;
+  --c-none:#5c6470}
+/* ------------------------------------------------- the dashboard
+   Five tiles across at full width, two on a phone. The edge is
+   4px and carries the state; the figure is tabular so a column
+   of them reads as a column. */
+.tdkpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;
+  margin:0 0 16px}
+.tdk{position:relative;overflow:hidden;background:var(--panel);
+  border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.tdk .edge{position:absolute;left:0;top:0;bottom:0;width:4px;
+  background:var(--c-none)}
+.tdk-ok .edge{background:var(--c-ok)}
+.tdk-part .edge{background:var(--c-part)}
+.tdk-behind .edge{background:var(--c-behind)}
+.tdk .k{font-size:10.5px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.5px;color:var(--mute)}
+.tdk .v{font-size:25px;line-height:1.15;margin:3px 0 1px;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.tdk .v .of{font-size:14px;color:var(--mute)}
+.tdk .s{font-size:11.5px;color:var(--mute)}
+.tdgrid{display:grid;gap:14px;align-items:start;margin:0 0 14px}
+.tdg2{grid-template-columns:1.6fr 1fr}
+.tdg11{grid-template-columns:1fr 1fr}
+.tdgrid .card{margin:0}
+.tdgrid h3{margin:0 0 10px;font-size:14px;display:flex;
+  align-items:baseline;gap:8px}
+.tdgrid h3 .sub{font-size:11.5px;color:var(--mute);font-weight:400}
+/* The table. Numbers right, text left, and the bar in its own
+   column so the figures above and below it still line up. */
+.tdt{width:100%;border-collapse:collapse;font-size:13px}
+.tdt th{text-align:left;font-size:10px;text-transform:uppercase;
+  letter-spacing:.5px;color:var(--mute);font-weight:700;padding:5px 7px;
+  border-bottom:1px solid var(--line)}
+.tdt td{padding:7px;border-bottom:1px solid var(--line3)}
+.tdt th.r,.tdt td.r{text-align:right}
+.tdt .num{font-variant-numeric:tabular-nums}
+.tdprog{display:flex;align-items:center;gap:9px;min-width:150px}
+.tdprog .num{font-size:12px;width:46px;text-align:right}
+.tdbar{flex:1;height:6px;border-radius:4px;background:var(--line2);
+  overflow:hidden;min-width:60px}
+.tdbar i{display:block;height:100%;border-radius:4px}
+.tdbar i.ok{background:var(--c-ok)}
+.tdbar i.part{background:var(--c-part)}
+.tdbar i.behind{background:var(--c-behind)}
+.tdbar i.none{background:var(--line)}
+/* The doughnut. Three arcs, started at twelve o'clock, with the
+   words in the legend -- nobody reads this by colour alone. */
+.tddonut{position:relative;height:156px;margin:2px 0 10px}
+.tddonut svg{width:100%;height:100%;transform:rotate(-90deg)}
+.tddonut .trk{fill:none;stroke:var(--line2);stroke-width:11}
+.tddonut .seg{fill:none;stroke-width:11}
+.tddonut .mid{position:absolute;inset:0;display:flex;
+  flex-direction:column;align-items:center;justify-content:center;
+  pointer-events:none}
+.tddonut .mid b{font-size:24px;color:var(--ink);
+  font-variant-numeric:tabular-nums;line-height:1}
+.tddonut .mid span{font-size:11px;color:var(--mute);margin-top:2px}
+.tdleg{list-style:none;margin:0;padding:0;font-size:12.5px}
+.tdleg li{display:flex;align-items:center;gap:8px;padding:4px 0;
+  color:var(--body);border-top:1px solid var(--line3)}
+.tdleg li:first-child{border-top:0}
+.tdleg li b{margin-left:auto;font-variant-numeric:tabular-nums;
+  color:var(--ink)}
+.tdleg .dot{width:9px;height:9px;border-radius:3px;flex:0 0 9px}
+.tdleg .dot.ok{background:var(--c-ok)}
+.tdleg .dot.part{background:var(--c-part)}
+.tdleg .dot.behind{background:var(--c-behind)}
+.tdwait{list-style:none;margin:0;padding:0;font-size:13.5px}
+.tdwait li{display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-top:1px solid var(--line3);color:var(--body)}
+.tdwait li:first-child{border-top:0}
+.tdwait li b{font-size:19px;color:var(--ink);min-width:28px;
+  font-variant-numeric:tabular-nums}
+.tdwait li a{margin-left:auto;font-size:12.5px}
+.tdq{display:grid;grid-template-columns:1fr auto;gap:7px 12px;margin:0;
+  font-size:13.5px}
+.tdq dt{color:var(--mute)}
+.tdq dd{margin:0;text-align:right;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.tdq dd .of{color:var(--mute);font-size:12px}
+@media (max-width:1040px){
+  .tdkpis{grid-template-columns:repeat(3,1fr)}
+  .tdg2,.tdg11{grid-template-columns:1fr}
+}
+@media (max-width:620px){
+  .tdkpis{grid-template-columns:repeat(2,1fr)}
+  .tdk .v{font-size:22px}
+  .tdt{min-width:420px}
+  .tdprog{min-width:110px}
+}
 /* ------------------------------------------------------------------ mine
    Two columns, and the left one is the only terracotta thing on the
    page -- because it is the only part of it that is somebody else's
@@ -544,9 +654,27 @@ input.pfin{width:120px}
 .pfsel input[type=checkbox]{width:15px;height:15px;min-height:0;padding:0;
   margin:0;flex:0 0 15px;accent-color:var(--blue)}
 .pfpanel{padding:2px 0 6px}
+/* Search for anyone. Set apart from the reporting line above it by a
+   border and a tint, because the whole point is that the two lists
+   are not the same thing: one is your team, the other is everybody. */
+.pffind{margin-top:14px;padding:12px 14px;border:1px solid var(--line2);
+  border-radius:10px;background:var(--panel2)}
+.pffind h3{margin:0 0 8px;font-size:14px}
+.pffind input{max-width:380px}
+.pffind table{margin-top:8px}
+/* Changing a measure already given. Under the tree rather than two
+   more buttons on every node: the tree is read far more often than
+   it is edited, and a row of verbs on each line turns a reading
+   surface into a control panel. */
+.pfadmin{margin:10px 0 0;padding-top:10px;border-top:1px solid var(--line3)}
+.pfadmin h4{margin:0 0 6px;font-size:12.5px;color:var(--mute);
+  text-transform:uppercase;letter-spacing:.4px}
+.pfadmin td{padding:5px 6px}
 @media (max-width:720px){
   .pfrow{flex-wrap:wrap}
   .pftgt,.pfmeter{display:none}
+  .pffind{padding:10px}
+  .pffind input{max-width:100%}
 }
 /* The merge comparison. Two columns of the same person, and the side that
    will survive each field carries a tint -- so the shape of the decision is
@@ -829,6 +957,53 @@ button.exp:hover{border-color:var(--blue);color:var(--blue);background:var(--whi
 @media (max-width:560px){
   .tmcard{width:150px}
   .tmoc{font-size:12px}
+}
+/* ------------------------------------------------ the help panel
+   The button clears the mobile bar, which is 56px and carries a
+   safe-area inset under it on a phone with a home indicator. */
+#qhbtn{position:fixed;right:16px;bottom:16px;z-index:70;
+  width:48px;height:48px;border-radius:999px;border:0;cursor:pointer;
+  display:grid;place-items:center;background:var(--ink);color:#fff;
+  box-shadow:0 6px 18px rgba(16,24,40,.28);padding:0;min-height:0}
+#qhbtn:hover{filter:brightness(1.12)}
+#qhbtn:focus-visible{outline:3px solid var(--blue);outline-offset:3px}
+/* A dot, not a number: how much was moved off the screen is not a
+   thing anybody needs counted. */
+#qhbtn.has::after{content:"";position:absolute;top:9px;right:9px;
+  width:9px;height:9px;border-radius:999px;background:var(--gold);
+  border:2px solid var(--ink)}
+#qhscrim{position:fixed;inset:0;z-index:71;background:rgba(16,24,40,.34);
+  opacity:0;pointer-events:none;transition:opacity .18s ease}
+#qhscrim.on{opacity:1;pointer-events:auto}
+.qhpanel{position:fixed;top:0;right:0;bottom:0;z-index:72;width:min(420px,92vw);
+  background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;
+  transform:translateX(102%);transition:transform .2s ease;
+  padding:18px 20px calc(24px + env(safe-area-inset-bottom));
+  box-shadow:-10px 0 30px rgba(16,24,40,.14)}
+.qhpanel.on{transform:translateX(0)}
+.qhhead{display:flex;align-items:flex-start;gap:12px;margin-bottom:4px}
+.qhhead h2{margin:0;font-size:19px;flex:1}
+.qhx{border:0;background:transparent;font-size:26px;line-height:1;
+  color:var(--mute);cursor:pointer;padding:0 2px;min-height:0}
+.qhpanel h3{font-size:12px;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--mute);margin:20px 0 7px}
+.qhwhat{margin:2px 0 0;color:var(--body);font-size:14.5px}
+.qhsteps{margin:0;padding-left:20px;color:var(--body);font-size:13.5px}
+.qhsteps li{margin:0 0 7px;line-height:1.5}
+.qhjourney{margin:0;font-size:13.5px}
+.qhjourney dt{font-weight:600;color:var(--ink);margin-top:10px}
+.qhjourney dt:first-child{margin-top:0}
+.qhjourney dd{margin:2px 0 0;color:var(--body);line-height:1.5}
+.qhmoved{font-size:13px;color:var(--mute)}
+.qhmoved p{margin:0 0 9px;line-height:1.5;padding-left:11px;
+  border-left:2px solid var(--line2)}
+.qhfoot{margin:22px 0 0;font-size:11px;color:var(--mute)}
+@media (max-width:760px){
+  #qhbtn{bottom:calc(68px + env(safe-area-inset-bottom))}
+  .qhpanel{width:100vw;border-left:0}
+}
+@media (prefers-reduced-motion:reduce){
+  .qhpanel,#qhscrim{transition:none}
 }
 </style></head><body>
 
@@ -1390,6 +1565,285 @@ async function start(person){
   route();
   refreshBadges();
 }
+
+/* =====================================================================
+   The floating question mark.
+
+   "There is a lot of explanatory or helping text making this tool all
+   cluttered, move all that to a floating question mark button, which will
+   give explanation of the open screen and tab."
+
+   Two halves, and the second is the one that makes this work at all.
+
+   WRITTEN. HELP holds a short piece per screen: what it is for, and what
+   you actually do on it, as steps. That is the part worth reading, and it
+   is the part no screen currently says -- the prose on the screens
+   explains individual decisions, never the journey.
+
+   COLLECTED. Every long explanatory paragraph already on a screen is
+   moved here at render time rather than deleted. A MutationObserver
+   watches #view; after each draw it finds the paragraphs that are prose
+   rather than labels, hides them, and stacks them in the panel under
+   "Also on this screen".
+
+   Collecting rather than editing is deliberate. The application is one row
+   of app_page, 378 kilobytes of it, and the explanatory text is spread
+   through dozens of string concatenations. Editing each by hand would be
+   dozens of chances to break a screen, and every new paragraph anybody
+   adds later would be back on the page. A rule applied at render time
+   covers the screens that exist, the screens in app_page this file has
+   never seen, and the screens nobody has written yet.
+
+   WHAT IS NOT COLLECTED, and why each one stays:
+     - anything under 100 characters, which is a label or a hint, not prose
+     - .msg, which is how the tool says something went wrong or right
+     - .empty, which is a screen saying why it has nothing on it
+     - anything inside an open form, where the guidance is about the box
+       the person is typing into at that moment
+   ===================================================================== */
+
+var QH = { open:false, moved:[], tab:null };
+
+/* Per screen: a sentence on what it is for, then the steps. Deliberately
+   short. A help panel nobody finishes reading is the clutter moved, not
+   removed. */
+var HELP = {
+  today: { t:"Dashboard",
+    w:"Everything waiting on you today, in one place.",
+    s:["Read the tiles across the top — those are the numbers your chair is judged on.",
+       "Work down the list below them. Anything with a button is something only you can clear.",
+       "Nothing here is a report. If a figure looks wrong, open the screen it came from."] },
+
+  perf: { t:"Performance & appraisal",
+    w:"Your measures, your team's, and the bonus they add up to.",
+    s:["File your own numbers at the top, on the cadence you were given.",
+       "Under My team, open a person to set their targets, change what they are measured on, or assign a task.",
+       "You cannot set your own. Your manager sets yours, the same way you set your team's.",
+       "The quarterly scorecard at the foot is the same numbers, totalled and turned into money."],
+    j:true },
+
+  plb: { t:"Running the scheme",
+    w:"Issuing goal sheets, certifying a quarter, and closing it.",
+    s:["Issue a sheet to everyone in the scheme at the start of a quarter.",
+       "Each month, score the people who have self-evaluated.",
+       "At the end of the quarter, pull the actuals from what was filed, certify, then publish.",
+       "Publishing is what makes the amount real. Nothing is paid before it."],
+    j:true },
+
+  people: { t:"My team & structure",
+    w:"Who reports to whom, and the things you do about a person rather than a number.",
+    s:["Drag a card onto another to move that person under them.",
+       "Open a card for their measures, their record, and a review.",
+       "Add somebody new, or pull across somebody who already works here.",
+       "A move is recorded. It changes who may set that person's targets from that moment."] },
+
+  cases: { t:"Escalations",
+    w:"Things that went wrong at a branch, and what is being done about them.",
+    s:["Raise one when the outcome is decided, not when it is alleged.",
+       "Every escalation has an owner and a clock. The clock is the client's, not ours.",
+       "Closing one needs a reason, because the reason is what the client is told."] },
+
+  ogl: { t:"OGL Assignment",
+    w:"Work allotted out, and whether it came back inside the agreed time.",
+    s:["Assign, then watch the SLA column.",
+       "At risk means it will breach if nothing changes today.",
+       "A breach is not deleted. It is explained."] },
+
+  clients: { t:"Clients",
+    w:"The banks, their branches, and who to contact at each.",
+    s:["A branch sits under a client and has one escalation contact chain.",
+       "The chain is what Escalation matrix sends to each month."] },
+
+  matrix: { t:"Escalation matrix",
+    w:"The monthly statement that goes to each client, naming who to call.",
+    s:["Check the contacts, then despatch.",
+       "What went out is kept. A contact changed afterwards does not rewrite last month."] },
+
+  visits: { t:"Visits & claims",
+    w:"Where you went, and what it cost.",
+    s:["File the visit, then the claim against it.",
+       "A claim with no visit behind it is the thing this screen exists to prevent."] },
+
+  hiring: { t:"Hiring & pending chairs",
+    w:"Chairs with nobody in them, and requests to fill one.",
+    s:["A manager asks. Human Resources decides and makes the account.",
+       "An approved request becomes a person, a chair and a sign-in in one step."] },
+
+  joining: { t:"Joining",
+    w:"People who have accepted and not yet started.",
+    s:["Everything that must be true on day one, as a list.",
+       "The welcome e-mail goes out when the account is made, not when the list is finished."] },
+
+  hr:    { t:"HR",  w:"The people record: joiners, leavers, and what changed.",
+    s:["Human Resources runs the scheme and the records.",
+       "Setting a named person's KPIs and targets is their own manager's, not HR's."] },
+
+  reports:{ t:"Reports", w:"The numbers, as tables you can take away.",
+    s:["Pick the period first. Everything below it follows.",
+       "A report is a view of what was filed. It changes nothing."] },
+
+  history:{ t:"History & audit trail", w:"Who did what, and when.",
+    s:["Every change that matters writes a row here, naming the person who made it.",
+       "This is the answer to “who moved this”, and it cannot be edited."] },
+
+  profile:{ t:"My profile", w:"Your own record, and your sign-in.",
+    s:["Change your password here.",
+       "Anything you cannot edit is held by Human Resources."] },
+
+  config: { t:"Settings", w:"How the tool behaves for everybody.",
+    s:["These are company-wide. A change here is felt by every user.",
+       "Every change is written to History & audit trail against your name."] }
+};
+
+/* The journey the owner said was confusing, said once, in order. It is
+   attached to the two screens it spans rather than repeated on each. */
+var HELP_JOURNEY = [
+  ["Every day",    "You file your figures against the measures you were given. Nothing is scored yet — these are facts."],
+  ["Each month",   "You self-evaluate: you say how the month went, out of 10. Then your manager scores you, out of 10, seeing what you filed and what you said. Three quarters of that score is the KPIs, one quarter is the attributes."],
+  ["Each quarter", "The quarterly scorecard adds up what was actually filed against what was agreed. That part is arithmetic, not judgement — nobody types it in."],
+  ["Then",         "Achievement × the payout curve × the consistency of your monthly scores = the bonus. It is certified, then published. Published is the point at which it is real."]
+];
+
+function qhIcon(){
+  return '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.4" stroke-linecap="round">' +
+    '<path d="M9.1 9a3 3 0 1 1 4.2 2.8c-.8.4-1.3 1.1-1.3 2v.4"/>' +
+    '<circle cx="12" cy="17.6" r="1.1" fill="currentColor" stroke="none"/></svg>';
+}
+
+function qhBody(){
+  var tab = (typeof currentTab === "function") ? currentTab() : "today";
+  var h = HELP[tab];
+  var title = h ? h.t : ((typeof LABEL === "object" && LABEL[tab]) || "This screen");
+
+  var out = '<div class="qhhead"><h2>' + esc(title) + '</h2>' +
+    '<button class="qhx" id="qhclose" aria-label="Close">×</button></div>';
+
+  if (h) {
+    out += '<p class="qhwhat">' + esc(h.w) + '</p>';
+    out += '<h3>What you do here</h3><ol class="qhsteps">' +
+      h.s.map(function(x){ return '<li>' + esc(x) + '</li>'; }).join("") + '</ol>';
+    if (h.j) {
+      out += '<h3>How a score becomes a bonus</h3><dl class="qhjourney">' +
+        HELP_JOURNEY.map(function(p){
+          return '<dt>' + esc(p[0]) + '</dt><dd>' + esc(p[1]) + '</dd>';
+        }).join("") + '</dl>';
+    }
+  } else {
+    out += '<p class="qhwhat">There is no written guide for this screen yet. ' +
+      'Anything the screen itself explains is below.</p>';
+  }
+
+  if (QH.moved.length) {
+    out += '<h3>Also on this screen</h3>' +
+      '<div class="qhmoved">' + QH.moved.map(function(x){
+        return '<p>' + x + '</p>'; }).join("") + '</div>';
+  }
+
+  out += '<p class="qhfoot">Crux · Crux Risk Management Pvt. Ltd.</p>';
+  return out;
+}
+
+function qhPaint(){
+  var p = el("qhpanel");
+  if (!p) return;
+  p.innerHTML = qhBody();
+  if (el("qhclose")) el("qhclose").onclick = qhToggle;
+}
+
+function qhToggle(){
+  QH.open = !QH.open;
+  var p = el("qhpanel"), s = el("qhscrim"), b = el("qhbtn");
+  if (!p) return;
+  if (QH.open) qhPaint();
+  p.classList.toggle("on", QH.open);
+  if (s) s.classList.toggle("on", QH.open);
+  if (b) b.setAttribute("aria-expanded", QH.open ? "true" : "false");
+}
+
+/* Prose, or a label? Length decides, because every other test needs the
+   author to have marked it and none of them did. 100 characters is about
+   a line and a half: long enough that no unit, count or hint reaches it,
+   short enough that nothing anybody would call an explanation escapes. */
+function qhIsProse(n){
+  if (n.getAttribute("data-qh")) return false;
+  if (n.closest(".plform, .hraform, .qhpanel")) return false;
+  return (n.textContent || "").trim().length >= 100;
+}
+
+function qhCollect(){
+  var v = el("view");
+  if (!v) return;
+  QH.moved = [];
+  var ns = v.querySelectorAll("p.mute, .plsub > p, p.hint");
+  Array.prototype.forEach.call(ns, function(n){
+    if (!qhIsProse(n)) return;
+    n.setAttribute("data-qh", "1");
+    n.style.display = "none";
+    QH.moved.push(n.innerHTML);
+  });
+  var b = el("qhbtn");
+  if (b) b.classList.toggle("has", QH.moved.length > 0);
+  if (QH.open) qhPaint();
+}
+
+function qhMount(){
+  if (el("qhbtn")) return;
+  var scrim = document.createElement("div");
+  scrim.id = "qhscrim";
+  scrim.onclick = function(){ if (QH.open) qhToggle(); };
+
+  var panel = document.createElement("aside");
+  panel.id = "qhpanel";
+  panel.className = "qhpanel";
+
+  var btn = document.createElement("button");
+  btn.id = "qhbtn";
+  btn.type = "button";
+  btn.title = "What is this screen for?";
+  btn.setAttribute("aria-label", "What is this screen for?");
+  btn.setAttribute("aria-expanded", "false");
+  btn.innerHTML = qhIcon();
+  btn.onclick = qhToggle;
+
+  document.body.appendChild(scrim);
+  document.body.appendChild(panel);
+  document.body.appendChild(btn);
+
+  document.addEventListener("keydown", function(e){
+    if (e.key === "Escape" && QH.open) qhToggle();
+  });
+
+  /* No router hook. The observer catches every draw, including the ones
+     that finish after an await and the ones on screens this file has
+     never heard of. Debounced, because a screen that renders in three
+     passes should collect once. */
+  var v = el("view");
+  if (v && window.MutationObserver) {
+    var t = null;
+    new MutationObserver(function(){
+      clearTimeout(t);
+      t = setTimeout(qhCollect, 80);
+    }).observe(v, { childList:true, subtree:true });
+  }
+  qhCollect();
+}
+
+/* Mounted when #view exists, which is after sign-in. Before that there is
+   one box asking for a password and nothing a help panel could usefully
+   say about it. Polled rather than hooked to a boot function, so this
+   needs no anchor in a page it cannot see. */
+(function qhBoot(){
+  var tries = 0;
+  function go(){
+    if (el("view")) { qhMount(); return; }
+    if (++tries > 60) return;
+    setTimeout(go, 400);
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", go);
+  } else { go(); }
+})();
 
 function currentTab(){
   var t = (location.hash||"#today").slice(1).split("/")[0];
@@ -4018,6 +4472,14 @@ async function tmMove(personId, managerId){
 var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            who:null, open:{}, measures:null, measuresFor:null, form:null,
            sel:{}, busy:false, says:"",
+           /* everybody an administrator or HR may set for but who does not
+              report to them, and the text typed to find one. Drawn only
+              once `find` is two characters or more. */
+           wider:[], widerWhy:"", find:"",
+           /* the open "change this measure" form, which is a different
+              thing from `form` -- that one gives a measure, this one
+              changes one already given. */
+           editForm:null,
            /* the blueprint's other sections: the split, the fortnight, the
               tasks, the quarter, and the forms that write to them. */
            weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
@@ -4098,6 +4560,13 @@ async function vPerf(){
   if (!PF.team) {
     var t = await plb("/plb/perf/team");
     PF.team = t.error ? [] : (t.people || []);
+    /* An administrator and Human Resources may set for everybody. That is a
+       hundred rows, and a hundred rows under the heading "my team" is what
+       made the tool look as though it were leaking other people's data. So
+       the wider list is held here and never drawn until somebody types a
+       name into the box that asks for one. */
+    PF.wider  = t.error ? [] : (t.wider || []);
+    PF.widerWhy = t.error ? "" : (t.why || "");
   }
   /* The month, the quarter and the split are three different clocks and the
      page shows all three. Asked together because they are drawn together —
@@ -4765,29 +5234,84 @@ function pfSplitBlock(){
     '</div>';
 }
 
+/* One person's row, used by the reporting line and by the search results
+   alike, so the two lists cannot drift into offering different actions. */
+function pfTeamRow(p){
+  var open = PF.who === p.personId;
+  return '<tr><td><b>' + esc(p.name) + '</b>' +
+    (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
+    '<div class="mute">' + esc(p.chair || "no chair") +
+      (p.department ? ' · ' + esc(p.department) : '') + '</div></td>' +
+    '<td class="plact">' +
+      '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
+        (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
+      '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
+        (open ? 'Hide' : 'Set targets') + '</button>' +
+      '<button class="btn" data-pftask="' + esc(p.personId) + '">Assign a task</button>' +
+      '</td></tr>' +
+    (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
+}
+
+/* Anyone an administrator or HR may set for who is not in their line.
+   Nothing is listed until two characters are typed. The point is not to
+   save bytes -- the list is already in the browser -- it is that a screen
+   headed "my team" which opens on a hundred strangers is indistinguishable,
+   to the person reading it, from a screen that is showing them data they
+   should not have. */
+function pfFindAnyone(){
+  if (!PF.wider || !PF.wider.length) return "";
+  var q = (PF.find || "").trim().toLowerCase();
+  var hits = q.length < 2 ? [] : PF.wider.filter(function(p){
+    return (p.name || "").toLowerCase().indexOf(q) >= 0
+        || (p.employeeNo || "").toLowerCase().indexOf(q) >= 0
+        || (p.chair || "").toLowerCase().indexOf(q) >= 0
+        || (p.department || "").toLowerCase().indexOf(q) >= 0;
+  });
+  var shown = hits.slice(0, 12);
+  return '<div class="pffind">' +
+    '<h3>Search for anyone <span class="mute">· ' + PF.wider.length +
+      ' outside your reporting line</span></h3>' +
+    '<input id="pffind" placeholder="Name, employee number, chair or department"' +
+      ' value="' + esc(PF.find || "") + '" autocomplete="off">' +
+    (q.length < 2
+      ? '<p class="mute">Type two letters. ' + esc(PF.widerWhy || "") + '</p>'
+      : (hits.length
+          ? '<div class="scroll"><table>' +
+              shown.map(pfTeamRow).join("") + '</table></div>' +
+            (hits.length > shown.length
+              ? '<p class="mute">' + hits.length + ' match. Showing the first ' +
+                shown.length + ' — type more to narrow it.</p>'
+              : '')
+          : '<p class="mute">Nobody matches &ldquo;' + esc(PF.find) + '&rdquo;.</p>')) +
+    '</div>';
+}
+
+/* Editing and removing a measure arrived with migration 240 and a new
+   pair of routes. Until the plb function carrying them is deployed the
+   call comes back no_route, and "no_route" on a button somebody just
+   pressed is the tool blaming them for its own deployment. */
+function pfSaid(o, good){
+  if (!o || !o.error) return msg("ok", (o && o.note) || good);
+  if (o.error === "no_route") {
+    return msg("warn", "This needs the performance service redeployed \u2014 " +
+      "the screen has the button and the service does not have the route yet. " +
+      "Nothing was changed.");
+  }
+  return msg("bad", o.reason || o.error);
+}
+
 /* ------------------------- I · my team: targets, tasks and eligibility */
 function pfTeamSection(){
-  if (!PF.team || !PF.team.length) return "";
+  /* An administrator with nobody reporting to them still gets this card:
+     the search box below is the only way they reach anybody at all. */
+  if ((!PF.team || !PF.team.length) && (!PF.wider || !PF.wider.length)) return "";
   var n = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; }).length;
-  var rows = PF.team.map(function(p){
-    var open = PF.who === p.personId;
-    return '<tr><td><b>' + esc(p.name) + '</b>' +
-      (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
-      '<div class="mute">' + esc(p.chair || "no chair") + '</div></td>' +
-      '<td class="plact">' +
-        '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
-          (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
-        '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
-          (open ? 'Hide' : 'Set targets') + '</button>' +
-        '<button class="btn" data-pftask="' + esc(p.personId) + '">Assign a task</button>' +
-        '</td></tr>' +
-      (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
-  }).join("");
+  var rows = (PF.team || []).map(pfTeamRow).join("");
 
   return '<div class="card"><h2>My team <span class="mute">· targets, tasks and eligibility</span></h2>' +
-    '<p class="mute">A KPI you give somebody climbs into one of yours. Pick which one ' +
-    'as you set it — that link is what makes the numbers add up to a branch, and a ' +
-    'branch to a zone.</p>' +
+    (rows ? '' :
+      '<p class="mute">Nobody reports to you, so this list is empty. Use the ' +
+      'search below to reach somebody.</p>') +
     '<div class="plbar">' +
       '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
         (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
@@ -4795,7 +5319,8 @@ function pfTeamSection(){
       '<button class="btn" id="pftaskall">Assign a task to ' + (n ? n + ' selected' : 'the whole team') + '</button>' +
       '<button class="btn" id="pfelig">Eligibility matrix</button>' +
     '</div>' +
-    '<div class="scroll"><table>' + rows + '</table></div>' +
+    (rows ? '<div class="scroll"><table>' + rows + '</table></div>' : '') +
+    pfFindAnyone() +
     (PF.form ? pfForm() : '') +
     (PF.taskForm ? pfTaskForm() : '') +
     (PF.elig ? pfEligibility() : '') +
@@ -5038,10 +5563,69 @@ function pfPersonPanel(){
   var ms = t.measures || [];
   return '<div class="pfpanel">' +
     (ms.length
-      ? '<div class="pftree">' + ms.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>'
+      ? '<div class="pftree">' + ms.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>' +
+        pfMeasureAdmin(ms)
       : '<div class="empty">' + esc(t.says || "Nothing set for them this period.") + '</div>') +
     '<p><button class="btn" id="pfadd">Set a KPI for ' + esc(t.person.name) + '</button></p>' +
+    (PF.editForm ? pfEditForm(ms) : '') +
     '</div>';
+}
+
+/* Change a measure, or take it back. Separate from the tree above rather
+   than two more buttons on every node, because the tree is read far more
+   often than it is edited and a row of verbs on each line is how a reading
+   surface turns into a control panel. */
+function pfMeasureAdmin(ms){
+  var top = ms.filter(function(m){ return !m.splitOf; });
+  if (!top.length) return "";
+  return '<div class="pfadmin"><h4>Change what they are measured on</h4>' +
+    '<div class="scroll"><table><tbody>' + top.map(function(m){
+      return '<tr><td><b>' + esc(m.name) + '</b>' +
+        (m.unit ? ' <span class="mute">(' + esc(m.unit) + ')</span>' : '') +
+        (m.weight !== null && m.weight !== undefined
+          ? ' <span class="chip">' + pfNum(m.weight) + '%</span>' : '') +
+        '</td><td class="plact">' +
+          '<button class="btn" data-pfedit="' + esc(m.assignmentId) + '">Edit</button>' +
+          '<button class="btn" data-pfrm="' + esc(m.assignmentId) + '">Remove</button>' +
+        '</td></tr>';
+    }).join("") + '</tbody></table></div></div>';
+}
+
+function pfEditForm(ms){
+  var f = PF.editForm;
+  var mine = (PF.measures || {}).mine || [];
+  var others = ms.filter(function(m){
+    return !m.splitOf && m.assignmentId !== f.assignmentId; });
+  return '<div class="plform">' +
+    '<h4 class="plh">Change &ldquo;' + esc(f.was) + '&rdquo;</h4>' +
+    '<div class="hragrid">' +
+      '<label class="hrafield"><span>Call it</span>' +
+        '<input data-pfe="name" value="' + esc(f.name || "") + '"></label>' +
+      '<label class="hrafield"><span>Counted in</span>' +
+        '<input data-pfe="unit" value="' + esc(f.unit || "") + '"></label>' +
+      '<label class="hrafield"><span>Weight %</span>' +
+        '<input data-pfe="weight" type="number" step="any" value="' + esc(f.weight || "") + '"></label>' +
+      '<label class="hrafield"><span>They file</span><select data-pfe="cadence">' +
+        '<option value="">— leave it as it is —</option>' +
+        ["DAILY","WEEKLY","MONTHLY","QUARTERLY"].map(function(c){
+          return '<option value="' + c + '"' + (f.cadence === c ? ' selected' : '') + '>' +
+            c.toLowerCase() + '</option>'; }).join("") +
+      '</select></label>' +
+      '<label class="hrafield"><span>Climbs into</span><select data-pfe="rollsInto">' +
+        '<option value="">— nothing —</option>' +
+        mine.map(function(m){
+          return '<option value="' + esc(m.assignmentId) + '"' +
+            (f.rollsInto === m.assignmentId ? ' selected' : '') + '>' +
+            esc(m.name) + (m.split ? ' · ' + esc(m.split) : '') + '</option>'; }).join("") +
+      '</select></label>' +
+    '</div>' +
+    '<p class="mute">The target is not here. It is set on the measure itself, ' +
+    'where setting it also divides it down the team and across the clients — ' +
+    'two places to type one number is how the two stop agreeing.</p>' +
+    '<div class="plbar">' +
+      '<button class="btn primary" id="pfesave">Save the change</button>' +
+      '<button class="btn" id="pfecancel">Cancel</button>' +
+    '</div></div>';
 }
 
 /* ------------------------------------------------------------ the form */
@@ -5063,7 +5647,24 @@ function pfForm(){
         cat.map(function(k){
           return '<option value="' + esc(k.id) + '"' + (f.kpiId === k.id ? ' selected' : '') + '>' +
             esc(k.name) + (k.unit ? ' (' + esc(k.unit) + ')' : '') + '</option>'; }).join("") +
+        /* The registry is what a chair is MEANT to be measured on, and it
+           is not the whole of what a manager ever needs to ask for. Until
+           this option existed the form refused to submit without a
+           catalogue id, so "add a KPI" had no door at all: perf_assign has
+           always taken a free-text name, and nothing offered one. */
+        '<option value="NEW"' + (f.kpiId === "NEW" ? ' selected' : '') +
+          '>— something else, named here —</option>' +
       '</select></label>' +
+    (f.kpiId === "NEW"
+      /* newName, not name: f.name already holds the PERSON's name, which is
+         what the heading above reads from. */
+      ? '<label class="hrafield"><span>Call it</span>' +
+          '<input data-pff="newName" value="' + esc(f.newName || "") +
+          '" placeholder="Name it the way they would say it"></label>' +
+        '<label class="hrafield"><span>Counted in</span>' +
+          '<input data-pff="unit" value="' + esc(f.unit || "") +
+          '" placeholder="cases, visits, rupees, %"></label>'
+      : '') +
       '<label class="hrafield"><span>Target</span>' +
         '<input data-pff="target" type="number" step="any" value="' + esc(f.target || "") + '"></label>' +
       '<label class="hrafield"><span>Weight %</span>' +
@@ -5141,6 +5742,22 @@ function pfWire(){
     b.onchange = function(){ PF.sel[b.getAttribute("data-pfsel")] = b.checked; pfRender(); };
   });
 
+  /* The search box re-renders the whole screen on every keystroke, which
+     would otherwise take the caret with it. So the value and the caret are
+     put back and the field is re-focused -- and the state is read from the
+     event rather than from PF, because PF.find is what we are about to
+     set. */
+  if (el("pffind")) {
+    var box = el("pffind");
+    box.oninput = function(){
+      var at = box.selectionStart;
+      PF.find = box.value;
+      pfRender();
+      var again = el("pffind");
+      if (again) { again.focus(); try { again.setSelectionRange(at, at); } catch (e) {} }
+    };
+  }
+
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfwho]"), function(b){
     b.onclick = async function(){
       var id = b.getAttribute("data-pfwho");
@@ -5168,9 +5785,80 @@ function pfWire(){
 
   if (el("pfadd")) el("pfadd").onclick = async function(){
     PF.form = { personId: PF.who, name: (PF.whoTree.person || {}).name, bulk:false };
+    PF.editForm = null;
     pfRender();
     await pfMeasuresFor(PF.who);
   };
+
+  /* ------------------------------------------- changing a measure given */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfedit]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-pfedit");
+      var m = ((PF.whoTree || {}).measures || []).filter(function(x){
+        return x.assignmentId === id; })[0];
+      if (!m) return;
+      PF.form = null;
+      PF.editForm = { assignmentId: id, was: m.name, name: m.name,
+                      unit: m.unit || "", weight: m.weight,
+                      cadence: "", rollsInto: m.rollsInto || "" };
+      pfRender();
+      /* The roll-up list is the SETTER's own measures, which is what the
+         database checks, so it is fetched for nobody in particular. */
+      await pfMeasuresFor(null);
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfe]"), function(f){
+    f.onchange = function(){ PF.editForm[f.getAttribute("data-pfe")] = f.value; };
+  });
+
+  if (el("pfecancel")) el("pfecancel").onclick = function(){
+    PF.editForm = null; pfRender();
+  };
+
+  if (el("pfesave")) el("pfesave").onclick = async function(){
+    if (PF.busy) return;
+    var f = PF.editForm;
+    if (!(f.name || "").trim()) {
+      PF.says = msg("bad", "A measure needs a name."); pfRender(); return;
+    }
+    PF.busy = true; el("pfesave").disabled = true;
+    var body = { assignmentId: f.assignmentId, name: f.name.trim(),
+                 unit: (f.unit || "").trim(), weight: f.weight,
+                 rollsInto: f.rollsInto };
+    /* An empty cadence means "leave it", and sending "" would be refused
+       as a cadence that does not exist. */
+    if (f.cadence) body.cadence = f.cadence;
+    var o = await plb("/plb/perf/edit", { method:"POST", body: body });
+    PF.busy = false;
+    PF.says = pfSaid(o, "Changed.");
+    if (!o.error) { PF.editForm = null; PF.whoTree = null; }
+    if (PF.who && !PF.whoTree) {
+      PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
+    }
+    pfRender();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfrm]"), function(b){
+    b.onclick = async function(){
+      if (PF.busy) return;
+      var id = b.getAttribute("data-pfrm");
+      var m = ((PF.whoTree || {}).measures || []).filter(function(x){
+        return x.assignmentId === id; })[0] || {};
+      if (!confirm("Take “" + (m.name || "this measure") + "” back?\n\n" +
+          "If anything has been filed against it, it is withdrawn rather than " +
+          "deleted — it stops being asked for and what was filed still reads back.")) return;
+      PF.busy = true; b.disabled = true;
+      var o = await plb("/plb/perf/remove", { method:"POST", body:{ assignmentId: id } });
+      PF.busy = false;
+      PF.says = pfSaid(o, "Removed.");
+      PF.editForm = null; PF.whoTree = null;
+      if (PF.who) {
+        PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
+      }
+      pfRender();
+    };
+  });
 
   if (el("pfbulk")) el("pfbulk").onclick = async function(){
     PF.form = { bulk:true };
@@ -5195,7 +5883,14 @@ function pfWire(){
   };
 
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pff]"), function(f){
-    f.onchange = function(){ PF.form[f.getAttribute("data-pff")] = f.value; };
+    f.onchange = function(){
+      var k = f.getAttribute("data-pff");
+      PF.form[k] = f.value;
+      /* Choosing "something else" has to put two more boxes on the form,
+         so that one field re-draws and the rest do not -- a re-render on
+         every keystroke would take the caret out of the name box. */
+      if (k === "kpiId") pfRender();
+    };
   });
 
   if (el("pfcancel")) el("pfcancel").onclick = function(){ PF.form = null; pfRender(); };
@@ -5204,10 +5899,24 @@ function pfWire(){
     if (PF.busy) return;
     var f = PF.form;
     if (!f.kpiId) { PF.says = msg("bad", "Choose a measure first."); pfRender(); return; }
+    var named = f.kpiId === "NEW";
+    if (named && !(f.newName || "").trim()) {
+      PF.says = msg("bad", "Give the measure a name, or pick one from the list.");
+      pfRender(); return;
+    }
     PF.busy = true; el("pfsave").disabled = true;
-    var body = { cycleId: PF.cycle.id, kpiId: f.kpiId, target: f.target,
+    /* kpiId is sent only when it names a catalogue row. perf_assign reads
+       the name off the kpi_definition when it is given one and off the body
+       when it is not, so the two cases are the same call. */
+    var body = { cycleId: PF.cycle.id, target: f.target,
                  weight: f.weight, cadence: f.cadence, cadenceDay: f.cadenceDay,
                  rollsInto: f.rollsInto };
+    if (named) {
+      body.name = (f.newName || "").trim();
+      body.unit = (f.unit || "").trim();
+    } else {
+      body.kpiId = f.kpiId;
+    }
     var o;
     if (f.bulk) {
       o = await plb("/plb/perf/assign/bulk", { method:"POST", body:{
@@ -5485,56 +6194,296 @@ function pfWire(){
 }
 
 /* --------------------------------------------------------------- today */
+/* =====================================================================
+   The dashboard.
+
+   The reference the owner gave is cruxindia/crux-console, and what makes
+   that page work is not its colours. It is the order:
+
+     a row of stat tiles, each one number with a coloured edge and a
+     one-line qualifier under it;
+     then a wide panel of detail beside a narrow one that summarises it;
+     then the things waiting to be done.
+
+   Every figure is a number somebody filed, shown at the size of its
+   importance, and nothing on the page is a paragraph.
+
+   This takes that order and draws it in THIS tool's tokens -- green,
+   gold, terra, blue, ink -- rather than importing the console's navy. The
+   console also inlines 200KB of Chart.js; this does not. A doughnut of
+   three states and a row of progress bars are two arcs and a div each,
+   and a charting library is not worth a third of the page weight to draw
+   them.
+
+   WHAT IT SHOWS, and why in this order. The old dashboard led with
+   escalations and OGL -- other people's work arriving. The scheme the
+   company is about to run on is measured monthly and paid quarterly, so
+   the first thing a person needs on opening the tool is whether they have
+   filed today and whether they are on track. The operational counts keep
+   their place, lower down, where they were.
+   ===================================================================== */
+
+var TD = { data:null, err:null };
+
+/* ------------------------------------------------------------ numbers */
+function tdNum(v, dp){
+  if (v === null || v === undefined || v === "") return "—";
+  var n = Number(v);
+  if (!isFinite(n)) return "—";
+  return n.toLocaleString("en-IN", {
+    minimumFractionDigits: dp || 0, maximumFractionDigits: dp === undefined ? 0 : dp });
+}
+
+/* The one rule the whole page colours by: a measure is on target, part of
+   the way there, or behind. Said once so the tile, the bar, the doughnut
+   and the legend cannot disagree about one measure. */
+function tdState(pct){
+  if (pct === null || pct === undefined) return "none";
+  if (pct >= 100) return "ok";
+  if (pct >= 70)  return "part";
+  return "behind";
+}
+var TD_WORD  = { ok:"on target", part:"part of the way", behind:"behind", none:"no target set" };
+
+/* The three states wear three colours, and those colours are NOT the
+   tool's --green/--gold/--terra.
+
+   Those three were tried first and fail the only test that matters for a
+   doughnut: --gold #8a6d1f and --terra #b4562f are 9.6 apart to a reader
+   with full colour vision and 1.8 apart to a reader with deuteranopia,
+   which is to say the middle segment and the behind segment are one
+   segment. The tool's palette is deliberately muted and no three steps of
+   it separate; these are stepped out until they do -- 30.3 and 24.7 on the
+   worst adjacent pair.
+   
+   The light middle step sits below 3:1 against the panel, so it is never
+   the only thing saying what a figure means: the legend carries the words
+   and the counts, and the table under it carries every measure by name
+   with its own percentage. */
+var TD_TOKEN = { ok:"ok", part:"part", behind:"behind", none:"none" };
+
+/* ---------------------------------------------------------- the tiles */
+function tdTile(label, value, sub, token){
+  return '<div class="tdk tdk-' + esc(token || "none") + '">' +
+    '<span class="edge" aria-hidden="true"></span>' +
+    '<div class="k">' + esc(label) + '</div>' +
+    '<div class="v">' + value + '</div>' +
+    '<div class="s">' + esc(sub || "") + '</div></div>';
+}
+
+/* A bar that stops at its own track however large the number is, and
+   carries the figure beside it rather than inside it -- a number printed
+   on a coloured fill is a number somebody cannot read at 60%. */
+function tdBar(pct, token){
+  var w = pct === null || pct === undefined ? 0 : Math.max(0, Math.min(100, pct));
+  return '<div class="tdbar"><i class="' + esc(token) + '" style="width:' +
+    w.toFixed(0) + '%"></i></div>';
+}
+
+/* Three arcs on one circle. Not a library: a doughnut of three states is
+   stroke-dasharray, and the legend under it carries the words -- nobody
+   reads this by colour alone. */
+function tdDonut(counts, total){
+  var r = 42, c = 2 * Math.PI * r, at = 0;
+  var segs = ["ok","part","behind"].filter(function(k){ return counts[k] > 0; });
+  /* A 2px gap of surface between neighbouring arcs. Two fills that touch
+     read as one fill, and that is exactly the failure this scale was
+     re-stepped to avoid; the gap makes the boundary structural as well as
+     chromatic. Only drawn when there is more than one arc, because a
+     single arc has no neighbour and would just be a circle with a nick in
+     it. */
+  var gap = segs.length > 1 ? 2 : 0;
+  var arcs = segs.map(function(k){
+    var frac = counts[k] / total;
+    var len = Math.max(0, c * frac - gap);
+    var s = '<circle class="seg" cx="50" cy="50" r="' + r + '" ' +
+      'stroke="var(--c-' + TD_TOKEN[k] + ')" ' +
+      'stroke-dasharray="' + len.toFixed(2) + ' ' + (c - len).toFixed(2) + '" ' +
+      'stroke-dashoffset="' + (-(c * at) - gap / 2).toFixed(2) + '"></circle>';
+    at += frac;
+    return s;
+  }).join("");
+  var pct = Math.round(100 * (counts.ok || 0) / total);
+  return '<div class="tddonut">' +
+    '<svg viewBox="0 0 100 100" role="img" aria-label="' +
+      esc(counts.ok + " of " + total + " measures on target") + '">' +
+      '<circle class="trk" cx="50" cy="50" r="' + r + '"></circle>' + arcs +
+    '</svg>' +
+    '<div class="mid"><b>' + pct + '%</b><span>on target</span></div></div>' +
+    '<ul class="tdleg">' + ["ok","part","behind"].map(function(k){
+      return '<li><span class="dot ' + TD_TOKEN[k] + '"></span>' +
+        esc(TD_WORD[k]) + '<b>' + (counts[k] || 0) + '</b></li>';
+    }).join("") + '</ul>';
+}
+
+/* ----------------------------------------------------------- the page */
+function tdRender(){
+  var d = TD.data;
+  if (!d) { el("view").innerHTML = '<p class="mute">Loading…</p>'; return; }
+
+  var me = d.me || {}, cases = d.cases || {}, ogl = d.ogl || {}, mx = d.mx || {};
+  var tree = d.tree || {}, due = d.due || [], mine = d.mine || {};
+
+  var ms = (tree.measures || []).filter(function(m){ return m.state !== "WITHDRAWN"; });
+  var counts = { ok:0, part:0, behind:0, none:0 };
+  ms.forEach(function(m){ counts[tdState(m.pct)]++; });
+  var scored = counts.ok + counts.part + counts.behind;
+
+  var open  = (cases.cases || []).filter(function(c){ return c.status !== "CLOSED"; }).length;
+  var risky = (ogl.assignments || []).filter(function(a){
+    return a.sla_status === "AT_RISK" || a.sla_status === "BREACHED"; }).length;
+  var gaps  = (mx.branches || []).length;
+
+  var dueToday = due.length;
+  var filedToday = due.filter(function(x){ return x.alreadyFiled; }).length;
+  var fileTok = !dueToday ? "none" : filedToday >= dueToday ? "ok"
+              : filedToday ? "part" : "behind";
+
+  var sheet = mine.sheet || null;
+  var ach = sheet && sheet.calc ? sheet.calc.achievement : null;
+
+  /* ------------------------------------------------------------ tiles */
+  var tiles =
+    tdTile("Filed today",
+      '<span class="num">' + filedToday + '</span><span class="of">/' + dueToday + '</span>',
+      dueToday ? (filedToday >= dueToday ? "nothing outstanding" : "still to file")
+               : "nothing due today",
+      fileTok) +
+    tdTile("On target",
+      '<span class="num">' + counts.ok + '</span><span class="of">/' + (scored || 0) + '</span>',
+      scored ? "measures with a target" : "no target set yet",
+      scored && counts.ok >= scored ? "ok" : counts.behind ? "behind" : "part") +
+    tdTile("Quarter to date",
+      '<span class="num">' + (ach === null || ach === undefined ? "—" : tdNum(ach, 1) + "%") + '</span>',
+      sheet ? "achievement on the goal sheet" : "no goal sheet this quarter",
+      ach === null || ach === undefined ? "none" : ach >= 100 ? "ok" : ach >= 80 ? "part" : "behind") +
+    tdTile("Escalations open", '<span class="num">' + open + '</span>',
+      open ? "waiting on your chair" : "none open", open ? "behind" : "ok") +
+    tdTile("OGL at risk", '<span class="num">' + risky + '</span>',
+      risky ? "at risk or already breached" : "every assignment inside its time",
+      risky ? "part" : "ok");
+
+  /* -------------------------------------------- my measures, in detail */
+  var rows = ms.map(function(m){
+    var st = tdState(m.pct);
+    return '<tr><td><b>' + esc(m.name) + '</b>' +
+        (m.unit ? ' <span class="mute">(' + esc(m.unit) + ')</span>' : '') + '</td>' +
+      '<td class="r num">' + tdNum(m.value) + '</td>' +
+      '<td class="r num">' + (m.target === null || m.target === undefined
+        ? '<span class="mute">not set</span>' : tdNum(m.target)) + '</td>' +
+      /* The figure beside the bar is ink, never the bar's own colour: a
+         number is text and wears a text token. The bar carries the state,
+         and the word for that state is on the bar's title so it is not
+         carried by colour alone. */
+      '<td class="tdprog">' + tdBar(m.pct, TD_TOKEN[st]) +
+        '<span class="num" title="' + esc(TD_WORD[st]) + '">' +
+        (m.pct === null || m.pct === undefined ? "—" : tdNum(m.pct, 0) + "%") +
+        '</span></td></tr>';
+  }).join("");
+
+  var measures = ms.length
+    ? '<div class="card"><h3>How my measures are going' +
+        '<span class="sub">' + esc(tree.period || "") + '</span></h3>' +
+      '<div class="scroll"><table class="tdt"><thead><tr>' +
+        '<th>Measure</th><th class="r">Filed</th><th class="r">Target</th>' +
+        '<th>Against target</th></tr></thead><tbody>' + rows + '</tbody></table></div></div>'
+    : '<div class="card"><h3>How my measures are going</h3>' +
+      '<div class="empty">' + esc(tree.says ||
+        "Nothing has been set for you this period. Your manager sets your measures.") +
+      '</div></div>';
+
+  var donut = scored
+    ? '<div class="card tdside"><h3>Where they stand</h3>' + tdDonut(counts, scored) + '</div>'
+    : '';
+
+  /* ------------------------------------------------- what is waiting */
+  var waits = [];
+  if (dueToday > filedToday) waits.push([dueToday - filedToday,
+    "figure(s) still to file today", "#perf"]);
+  if (open)  waits.push([open,  "escalation(s) open on your chair", "#cases"]);
+  if (risky) waits.push([risky, "OGL assignment(s) at risk or breached", "#ogl"]);
+  if (gaps)  waits.push([gaps,  "branch(es) missing an escalation level", "#matrix"]);
+
+  var waiting = '<div class="card"><h3>Waiting on you</h3>' +
+    (waits.length
+      ? '<ul class="tdwait">' + waits.map(function(w){
+          return '<li><b class="num">' + w[0] + '</b>' + esc(w[1]) +
+            '<a href="' + w[2] + '">Open</a></li>'; }).join("") + '</ul>'
+      : '<div class="empty">Nothing is waiting on your chair right now.</div>') +
+    '</div>';
+
+  /* ------------------------------------------------------- the quarter */
+  var quarter = '<div class="card tdside"><h3>This quarter</h3>' +
+    (sheet
+      ? '<dl class="tdq">' +
+          '<dt>Achievement</dt><dd class="num">' +
+            (ach === null || ach === undefined ? "—" : tdNum(ach, 1) + "%") + '</dd>' +
+          '<dt>Target bonus</dt><dd class="num">' +
+            (sheet.targetPlb ? money(sheet.targetPlb) : "—") + '</dd>' +
+          '<dt>As it stands</dt><dd class="num">' +
+            (sheet.calc && sheet.calc.amount != null ? money(sheet.calc.amount) : "—") + '</dd>' +
+          '<dt>Months scored</dt><dd class="num">' +
+            ((sheet.months || []).filter(function(m){ return m.kpiPoints != null; }).length) +
+            '<span class="of">/3</span></dd>' +
+        '</dl>' +
+        '<p><a class="btn" href="#perf">See the scorecard</a></p>'
+      : '<div class="empty">No goal sheet has been issued for this quarter.</div>') +
+    '</div>';
+
+  el("view").innerHTML =
+    '<div class="page-head"><div><h1>Dashboard</h1><div class="lede">' +
+      esc(me.primaryChair ? me.primaryChair.title : "No chair held") + '</div></div></div>' +
+    (TD.err || "") +
+    '<div class="tdkpis">' + tiles + '</div>' +
+    '<div class="tdgrid tdg2">' + measures + donut + '</div>' +
+    '<div class="tdgrid tdg11">' + waiting + quarter + '</div>' +
+    '<div id="mxcard"></div>';
+
+  if (typeof mxCardLoad === "function") mxCardLoad();
+}
+
 async function vToday(){
-  var r = await Promise.all([
-    api("/people/me"), api("/cases"), crux("/api/ogl"), api("/matrix/incomplete"), api("/pms/cycle/current")
+  el("view").innerHTML = '<p class="mute">Loading…</p>';
+  TD = { data:null, err:null };
+
+  var first = await Promise.all([
+    api("/people/me"), api("/cases"), crux("/api/ogl"),
+    api("/matrix/incomplete"),
+    plb("/plb/perf/cycle?period=" + new Date().toISOString().slice(0, 8) + "01")
   ]);
-  var meR = r[0], cases = r[1], ogl = r[2], mx = r[3], pms = r[4];
+  var me = first[0], cases = first[1], ogl = first[2], mx = first[3], cyc = first[4];
+  scope = me;
 
   /* Every one of these can come back refused, and the refusal carries the
      reason. Showing zeros without it is what made this screen look broken. */
-  var refused = [meR, cases, ogl, mx, pms]
+  var refused = [me, cases, ogl, mx, cyc]
     .map(function(x){ return x && (x.reason || x.empty); })
     .filter(function(t, i, a){ return t && a.indexOf(t) === i; });
-  var noChair = !meR || !meR.chairs || !meR.chairs.length;
-  var why = refused.length
+  var noChair = !me || !me.chairs || !me.chairs.length;
+  TD.err = refused.length
     ? msg("warn", refused.join("  ")) +
       (noChair
         ? '<p class="mute">A chair is what the tool resolves your view from — ' +
           'which branches, which cases, whose scores. Nobody holds one yet, so ' +
           'these panels have nothing to draw. Load <b>Chairs</b> and then ' +
-          '<b>People</b> under Data setup and they fill in. ' +
-          'Data setup and Mail work now and do not need a chair.</p>'
+          '<b>People</b> under Data setup and they fill in.</p>'
         : "")
     : "";
-  scope = meR;
-  var open = (cases.cases||[]).filter(function(c){ return c.status!=="CLOSED"; }).length;
-  var risky = (ogl.assignments||[]).filter(function(a){
-    return a.sla_status==="AT_RISK" || a.sla_status==="BREACHED"; }).length;
 
-  var owed = open + risky + (mx.branches||[]).length;
-  var ask = owed
-    ? owed + (owed === 1 ? " thing is" : " things are") + " waiting on your chair."
-    : "Nothing is waiting on your chair right now.";
+  var cycleId = cyc && cyc.cycle && cyc.cycle.id;
+  var second = await Promise.all([
+    cycleId ? plb("/plb/perf/tree?cycle=" + encodeURIComponent(cycleId)) : Promise.resolve({}),
+    plb("/plb/perf/due"),
+    plb("/plb/mine")
+  ]);
 
-  el("view").innerHTML =
-    '<div class="page-head">' +
-      '<div><h1>Today</h1><div class="lede">' +
-        esc(meR.primaryChair ? meR.primaryChair.title : "No chair held") + '</div></div>' +
-    '</div>' +
-    why +
-    '<div class="tiles">' +
-      tile(open, "escalations open") +
-      tile(risky, "OGL at risk or breached") +
-      tile((mx.branches||[]).length, "branches missing matrix levels") +
-      tile(pms.score && pms.score.final != null ? Number(pms.score.final).toFixed(1) : "-", "your score") +
-    '</div>' +
-    '<div class="askbar"><div class="askline">' + esc(ask) + '</div>' +
-      '<button class="onink" onclick="location.hash=\'#ogl\'">See what is owed</button></div>' +
-    '<div id="mxcard"></div>' +
-    '<div class="card"><h2>Your appraisal cycle</h2>' + pmsSummary(pms) + '</div>' +
-    (cases.empty ? '<div class="card"><h2>Escalations</h2>' + msg("warn", cases.empty) + '</div>' : "");
-  mxCardLoad();
+  TD.data = {
+    me: me, cases: cases, ogl: ogl, mx: mx,
+    tree: second[0] && second[0].error ? {} : second[0],
+    due: (second[1] && second[1].due) || [],
+    mine: second[2] && second[2].error ? {} : second[2]
+  };
+  tdRender();
 }
 
 function tile(v,l){ return '<div class="tile"><b>'+esc(v)+'</b><span>'+esc(l)+'</span></div>'; }
