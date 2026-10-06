@@ -115,7 +115,7 @@ echo "== behaviour"
 # set -e that killed the script before it could print WHICH one. A test runner
 # that dies silently on a failing test is worse than no runner.
 out=""
-for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit; do
+for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit test_offer; do
   out="$out
 $(psq -q -f "$REPO/build/test/$t.sql" 2>&1 | sed 's/^psql:[^ ]* //' || true)"
 done
@@ -176,6 +176,24 @@ if [ -x "$NODE" ]; then
 else
   echo "   skipped: node is not on this machine."
   missing="$missing linkify"
+fi
+
+# The floating question mark decides, by a rule, which paragraphs come off
+# every screen in the tool -- including screens whose text lives in app_page
+# and not in this repository. Too generous and an error message disappears
+# into a panel nobody opens; too mean and the clutter stays. The rule is
+# asserted against the shapes it will actually meet.
+echo
+echo "== the floating question mark"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/help_check.mjs"; then
+    pass=$((pass + 20))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing help"
 fi
 
 # The navigation and the database are two readers of one access policy. They

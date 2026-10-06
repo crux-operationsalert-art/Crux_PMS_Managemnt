@@ -1019,6 +1019,91 @@ PATCHES.append((
     ],
 ))
 
+# =====================================================================
+# 14. THE FLOATING QUESTION MARK
+#
+# "There is a lot of explanatory or helping text making this tool all
+# cluttered, move all that to a floating question mark button, which will
+# give explanation of the open screen and tab."
+#
+# The module is in build/app/screen-help.js and explains itself. What is
+# worth saying here is why it collects the prose at RENDER TIME rather
+# than this file editing it out of the page.
+#
+# The application is one row of app_page and the explanatory text is
+# spread through dozens of string concatenations inside it. Each one
+# removed by hand would be a patch rule, a quoted fragment, and a chance
+# to break a screen -- and the next paragraph anybody writes would be
+# back on the page with nothing to catch it. A rule applied after each
+# draw covers the screens that exist, the screens inside app_page this
+# repository has never had the text of, and the screens nobody has
+# written yet.
+#
+# Nothing is deleted. Everything moved is in the panel, under the screen
+# it came off.
+SCREEN_HELP = io.open("build/app/screen-help.js", encoding="utf-8").read()
+
+PATCHES.append((
+    "the floating question mark",
+    "function qhMount(",
+    [
+        # The stylesheet ends in exactly one place.
+        ("</style></head><body>",
+         '/* ------------------------------------------------ the help panel\n'
+         '   The button clears the mobile bar, which is 56px and carries a\n'
+         '   safe-area inset under it on a phone with a home indicator. */\n'
+         '#qhbtn{position:fixed;right:16px;bottom:16px;z-index:70;\n'
+         '  width:48px;height:48px;border-radius:999px;border:0;cursor:pointer;\n'
+         '  display:grid;place-items:center;background:var(--ink);color:#fff;\n'
+         '  box-shadow:0 6px 18px rgba(16,24,40,.28);padding:0;min-height:0}\n'
+         '#qhbtn:hover{filter:brightness(1.12)}\n'
+         '#qhbtn:focus-visible{outline:3px solid var(--blue);outline-offset:3px}\n'
+         '/* A dot, not a number: how much was moved off the screen is not a\n'
+         '   thing anybody needs counted. */\n'
+         '#qhbtn.has::after{content:"";position:absolute;top:9px;right:9px;\n'
+         '  width:9px;height:9px;border-radius:999px;background:var(--gold);\n'
+         '  border:2px solid var(--ink)}\n'
+         '#qhscrim{position:fixed;inset:0;z-index:71;background:rgba(16,24,40,.34);\n'
+         '  opacity:0;pointer-events:none;transition:opacity .18s ease}\n'
+         '#qhscrim.on{opacity:1;pointer-events:auto}\n'
+         '.qhpanel{position:fixed;top:0;right:0;bottom:0;z-index:72;width:min(420px,92vw);\n'
+         '  background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;\n'
+         '  transform:translateX(102%);transition:transform .2s ease;\n'
+         '  padding:18px 20px calc(24px + env(safe-area-inset-bottom));\n'
+         '  box-shadow:-10px 0 30px rgba(16,24,40,.14)}\n'
+         '.qhpanel.on{transform:translateX(0)}\n'
+         '.qhhead{display:flex;align-items:flex-start;gap:12px;margin-bottom:4px}\n'
+         '.qhhead h2{margin:0;font-size:19px;flex:1}\n'
+         '.qhx{border:0;background:transparent;font-size:26px;line-height:1;\n'
+         '  color:var(--mute);cursor:pointer;padding:0 2px;min-height:0}\n'
+         '.qhpanel h3{font-size:12px;text-transform:uppercase;letter-spacing:.5px;\n'
+         '  color:var(--mute);margin:20px 0 7px}\n'
+         '.qhwhat{margin:2px 0 0;color:var(--body);font-size:14.5px}\n'
+         '.qhsteps{margin:0;padding-left:20px;color:var(--body);font-size:13.5px}\n'
+         '.qhsteps li{margin:0 0 7px;line-height:1.5}\n'
+         '.qhjourney{margin:0;font-size:13.5px}\n'
+         '.qhjourney dt{font-weight:600;color:var(--ink);margin-top:10px}\n'
+         '.qhjourney dt:first-child{margin-top:0}\n'
+         '.qhjourney dd{margin:2px 0 0;color:var(--body);line-height:1.5}\n'
+         '.qhmoved{font-size:13px;color:var(--mute)}\n'
+         '.qhmoved p{margin:0 0 9px;line-height:1.5;padding-left:11px;\n'
+         '  border-left:2px solid var(--line2)}\n'
+         '.qhfoot{margin:22px 0 0;font-size:11px;color:var(--mute)}\n'
+         '@media (max-width:760px){\n'
+         '  #qhbtn{bottom:calc(68px + env(safe-area-inset-bottom))}\n'
+         '  .qhpanel{width:100vw;border-left:0}\n'
+         '}\n'
+         '@media (prefers-reduced-motion:reduce){\n'
+         '  .qhpanel,#qhscrim{transition:none}\n'
+         '}\n'
+         '</style></head><body>', 1),
+
+        # The module goes in above currentTab(), which it calls.
+        ("function currentTab(){",
+         SCREEN_HELP + "\nfunction currentTab(){", 1),
+    ],
+))
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
