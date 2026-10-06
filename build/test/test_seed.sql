@@ -62,13 +62,18 @@ begin
   values (date_trunc('month', current_date)::date,
           date_trunc('month', current_date)::date,
           date_trunc('month', current_date)::date + 9,
-          (date_trunc('month', current_date) + interval '1 month - 1 day')::date);
+          (date_trunc('month', current_date) + interval '1 month - 1 day')::date)
+  on conflict (period_start, period_kind) do update
+     set assign_opens = excluded.assign_opens,
+         assign_closes = excluded.assign_closes,
+         entry_closes = excluded.entry_closes;
 end $seed$;
 
 do $t$
 declare
   p_adm uuid; p_zm uuid; p_bm uuid; p_bare uuid; p_nochair uuid;
   v_cyc uuid; o jsonb; n int; v_note text; v_w numeric; v_into uuid;
+  n_linked_before int;
 begin
   select id into p_adm     from person where work_email='sd.admin@example.invalid';
   select id into p_zm      from person where work_email='sd.zm@example.invalid';
@@ -88,6 +93,13 @@ begin
   if o->>'error' = 'no_such_cycle'
     then raise notice 'PASS  and it needs a cycle that exists';
     else raise exception 'FAIL  a made-up cycle gave %', left(o::text,120); end if;
+
+  -- What already climbs into something, before this seed runs. The cycle
+  -- is not empty: test_190_198 commits a fixture on purpose, so "how many
+  -- rows are linked afterwards" is not the same question as "how many did
+  -- this call link".
+  select count(*) into n_linked_before from perf_assignment
+   where cycle_id = v_cyc and rolls_into_id is not null;
 
   o := perf_seed_from_registry(p_adm, v_cyc);
 
@@ -111,8 +123,17 @@ begin
     else raise exception 'FAIL  an inactive measure was seeded'; end if;
 
   -- ------------------------------------------------- the target is blank
+  -- Scoped to the people this file made. perf_seed_from_registry seeds the
+  -- whole company, and test_190_198 deliberately commits a fixture rather
+  -- than rolling back -- so "every assignment in this cycle" is a claim
+  -- about that fixture too, and this test has no business making it.
+  --
+  -- It passed for a while by accident: the cycle insert above used to
+  -- collide with the one test_190_198 leaves behind, which aborted the
+  -- transaction and meant these lines never ran at all.
   select count(*) into n from perf_assignment
-   where cycle_id = v_cyc and target_value is not null;
+   where cycle_id = v_cyc and target_value is not null
+     and person_id in (p_zm, p_bm, p_bare, p_nochair);
   if n = 0 then raise notice 'PASS  every target arrives blank, agreed with a manager and not assumed';
            else raise exception 'FAIL  % seeded measures came with a target', n; end if;
 
@@ -142,9 +163,19 @@ begin
     then raise notice 'PASS  and one they do not have climbs nowhere, rather than guessing';
     else raise exception 'FAIL  Branch upkeep was made to climb somewhere'; end if;
 
-  if (o->>'linked')::int = 1
-    then raise notice 'PASS  the answer counts what it linked';
-    else raise exception 'FAIL  linked came back %', o->>'linked'; end if;
+  -- The counter is about the whole company, because the seed is. Asserting
+  -- it equals 1 was asserting that this file's three people are the only
+  -- people in the database, which stopped being true the moment
+  -- test_190_198 -- which commits its fixture on purpose -- ran first.
+  --
+  -- What is worth asserting is that the counter tells the truth about what
+  -- it did, so it is checked against the rows rather than against a number.
+  select count(*) into n from perf_assignment
+   where cycle_id = v_cyc and rolls_into_id is not null;
+  if (o->>'linked')::int = n - n_linked_before
+    then raise notice 'PASS  the answer counts what it linked, and the count is the rows';
+    else raise exception 'FAIL  linked came back %, and % measure(s) newly climb into one',
+      o->>'linked', n - n_linked_before; end if;
 
   -- -------------------------------------------- who got nothing, and why
   if not exists (select 1 from perf_assignment where cycle_id = v_cyc and person_id = p_bare)
@@ -160,9 +191,18 @@ begin
     else raise exception 'FAIL  a person with no chair was seeded'; end if;
 
   -- ------------------------------------------------------ running it twice
+  -- alreadyThere counts the people the seed CONSIDERED, which is every
+  -- seated chair in the company; n counts every row in the cycle, including
+  -- rows for people this seed does not re-seat. Comparing the two was
+  -- comparing two different populations, and it only ever matched because
+  -- this file used to be the only thing in the database.
+  --
+  -- The claim worth making is the one in the heading: a second run makes
+  -- nothing, and leaves the row count exactly where it was.
   select count(*) into n from perf_assignment where cycle_id = v_cyc;
   o := perf_seed_from_registry(p_adm, v_cyc);
-  if (o->>'made')::int = 0 and (o->>'alreadyThere')::int = n
+  if (o->>'made')::int = 0
+     and (select count(*) from perf_assignment where cycle_id = v_cyc) = n
     then raise notice 'PASS  a second run gives nobody a second copy';
     else raise exception 'FAIL  a second run made % and skipped %',
       o->>'made', o->>'alreadyThere'; end if;

@@ -397,10 +397,26 @@ r.get("/perf/team", async (req: any, res: any) => {
       order by l.depth, p.full_name`,
     [req.person.id],
   );
-  // An administrator is not in anybody's reporting line and still has to be
-  // able to work. Named here rather than folded into perf_line, so the line
-  // stays a statement about the organisation and not about the tool.
-  if (people.length === 0 && req.person.app_role === "ADMIN") {
+  // An administrator and Human Resources are not in anybody's reporting line
+  // and still have to be able to work. Named here rather than folded into
+  // perf_line, so the line stays a statement about the organisation and not
+  // about the tool.
+  //
+  // This used to apply only when the caller had NO reports, which was wrong
+  // twice over. Shantanu Suravase holds ADMIN and has nine reports, so he
+  // got the nine and could touch nobody else; and Human Resources was not
+  // named at all, so the function that seats joiners could set for the one
+  // person who happens to report to them.
+  //
+  // Both lists come back, separately. `people` is the reporting line and is
+  // what the screen draws. `wider` is everybody else they may set for, and
+  // the screen puts it behind a search box rather than on the page --
+  // because a hundred rows under the heading "my team" is how an
+  // administrator came to think the tool was leaking other people's data.
+  const wide = req.person.app_role === "ADMIN" ||
+    (req.person.department ?? "") === "Human Resources";
+  if (wide) {
+    const seen = new Set(people.map((p: any) => p.personId));
     const all = await many(
       `select p.id as "personId", p.full_name as name, p.employee_no as "employeeNo",
               p.department, 1 as depth, true as "maySet",
@@ -414,7 +430,17 @@ r.get("/perf/team", async (req: any, res: any) => {
         order by p.full_name`,
       [req.person.id],
     );
-    return res.json({ people: all, asAdministrator: true });
+    // Depth 1 in the line already says "mine to set". Saying it twice would
+    // put the same person in both lists with two different depths.
+    return res.json({
+      people,
+      wider: all.filter((p: any) => !seen.has(p.personId)),
+      asAdministrator: req.person.app_role === "ADMIN",
+      asHumanResources: (req.person.department ?? "") === "Human Resources",
+      why: req.person.app_role === "ADMIN"
+        ? "You hold the administrator role, so you may set measures for anyone. Everyone outside your own reporting line is under Search for anyone."
+        : "You work in Human Resources, so you may set measures for anyone. Everyone outside your own reporting line is under Search for anyone.",
+    });
   }
   return res.json({ people });
 });
@@ -486,6 +512,26 @@ r.post("/perf/assign", async (req: any, res: any) => {
 r.post("/perf/assign/bulk", async (req: any, res: any) => {
   const o = await one(`select perf_assign_bulk($1, $2::jsonb) as o`,
     [req.person.id, JSON.stringify(req.body || {})]);
+  return out(res, o.o);
+});
+
+// Change a measure already given, and take one back. Both gate on
+// perf_may_set inside the database -- the person's own manager, Human
+// Resources, or an administrator, and never themselves -- so a caller that
+// reaches these by any other route is refused in the same words.
+//
+// The target is deliberately not editable here. It moves through
+// /perf/target, which also runs the cascade down to the team and across the
+// clients; a second door onto one number is how the two start disagreeing.
+r.post("/perf/edit", async (req: any, res: any) => {
+  const o = await one(`select perf_assign_edit($1, $2::jsonb) as o`,
+    [req.person.id, JSON.stringify(req.body || {})]);
+  return out(res, o.o);
+});
+
+r.post("/perf/remove", async (req: any, res: any) => {
+  const o = await one(`select perf_assign_remove($1, $2) as o`,
+    [req.person.id, (req.body || {}).assignmentId]);
   return out(res, o.o);
 });
 

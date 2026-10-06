@@ -77,6 +77,10 @@ begin
           date_trunc('month', current_date)::date,
           date_trunc('month', current_date)::date + 9,
           (date_trunc('month', current_date) + interval '1 month - 1 day')::date)
+  on conflict (period_start, period_kind) do update
+     set assign_opens = excluded.assign_opens,
+         assign_closes = excluded.assign_closes,
+         entry_closes = excluded.entry_closes
   returning id into cyc;
 
   perform perf_seed_from_registry(p_adm, cyc);

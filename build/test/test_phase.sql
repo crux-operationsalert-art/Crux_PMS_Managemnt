@@ -49,11 +49,19 @@ begin
   -- across months testable at all.
   insert into perf_cycle (period_start, assign_opens, assign_closes, entry_closes)
   values (q, q, q + 9, (q + interval '1 month - 1 day')::date)
+  on conflict (period_start, period_kind) do update
+     set assign_opens = excluded.assign_opens,
+         assign_closes = excluded.assign_closes,
+         entry_closes = excluded.entry_closes
   returning id into cyc1;
   insert into perf_cycle (period_start, assign_opens, assign_closes, entry_closes)
   values ((q + interval '1 month')::date, (q + interval '1 month')::date,
           (q + interval '1 month')::date + 9,
           (q + interval '2 month - 1 day')::date)
+  on conflict (period_start, period_kind) do update
+     set assign_opens = excluded.assign_opens,
+         assign_closes = excluded.assign_closes,
+         entry_closes = excluded.entry_closes
   returning id into cyc2;
 
   -- Monthly targets that DISAGREE with the quarter about to be set: this

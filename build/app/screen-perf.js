@@ -17,6 +17,14 @@
 var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            who:null, open:{}, measures:null, measuresFor:null, form:null,
            sel:{}, busy:false, says:"",
+           /* everybody an administrator or HR may set for but who does not
+              report to them, and the text typed to find one. Drawn only
+              once `find` is two characters or more. */
+           wider:[], widerWhy:"", find:"",
+           /* the open "change this measure" form, which is a different
+              thing from `form` -- that one gives a measure, this one
+              changes one already given. */
+           editForm:null,
            /* the blueprint's other sections: the split, the fortnight, the
               tasks, the quarter, and the forms that write to them. */
            weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
@@ -97,6 +105,13 @@ async function vPerf(){
   if (!PF.team) {
     var t = await plb("/plb/perf/team");
     PF.team = t.error ? [] : (t.people || []);
+    /* An administrator and Human Resources may set for everybody. That is a
+       hundred rows, and a hundred rows under the heading "my team" is what
+       made the tool look as though it were leaking other people's data. So
+       the wider list is held here and never drawn until somebody types a
+       name into the box that asks for one. */
+    PF.wider  = t.error ? [] : (t.wider || []);
+    PF.widerWhy = t.error ? "" : (t.why || "");
   }
   /* The month, the quarter and the split are three different clocks and the
      page shows all three. Asked together because they are drawn together —
@@ -764,29 +779,70 @@ function pfSplitBlock(){
     '</div>';
 }
 
+/* One person's row, used by the reporting line and by the search results
+   alike, so the two lists cannot drift into offering different actions. */
+function pfTeamRow(p){
+  var open = PF.who === p.personId;
+  return '<tr><td><b>' + esc(p.name) + '</b>' +
+    (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
+    '<div class="mute">' + esc(p.chair || "no chair") +
+      (p.department ? ' · ' + esc(p.department) : '') + '</div></td>' +
+    '<td class="plact">' +
+      '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
+        (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
+      '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
+        (open ? 'Hide' : 'Set targets') + '</button>' +
+      '<button class="btn" data-pftask="' + esc(p.personId) + '">Assign a task</button>' +
+      '</td></tr>' +
+    (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
+}
+
+/* Anyone an administrator or HR may set for who is not in their line.
+   Nothing is listed until two characters are typed. The point is not to
+   save bytes -- the list is already in the browser -- it is that a screen
+   headed "my team" which opens on a hundred strangers is indistinguishable,
+   to the person reading it, from a screen that is showing them data they
+   should not have. */
+function pfFindAnyone(){
+  if (!PF.wider || !PF.wider.length) return "";
+  var q = (PF.find || "").trim().toLowerCase();
+  var hits = q.length < 2 ? [] : PF.wider.filter(function(p){
+    return (p.name || "").toLowerCase().indexOf(q) >= 0
+        || (p.employeeNo || "").toLowerCase().indexOf(q) >= 0
+        || (p.chair || "").toLowerCase().indexOf(q) >= 0
+        || (p.department || "").toLowerCase().indexOf(q) >= 0;
+  });
+  var shown = hits.slice(0, 12);
+  return '<div class="pffind">' +
+    '<h3>Search for anyone <span class="mute">· ' + PF.wider.length +
+      ' outside your reporting line</span></h3>' +
+    '<input id="pffind" placeholder="Name, employee number, chair or department"' +
+      ' value="' + esc(PF.find || "") + '" autocomplete="off">' +
+    (q.length < 2
+      ? '<p class="mute">Type two letters. ' + esc(PF.widerWhy || "") + '</p>'
+      : (hits.length
+          ? '<div class="scroll"><table>' +
+              shown.map(pfTeamRow).join("") + '</table></div>' +
+            (hits.length > shown.length
+              ? '<p class="mute">' + hits.length + ' match. Showing the first ' +
+                shown.length + ' — type more to narrow it.</p>'
+              : '')
+          : '<p class="mute">Nobody matches &ldquo;' + esc(PF.find) + '&rdquo;.</p>')) +
+    '</div>';
+}
+
 /* ------------------------- I · my team: targets, tasks and eligibility */
 function pfTeamSection(){
-  if (!PF.team || !PF.team.length) return "";
+  /* An administrator with nobody reporting to them still gets this card:
+     the search box below is the only way they reach anybody at all. */
+  if ((!PF.team || !PF.team.length) && (!PF.wider || !PF.wider.length)) return "";
   var n = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; }).length;
-  var rows = PF.team.map(function(p){
-    var open = PF.who === p.personId;
-    return '<tr><td><b>' + esc(p.name) + '</b>' +
-      (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
-      '<div class="mute">' + esc(p.chair || "no chair") + '</div></td>' +
-      '<td class="plact">' +
-        '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
-          (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
-        '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
-          (open ? 'Hide' : 'Set targets') + '</button>' +
-        '<button class="btn" data-pftask="' + esc(p.personId) + '">Assign a task</button>' +
-        '</td></tr>' +
-      (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
-  }).join("");
+  var rows = (PF.team || []).map(pfTeamRow).join("");
 
   return '<div class="card"><h2>My team <span class="mute">· targets, tasks and eligibility</span></h2>' +
-    '<p class="mute">A KPI you give somebody climbs into one of yours. Pick which one ' +
-    'as you set it — that link is what makes the numbers add up to a branch, and a ' +
-    'branch to a zone.</p>' +
+    (rows ? '' :
+      '<p class="mute">Nobody reports to you, so this list is empty. Use the ' +
+      'search below to reach somebody.</p>') +
     '<div class="plbar">' +
       '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
         (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
@@ -794,7 +850,8 @@ function pfTeamSection(){
       '<button class="btn" id="pftaskall">Assign a task to ' + (n ? n + ' selected' : 'the whole team') + '</button>' +
       '<button class="btn" id="pfelig">Eligibility matrix</button>' +
     '</div>' +
-    '<div class="scroll"><table>' + rows + '</table></div>' +
+    (rows ? '<div class="scroll"><table>' + rows + '</table></div>' : '') +
+    pfFindAnyone() +
     (PF.form ? pfForm() : '') +
     (PF.taskForm ? pfTaskForm() : '') +
     (PF.elig ? pfEligibility() : '') +
@@ -1037,10 +1094,69 @@ function pfPersonPanel(){
   var ms = t.measures || [];
   return '<div class="pfpanel">' +
     (ms.length
-      ? '<div class="pftree">' + ms.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>'
+      ? '<div class="pftree">' + ms.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>' +
+        pfMeasureAdmin(ms)
       : '<div class="empty">' + esc(t.says || "Nothing set for them this period.") + '</div>') +
     '<p><button class="btn" id="pfadd">Set a KPI for ' + esc(t.person.name) + '</button></p>' +
+    (PF.editForm ? pfEditForm(ms) : '') +
     '</div>';
+}
+
+/* Change a measure, or take it back. Separate from the tree above rather
+   than two more buttons on every node, because the tree is read far more
+   often than it is edited and a row of verbs on each line is how a reading
+   surface turns into a control panel. */
+function pfMeasureAdmin(ms){
+  var top = ms.filter(function(m){ return !m.splitOf; });
+  if (!top.length) return "";
+  return '<div class="pfadmin"><h4>Change what they are measured on</h4>' +
+    '<div class="scroll"><table><tbody>' + top.map(function(m){
+      return '<tr><td><b>' + esc(m.name) + '</b>' +
+        (m.unit ? ' <span class="mute">(' + esc(m.unit) + ')</span>' : '') +
+        (m.weight !== null && m.weight !== undefined
+          ? ' <span class="chip">' + pfNum(m.weight) + '%</span>' : '') +
+        '</td><td class="plact">' +
+          '<button class="btn" data-pfedit="' + esc(m.assignmentId) + '">Edit</button>' +
+          '<button class="btn" data-pfrm="' + esc(m.assignmentId) + '">Remove</button>' +
+        '</td></tr>';
+    }).join("") + '</tbody></table></div></div>';
+}
+
+function pfEditForm(ms){
+  var f = PF.editForm;
+  var mine = (PF.measures || {}).mine || [];
+  var others = ms.filter(function(m){
+    return !m.splitOf && m.assignmentId !== f.assignmentId; });
+  return '<div class="plform">' +
+    '<h4 class="plh">Change &ldquo;' + esc(f.was) + '&rdquo;</h4>' +
+    '<div class="hragrid">' +
+      '<label class="hrafield"><span>Call it</span>' +
+        '<input data-pfe="name" value="' + esc(f.name || "") + '"></label>' +
+      '<label class="hrafield"><span>Counted in</span>' +
+        '<input data-pfe="unit" value="' + esc(f.unit || "") + '"></label>' +
+      '<label class="hrafield"><span>Weight %</span>' +
+        '<input data-pfe="weight" type="number" step="any" value="' + esc(f.weight || "") + '"></label>' +
+      '<label class="hrafield"><span>They file</span><select data-pfe="cadence">' +
+        '<option value="">— leave it as it is —</option>' +
+        ["DAILY","WEEKLY","MONTHLY","QUARTERLY"].map(function(c){
+          return '<option value="' + c + '"' + (f.cadence === c ? ' selected' : '') + '>' +
+            c.toLowerCase() + '</option>'; }).join("") +
+      '</select></label>' +
+      '<label class="hrafield"><span>Climbs into</span><select data-pfe="rollsInto">' +
+        '<option value="">— nothing —</option>' +
+        mine.map(function(m){
+          return '<option value="' + esc(m.assignmentId) + '"' +
+            (f.rollsInto === m.assignmentId ? ' selected' : '') + '>' +
+            esc(m.name) + (m.split ? ' · ' + esc(m.split) : '') + '</option>'; }).join("") +
+      '</select></label>' +
+    '</div>' +
+    '<p class="mute">The target is not here. It is set on the measure itself, ' +
+    'where setting it also divides it down the team and across the clients — ' +
+    'two places to type one number is how the two stop agreeing.</p>' +
+    '<div class="plbar">' +
+      '<button class="btn primary" id="pfesave">Save the change</button>' +
+      '<button class="btn" id="pfecancel">Cancel</button>' +
+    '</div></div>';
 }
 
 /* ------------------------------------------------------------ the form */
@@ -1062,7 +1178,24 @@ function pfForm(){
         cat.map(function(k){
           return '<option value="' + esc(k.id) + '"' + (f.kpiId === k.id ? ' selected' : '') + '>' +
             esc(k.name) + (k.unit ? ' (' + esc(k.unit) + ')' : '') + '</option>'; }).join("") +
+        /* The registry is what a chair is MEANT to be measured on, and it
+           is not the whole of what a manager ever needs to ask for. Until
+           this option existed the form refused to submit without a
+           catalogue id, so "add a KPI" had no door at all: perf_assign has
+           always taken a free-text name, and nothing offered one. */
+        '<option value="NEW"' + (f.kpiId === "NEW" ? ' selected' : '') +
+          '>— something else, named here —</option>' +
       '</select></label>' +
+    (f.kpiId === "NEW"
+      /* newName, not name: f.name already holds the PERSON's name, which is
+         what the heading above reads from. */
+      ? '<label class="hrafield"><span>Call it</span>' +
+          '<input data-pff="newName" value="' + esc(f.newName || "") +
+          '" placeholder="Name it the way they would say it"></label>' +
+        '<label class="hrafield"><span>Counted in</span>' +
+          '<input data-pff="unit" value="' + esc(f.unit || "") +
+          '" placeholder="cases, visits, rupees, %"></label>'
+      : '') +
       '<label class="hrafield"><span>Target</span>' +
         '<input data-pff="target" type="number" step="any" value="' + esc(f.target || "") + '"></label>' +
       '<label class="hrafield"><span>Weight %</span>' +
@@ -1140,6 +1273,22 @@ function pfWire(){
     b.onchange = function(){ PF.sel[b.getAttribute("data-pfsel")] = b.checked; pfRender(); };
   });
 
+  /* The search box re-renders the whole screen on every keystroke, which
+     would otherwise take the caret with it. So the value and the caret are
+     put back and the field is re-focused -- and the state is read from the
+     event rather than from PF, because PF.find is what we are about to
+     set. */
+  if (el("pffind")) {
+    var box = el("pffind");
+    box.oninput = function(){
+      var at = box.selectionStart;
+      PF.find = box.value;
+      pfRender();
+      var again = el("pffind");
+      if (again) { again.focus(); try { again.setSelectionRange(at, at); } catch (e) {} }
+    };
+  }
+
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfwho]"), function(b){
     b.onclick = async function(){
       var id = b.getAttribute("data-pfwho");
@@ -1167,9 +1316,80 @@ function pfWire(){
 
   if (el("pfadd")) el("pfadd").onclick = async function(){
     PF.form = { personId: PF.who, name: (PF.whoTree.person || {}).name, bulk:false };
+    PF.editForm = null;
     pfRender();
     await pfMeasuresFor(PF.who);
   };
+
+  /* ------------------------------------------- changing a measure given */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfedit]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-pfedit");
+      var m = ((PF.whoTree || {}).measures || []).filter(function(x){
+        return x.assignmentId === id; })[0];
+      if (!m) return;
+      PF.form = null;
+      PF.editForm = { assignmentId: id, was: m.name, name: m.name,
+                      unit: m.unit || "", weight: m.weight,
+                      cadence: "", rollsInto: m.rollsInto || "" };
+      pfRender();
+      /* The roll-up list is the SETTER's own measures, which is what the
+         database checks, so it is fetched for nobody in particular. */
+      await pfMeasuresFor(null);
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfe]"), function(f){
+    f.onchange = function(){ PF.editForm[f.getAttribute("data-pfe")] = f.value; };
+  });
+
+  if (el("pfecancel")) el("pfecancel").onclick = function(){
+    PF.editForm = null; pfRender();
+  };
+
+  if (el("pfesave")) el("pfesave").onclick = async function(){
+    if (PF.busy) return;
+    var f = PF.editForm;
+    if (!(f.name || "").trim()) {
+      PF.says = msg("bad", "A measure needs a name."); pfRender(); return;
+    }
+    PF.busy = true; el("pfesave").disabled = true;
+    var body = { assignmentId: f.assignmentId, name: f.name.trim(),
+                 unit: (f.unit || "").trim(), weight: f.weight,
+                 rollsInto: f.rollsInto };
+    /* An empty cadence means "leave it", and sending "" would be refused
+       as a cadence that does not exist. */
+    if (f.cadence) body.cadence = f.cadence;
+    var o = await plb("/plb/perf/edit", { method:"POST", body: body });
+    PF.busy = false;
+    PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note || "Changed.");
+    if (!o.error) { PF.editForm = null; PF.whoTree = null; }
+    if (PF.who && !PF.whoTree) {
+      PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
+    }
+    pfRender();
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfrm]"), function(b){
+    b.onclick = async function(){
+      if (PF.busy) return;
+      var id = b.getAttribute("data-pfrm");
+      var m = ((PF.whoTree || {}).measures || []).filter(function(x){
+        return x.assignmentId === id; })[0] || {};
+      if (!confirm("Take “" + (m.name || "this measure") + "” back?\n\n" +
+          "If anything has been filed against it, it is withdrawn rather than " +
+          "deleted — it stops being asked for and what was filed still reads back.")) return;
+      PF.busy = true; b.disabled = true;
+      var o = await plb("/plb/perf/remove", { method:"POST", body:{ assignmentId: id } });
+      PF.busy = false;
+      PF.says = o.error ? msg("bad", o.reason || o.error) : msg("ok", o.note || "Removed.");
+      PF.editForm = null; PF.whoTree = null;
+      if (PF.who) {
+        PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
+      }
+      pfRender();
+    };
+  });
 
   if (el("pfbulk")) el("pfbulk").onclick = async function(){
     PF.form = { bulk:true };
@@ -1194,7 +1414,14 @@ function pfWire(){
   };
 
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pff]"), function(f){
-    f.onchange = function(){ PF.form[f.getAttribute("data-pff")] = f.value; };
+    f.onchange = function(){
+      var k = f.getAttribute("data-pff");
+      PF.form[k] = f.value;
+      /* Choosing "something else" has to put two more boxes on the form,
+         so that one field re-draws and the rest do not -- a re-render on
+         every keystroke would take the caret out of the name box. */
+      if (k === "kpiId") pfRender();
+    };
   });
 
   if (el("pfcancel")) el("pfcancel").onclick = function(){ PF.form = null; pfRender(); };
@@ -1203,10 +1430,24 @@ function pfWire(){
     if (PF.busy) return;
     var f = PF.form;
     if (!f.kpiId) { PF.says = msg("bad", "Choose a measure first."); pfRender(); return; }
+    var named = f.kpiId === "NEW";
+    if (named && !(f.newName || "").trim()) {
+      PF.says = msg("bad", "Give the measure a name, or pick one from the list.");
+      pfRender(); return;
+    }
     PF.busy = true; el("pfsave").disabled = true;
-    var body = { cycleId: PF.cycle.id, kpiId: f.kpiId, target: f.target,
+    /* kpiId is sent only when it names a catalogue row. perf_assign reads
+       the name off the kpi_definition when it is given one and off the body
+       when it is not, so the two cases are the same call. */
+    var body = { cycleId: PF.cycle.id, target: f.target,
                  weight: f.weight, cadence: f.cadence, cadenceDay: f.cadenceDay,
                  rollsInto: f.rollsInto };
+    if (named) {
+      body.name = (f.newName || "").trim();
+      body.unit = (f.unit || "").trim();
+    } else {
+      body.kpiId = f.kpiId;
+    }
     var o;
     if (f.bulk) {
       o = await plb("/plb/perf/assign/bulk", { method:"POST", body:{
