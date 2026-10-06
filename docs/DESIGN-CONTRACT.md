@@ -127,6 +127,65 @@ The blueprint offers one in 35 places. In the tool it is one control on every
 card that has a table, reading the rendered table rather than the server, so
 what you export is what you were looking at.
 
+## Measured again, 2026-10-06
+
+The commands at the foot of this page, run against the page as published.
+Three divergences, all real, none of them accidental — and none of them
+previously written down, which is the part that was wrong.
+
+### Six colours in the page are not in the blueprint
+
+```
+#b9c2d4  #8c99b4  #5f7095  #34497a  #14203a      the team-tree depth ramp
+#d6b24a                                          "part of the way" on the dashboard
+```
+
+**The depth ramp** paints the top border of a card in My team &amp; structure,
+one step darker per level down. The blueprint has no people tree, so it has
+no ramp to copy; this is one hue stepped light to dark, which is the right
+shape for an ordered quantity and is not a fifth and sixth accent.
+
+**`#d6b24a`** is the middle of the three states on the dashboard — on
+target, part of the way, behind. The obvious choice was `--gold #8a6d1f`,
+and it was tried first and failed: `--gold` and `--terra #b4562f` are 9.6
+apart to a reader with full colour vision and **1.8 apart under
+deuteranopia**, so on a doughnut the middle arc and the behind arc are one
+arc. The tool's palette is deliberately muted and no three steps of it
+separate. The replacement scale clears both tests — 30.3 and 24.7 on the
+worst adjacent pair — at the cost of a lighter step that sits below 3:1
+against the panel, which is why it is never the only thing carrying a
+meaning: the legend has the words and the counts, every bar has its
+percentage in ink beside it, and the table names every measure.
+
+These are the only six. Everything else in the page is on the list above.
+
+### One navigation label is not the blueprint's
+
+| Blueprint | In the tool |
+|---|---|
+| Coverage &amp; handlers | Places, coverage &amp; owners |
+
+The rule on this page is "use the blueprint's label, in full", and this
+breaks it. It breaks it because migration 150c merged three screens —
+places, coverage rules and owners — into one, and the blueprint's label
+describes the narrower screen that no longer exists. Renaming it back would
+make the label wrong about the screen. **The other twenty-three labels are
+the blueprint's, verbatim.**
+
+### The figures are larger than the type scale
+
+The scale is 11–13.5px and the contract says anything above 14px outside a
+heading is drift. Twenty rules now exceed it, and every one of them is a
+FIGURE rather than prose: a counter, the number in the middle of a ring, a
+stat tile's value, a count on a waiting list.
+
+The blueprint has no stat tiles, so it has nothing to measure these
+against — the same situation the mobile bar is in, lower down this page. The
+owner asked for the dashboard to follow `cruxindia/crux-console`, where the
+whole method is one large tabular number per tile over a small uppercase
+label. A 25px figure above an 10.5px label is that method; it is not 25px
+body text, and the prose on those screens is still 11–13.5px.
+
 ## Still not matching
 
 Stated plainly rather than quietly left:
@@ -158,6 +217,18 @@ grep -o '#[0-9a-fA-F]\{6\}' 'Crux App v2.dc.html' | tr A-F a-f | sort | uniq -c 
 
 # every colour in the built page, to diff against the list above
 grep -o '#[0-9a-fA-F]\{6\}' index.html | tr A-F a-f | sort -u
+
+# only the ones that are NOT in the blueprint -- the whole of the first
+# finding above, as one line
+comm -23 <(grep -o '#[0-9a-fA-F]\{6\}' index.html | tr A-F a-f | sort -u) \
+         <(grep -o '#[0-9a-fA-F]\{6\}' 'Crux App v2.dc.html' | tr A-F a-f | sort -u)
+
+# the type scale as built, by frequency
+grep -o 'font-size:[0-9.]*px' index.html | sed 's/font-size://' | sort | uniq -c | sort -rn
+
+# what wears anything above 14px
+grep -o '[.#][a-zA-Z0-9_ ->.]\{0,30\}{[^}]\{0,80\}font-size:\(1[5-9]\|[2-9][0-9]\)[0-9.]*px' \
+  index.html | sed 's/{.*font-size:/  -> /' | sort -u
 
 # the blueprint's navigation, verbatim
 grep -o "navGroups = \[[^]]*\]" 'Crux App v2.dc.html'

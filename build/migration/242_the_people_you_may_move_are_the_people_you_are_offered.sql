@@ -168,11 +168,22 @@ begin
    where employment_status = 'ACTIVE' and superseded_by is null
      and coalesce(employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT';
 
+  -- The floor is half, not "everybody but two". A first draft asserted
+  -- n_all - 2 and failed on the live database at 101 of 104 -- correctly.
+  -- Three people are missing and all three should be: the administrator
+  -- themselves, and the two people ABOVE them, because moving your own
+  -- manager underneath you closes the reporting line into a ring. How many
+  -- that comes to depends on how deep the actor sits, so a guard that
+  -- counts it exactly is a guard that breaks when somebody is promoted.
+  --
+  -- The exact claim -- that the list and org_move_person agree, person by
+  -- person -- is build/test/test_offer.sql, which attempts all 96 moves
+  -- rather than restating the predicate. What is asserted here is only
+  -- that the bug being fixed is gone: HR and an administrator were offered
+  -- NOBODY, and are now offered most of the company.
   if v_adm is not null then
     select jsonb_array_length(org_add_options(v_adm, v_adm)->'movable') into n_adm;
-    -- Everybody except the administrator themselves. They are both the
-    -- actor and the person being moved under, so one row drops out.
-    if n_adm < n_all - 2 then
+    if n_adm < n_all / 2 then
       raise exception 'Migration 242: an administrator is offered % of % people',
         n_adm, n_all;
     end if;
@@ -181,7 +192,7 @@ begin
 
   if v_hr is not null then
     select jsonb_array_length(org_add_options(v_hr, v_hr)->'movable') into n_hr;
-    if n_hr < n_all - 2 then
+    if n_hr < n_all / 2 then
       raise exception 'Migration 242: Human Resources is offered % of % people',
         n_hr, n_all;
     end if;

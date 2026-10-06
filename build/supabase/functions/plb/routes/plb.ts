@@ -302,10 +302,15 @@ r.post("/dispute/withdraw", async (req: any, res: any) => {
 // on the cadence they were given, and the numbers climb.
 //
 // Not one guard in here decides anything. perf_may_set() decides who may
-// set a KPI -- the reporting manager, HR, Business Excellence or an
-// administrator, and never the person themselves -- and perf_file()
-// decides who may file. Both are SECURITY DEFINER, so a caller who skips
-// this service is refused in exactly the same words.
+// set a KPI -- the reporting manager or an administrator, and never the
+// person themselves -- and perf_file() decides who may file. Both are
+// SECURITY DEFINER, so a caller who skips this service is refused in
+// exactly the same words.
+//
+// HR and Business Excellence are NOT on that list, and the comment used to
+// say they were. They run the scheme -- issue, lock, certify, publish --
+// which is maySetUp above; setting one named person's numbers is their own
+// manager's. Migration 218 drew that line and 241 redrew it.
 // =====================================================================
 
 const monthOf = (s?: string) => {
@@ -516,9 +521,13 @@ r.post("/perf/assign/bulk", async (req: any, res: any) => {
 });
 
 // Change a measure already given, and take one back. Both gate on
-// perf_may_set inside the database -- the person's own manager, Human
-// Resources, or an administrator, and never themselves -- so a caller that
-// reaches these by any other route is refused in the same words.
+// perf_may_set inside the database -- the person's own manager or an
+// administrator, and never themselves -- so a caller that reaches these by
+// any other route is refused in the same words.
+//
+// Not Human Resources. Migration 218 took that out deliberately and 241 put
+// it back after a brief and wrong attempt to restore it: running the scheme
+// is a different act from setting one named person's numbers.
 //
 // The target is deliberately not editable here. It moves through
 // /perf/target, which also runs the cascade down to the team and across the
