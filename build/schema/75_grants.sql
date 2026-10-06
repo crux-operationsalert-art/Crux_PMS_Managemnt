@@ -601,6 +601,7 @@ grant execute on function public.penalty_sweep(p_for_day date) to service_role;
 grant execute on function public.perf_accrual_kind(p_kpi uuid, p_unit text) to service_role;
 grant execute on function public.perf_assign(p_actor uuid, p_in jsonb) to service_role;
 grant execute on function public.perf_assign_bulk(p_actor uuid, p_in jsonb) to service_role;
+grant execute on function public.perf_assign_edit(p_actor uuid, p_in jsonb) to service_role;
 grant execute on function public.perf_assignment_edges() to anon;
 grant execute on function public.perf_assignment_edges() to authenticated;
 grant execute on function public.perf_assignment_edges() to service_role;

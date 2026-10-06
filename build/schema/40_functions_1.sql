@@ -2179,9 +2179,7 @@ AS $function$
      and coalesce(p.employee_type, 'EMPLOYEE') <> 'CLIENT_CONTACT'
      and p.id <> p_actor
      and (exists (select 1 from person a
-                   where a.id = p_actor
-                     and (a.app_role = 'ADMIN'
-                       or coalesce(a.department,'') = 'Human Resources')
+                   where a.id = p_actor and a.app_role = 'ADMIN'
                      and a.employment_status = 'ACTIVE'
                      and a.superseded_by is null)
           or p.id in (select l.person_id from perf_line(p_actor) l
@@ -3216,6 +3214,57 @@ begin
   return jsonb_build_object('person_id', v_cur,
     'name', (select full_name from person where id = v_cur),
     'how','no common manager below the top of the chart, so the top holds it');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_arbitrate(p_assignment uuid, p_actor uuid, p_outcome text, p_reason text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a assignment%rowtype; arb jsonb; q assignment_request%rowtype; r jsonb;
+begin
+  select * into a from assignment where id = p_assignment for update;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+  if a.current_state <> 'ARBITRATION' then
+    return jsonb_build_object('error','not_in_arbitration',
+      'reason','This assignment is ' || a.current_state || '.');
+  end if;
+  if p_outcome not in ('CLOSED','REWORK') then
+    return jsonb_build_object('error','bad_outcome',
+      'reason','Arbitration ends in CLOSED or REWORK.');
+  end if;
+  if coalesce(btrim(coalesce(p_reason,'')),'') = '' then
+    return jsonb_build_object('error','reason_required',
+      'reason','An arbitration decision without its reasoning is not a decision.');
+  end if;
+
+  arb := ogl_arbiter(p_assignment);
+  if (arb->>'person_id')::uuid is distinct from p_actor
+     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_the_arbiter',
+      'reason','This one is ' || coalesce(arb->>'name','nobody') || '''s to decide - '
+             || coalesce(arb->>'how',''), 'arbiter', arb);
+  end if;
+
+  -- an arbitration that goes to rework says the dispute was right; one that
+  -- closes says it was not, and that answer is what waives or keeps a strike
+  select * into q from assignment_request
+   where assignment_id = p_assignment and request_type = 'DISPUTE' and resolved_at is null
+   order by raised_at desc limit 1;
+  if q.id is not null then
+    perform ogl_dispute_classify(q.id, p_actor,
+      case when p_outcome = 'REWORK' then 'UPHELD' else 'NOT_UPHELD' end,
+      'By arbitration: ' || p_reason);
+  end if;
+
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (p_assignment, 'ARBITRATION_DECIDED', p_actor,
+          jsonb_build_object('outcome', p_outcome, 'reason', p_reason, 'arbiter', arb));
+
+  r := ogl_transition(p_assignment, p_outcome, p_actor, 'arbitration: ' || p_reason);
+  return r || jsonb_build_object('arbiter', arb, 'outcome', p_outcome);
 end $function$
 ;
 

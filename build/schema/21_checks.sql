@@ -63,7 +63,7 @@ alter table public.perf_assignment add constraint perf_assignment_not_its_own_pa
 alter table public.perf_assignment add constraint perf_assignment_split_is_complete CHECK ((((split_kind IS NULL) AND (split_ref IS NULL) AND (part_of_id IS NULL)) OR ((split_kind IS NOT NULL) AND (part_of_id IS NOT NULL))));
 alter table public.perf_assignment add constraint perf_assignment_split_is_named CHECK (((part_of_id IS NULL) OR (split_ref IS NOT NULL) OR (COALESCE(btrim(split_label), ''::text) <> ''::text)));
 alter table public.perf_assignment add constraint perf_assignment_split_kind_check CHECK ((split_kind = ANY (ARRAY['CLIENT'::text, 'BRANCH'::text, 'PLACE'::text, 'OTHER'::text])));
-alter table public.perf_assignment add constraint perf_assignment_state_check CHECK ((state = ANY (ARRAY['DRAFT'::text, 'ISSUED'::text, 'ACKNOWLEDGED'::text, 'LOCKED'::text])));
+alter table public.perf_assignment add constraint perf_assignment_state_check CHECK ((state = ANY (ARRAY['DRAFT'::text, 'ISSUED'::text, 'ACKNOWLEDGED'::text, 'LOCKED'::text, 'WITHDRAWN'::text])));
 alter table public.perf_assignment add constraint perf_assignment_target_source_check CHECK ((target_source = ANY (ARRAY['SEEDED'::text, 'SHARED'::text, 'MANUAL'::text])));
 alter table public.perf_assignment add constraint perf_assignment_weight_pct_check CHECK (((weight_pct IS NULL) OR ((weight_pct > (0)::numeric) AND (weight_pct <= (100)::numeric))));
 alter table public.perf_collection add constraint perf_collection_balances CHECK (((opening_outstanding_inr - collected_inr) = closing_outstanding_inr));

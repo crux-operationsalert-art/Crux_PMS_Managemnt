@@ -8,57 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_arbitrate(p_assignment uuid, p_actor uuid, p_outcome text, p_reason text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a assignment%rowtype; arb jsonb; q assignment_request%rowtype; r jsonb;
-begin
-  select * into a from assignment where id = p_assignment for update;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-  if a.current_state <> 'ARBITRATION' then
-    return jsonb_build_object('error','not_in_arbitration',
-      'reason','This assignment is ' || a.current_state || '.');
-  end if;
-  if p_outcome not in ('CLOSED','REWORK') then
-    return jsonb_build_object('error','bad_outcome',
-      'reason','Arbitration ends in CLOSED or REWORK.');
-  end if;
-  if coalesce(btrim(coalesce(p_reason,'')),'') = '' then
-    return jsonb_build_object('error','reason_required',
-      'reason','An arbitration decision without its reasoning is not a decision.');
-  end if;
-
-  arb := ogl_arbiter(p_assignment);
-  if (arb->>'person_id')::uuid is distinct from p_actor
-     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
-    return jsonb_build_object('error','not_the_arbiter',
-      'reason','This one is ' || coalesce(arb->>'name','nobody') || '''s to decide - '
-             || coalesce(arb->>'how',''), 'arbiter', arb);
-  end if;
-
-  -- an arbitration that goes to rework says the dispute was right; one that
-  -- closes says it was not, and that answer is what waives or keeps a strike
-  select * into q from assignment_request
-   where assignment_id = p_assignment and request_type = 'DISPUTE' and resolved_at is null
-   order by raised_at desc limit 1;
-  if q.id is not null then
-    perform ogl_dispute_classify(q.id, p_actor,
-      case when p_outcome = 'REWORK' then 'UPHELD' else 'NOT_UPHELD' end,
-      'By arbitration: ' || p_reason);
-  end if;
-
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (p_assignment, 'ARBITRATION_DECIDED', p_actor,
-          jsonb_build_object('outcome', p_outcome, 'reason', p_reason, 'arbiter', arb));
-
-  r := ogl_transition(p_assignment, p_outcome, p_actor, 'arbitration: ' || p_reason);
-  return r || jsonb_build_object('arbiter', arb, 'outcome', p_outcome);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_attach_begin(p_assignment uuid, p_actor uuid, p_file_name text, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3344,7 +3293,7 @@ CREATE OR REPLACE FUNCTION public.org_add_options(p_actor uuid, p_under uuid)
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-declare v_actor person; v_under person; v_chair uuid;
+declare v_actor person; v_under person; v_chair uuid; v_wide boolean;
 begin
   select * into v_actor from person where id = p_actor;
   if v_actor.id is null then
@@ -3363,19 +3312,15 @@ begin
    where h.person_id = p_under and h.to_date is null
    order by h.is_primary desc limit 1;
 
+  v_wide := v_actor.app_role = 'ADMIN'
+            or coalesce(v_actor.department,'') = 'Human Resources';
+
   return jsonb_build_object(
     'underId', p_under,
     'underName', v_under.full_name,
-    -- HR and an administrator can skip the queue, because for them the
-    -- queue would only be a queue of one behind themselves.
-    'mayCreate', v_actor.app_role = 'ADMIN'
-                 or coalesce(v_actor.department,'') = 'Human Resources',
+    'mayCreate', v_wide,
     'mayRequest', true,
 
-    -- Somebody who already works here. Only people this actor may move,
-    -- and not the ones already reporting to p_under, and never p_under's
-    -- own line upwards -- org_move_person would refuse those as a loop and
-    -- an option that is always refused is not an option.
     'movable', coalesce((
       select jsonb_agg(jsonb_build_object(
                'personId', q.id, 'name', q.full_name,
@@ -3388,15 +3333,19 @@ begin
              order by q.full_name)
       from person q
      where q.employment_status = 'ACTIVE' and q.superseded_by is null
+       and coalesce(q.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
        and q.id <> p_under
        and coalesce(q.manager_id, '00000000-0000-0000-0000-000000000000'::uuid) <> p_under
-       and perf_may_set(p_actor, q.id)
+       and q.id <> p_actor
+       and (v_wide or q.id is distinct from v_actor.manager_id)
+       and (v_wide
+            or (exists (select 1 from org_subtree(p_actor) t
+                         where t.person_id = q.id and t.depth > 0)
+                and exists (select 1 from org_subtree(p_actor) t
+                             where t.person_id = p_under)))
        and p_under not in (select person_id from org_subtree(q.id))
     ), '[]'::jsonb),
 
-    -- The chairs a report of this person would plausibly sit in: the ones
-    -- reporting to their own chair. If their chair has no children below
-    -- it, offering nothing would be worse than offering everything.
     'chairs', coalesce((
       select jsonb_agg(jsonb_build_object('chairId', c.id, 'title', c.title,
                                           'code', c.code, 'level', c.level)
@@ -3408,8 +3357,6 @@ begin
                  'level', c.level) order by c.title), '[]'::jsonb)
           from chair c where c.parent_id is not null)),
 
-    -- What is already in the queue for this person, so nobody files the
-    -- same joiner twice on Monday and Tuesday.
     'pending', coalesce((
       select jsonb_agg(jsonb_build_object(
                'requestId', r.id, 'name', r.full_name, 'email', r.work_email,
@@ -4316,6 +4263,83 @@ begin
   end loop;
   return jsonb_build_object('ok', bad = 0, 'set', ok, 'refused', bad, 'why', out,
     'note', ok || ' set' || case when bad > 0 then ', ' || bad || ' refused' else '' end || '.');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_assign_edit(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a perf_assignment; c perf_cycle; v_was jsonb; v_name text; v_cadence text;
+begin
+  select * into a from perf_assignment where id = (p_in->>'assignmentId')::uuid;
+  if a.id is null then return jsonb_build_object('error','no_such_assignment'); end if;
+  if not perf_may_set(p_actor, a.person_id) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A measure is changed by the person''s own manager or by an '
+            || 'administrator -- and never by themselves.');
+  end if;
+  select * into c from perf_cycle where id = a.cycle_id;
+  if current_date > c.assign_closes
+     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
+    return jsonb_build_object('error','window_closed',
+      'reason','Measures for ' || c.period_start || ' had to be settled by '
+            || c.assign_closes || '. An administrator can still change them, '
+            || 'and it is recorded.');
+  end if;
+  if a.part_of_id is not null and (p_in ? 'name') then
+    return jsonb_build_object('error','is_a_split',
+      'reason','That row is one client''s share of a measure, not a measure. '
+            || 'Rename the measure it belongs to and every share follows.');
+  end if;
+  v_name := nullif(btrim(coalesce(p_in->>'name', a.name)), '');
+  if v_name is null then
+    return jsonb_build_object('error','no_name','reason','Give the measure a name.');
+  end if;
+  v_cadence := nullif(p_in->>'cadence','');
+  if v_cadence is not null and v_cadence not in ('DAILY','WEEKLY','MONTHLY','QUARTERLY') then
+    return jsonb_build_object('error','bad_cadence',
+      'reason','A cadence is DAILY, WEEKLY, MONTHLY or QUARTERLY.');
+  end if;
+  if p_in ? 'rollsInto' and nullif(p_in->>'rollsInto','') is not null then
+    if (p_in->>'rollsInto')::uuid = a.id then
+      return jsonb_build_object('error','rolls_into_itself',
+        'reason','A measure cannot climb into itself.');
+    end if;
+    if not exists (select 1 from perf_assignment x
+                    where x.id = (p_in->>'rollsInto')::uuid
+                      and x.person_id = p_actor) then
+      return jsonb_build_object('error','not_your_measure',
+        'reason','A measure climbs into one of your own. Pick one of yours, '
+              || 'or leave it unlinked.');
+    end if;
+  end if;
+  v_was := jsonb_build_object('name', a.name, 'unit', a.unit,
+             'weight', a.weight_pct, 'cadence', a.cadence,
+             'cadenceDay', a.cadence_day, 'rollsInto', a.rolls_into_id,
+             'note', a.note);
+  update perf_assignment set
+    name        = v_name,
+    unit        = case when p_in ? 'unit' then nullif(btrim(coalesce(p_in->>'unit','')),'') else unit end,
+    weight_pct  = case when p_in ? 'weight' then nullif(p_in->>'weight','')::numeric else weight_pct end,
+    cadence_day = case when p_in ? 'cadenceDay' then nullif(p_in->>'cadenceDay','')::int else cadence_day end,
+    note        = case when p_in ? 'note' then nullif(btrim(coalesce(p_in->>'note','')),'') else note end,
+    rolls_into_id = case when p_in ? 'rollsInto' then nullif(p_in->>'rollsInto','')::uuid else rolls_into_id end
+   where id = a.id;
+  if v_cadence is not null then
+    execute format('update perf_assignment set cadence = %L where id = %L',
+                   v_cadence, a.id);
+  end if;
+  if p_in ? 'name' then
+    update perf_assignment set name = v_name where part_of_id = a.id;
+  end if;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor, 'PERF_KPI_CHANGED', 'perf_assignment', a.id::text, v_was, p_in);
+  return jsonb_build_object('ok', true, 'assignmentId', a.id, 'name', v_name,
+    'note', 'Changed. The target is set separately, so it has not moved.');
 end $function$
 ;
 
