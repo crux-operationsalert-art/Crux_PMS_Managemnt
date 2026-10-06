@@ -2179,7 +2179,9 @@ AS $function$
      and coalesce(p.employee_type, 'EMPLOYEE') <> 'CLIENT_CONTACT'
      and p.id <> p_actor
      and (exists (select 1 from person a
-                   where a.id = p_actor and a.app_role = 'ADMIN'
+                   where a.id = p_actor
+                     and (a.app_role = 'ADMIN'
+                       or coalesce(a.department,'') = 'Human Resources')
                      and a.employment_status = 'ACTIVE'
                      and a.superseded_by is null)
           or p.id in (select l.person_id from perf_line(p_actor) l

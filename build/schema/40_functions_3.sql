@@ -591,7 +591,7 @@ CREATE OR REPLACE FUNCTION public.perf_may_set(p_actor uuid, p_person uuid)
  STABLE SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-  select coalesce(perf_rel(p_actor, p_person) in ('manage','admin'), false)
+  select coalesce(perf_rel(p_actor, p_person) in ('manage','admin','hr'), false)
 $function$
 ;
 
@@ -725,6 +725,10 @@ AS $function$
     when exists (select 1 from person a
                   where a.id = p_actor and a.app_role = 'ADMIN'
                     and a.employment_status = 'ACTIVE' and a.superseded_by is null) then 'admin'
+    when exists (select 1 from person a
+                  where a.id = p_actor
+                    and coalesce(a.department,'') = 'Human Resources'
+                    and a.employment_status = 'ACTIVE' and a.superseded_by is null) then 'hr'
     else (select case when l.depth = 1 then 'manage' else 'watch' end
             from perf_line(p_actor) l where l.person_id = p_person)
   end
@@ -1415,7 +1419,7 @@ begin
   end if;
   v_out := perf_tree(p_person, p_cycle);
   if jsonb_typeof(v_out) = 'object' then
-    v_out := v_out || jsonb_build_object('rel', v_rel, 'maySet', v_rel in ('self','manage','admin'));
+    v_out := v_out || jsonb_build_object('rel', v_rel, 'maySet', v_rel in ('self','manage','admin','hr'));
   end if;
   return v_out;
 end $function$
@@ -3123,9 +3127,9 @@ begin
   if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
 
   v_rel := perf_rel(p_actor, s.person_id);
-  if v_rel not in ('manage','admin') then
+  if v_rel not in ('manage','admin','hr') then
     return jsonb_build_object('error','not_permitted',
-      'reason','Pulling a quarter''s actuals is the reporting manager''s, or '
+      'reason','Pulling a quarter''s actuals is the reporting manager''s, or Human Resources, or '
                'an administrator''s. You may read the sheet either way.');
   end if;
 
@@ -3856,7 +3860,7 @@ begin
   return jsonb_build_object(
     'month', date_trunc('month', p_month)::date,
     'rel', v_rel,
-    'maySet', v_rel in ('manage','admin'),
+    'maySet', v_rel in ('manage','admin','hr'),
     'measures', v_rows,
     'counted', v_n, 'blank', v_blank,
     -- Out of ten, because the Constitution's KPI half is scored out of ten
@@ -4049,7 +4053,7 @@ AS $function$
                'employeeNo', p.employee_no,
                'chair', ch.title, 'status', s.status, 'targetPlb', s.target_plb_inr,
                'rel', perf_rel(p_actor, p.id),
-               'maySet', perf_rel(p_actor, p.id) in ('manage','admin'),
+               'maySet', perf_rel(p_actor, p.id) in ('manage','admin','hr'),
                'acknowledged', s.acknowledged_at is not null,
                'monthsScored', (select count(*) from plb_month_score ms
                                  where ms.sheet_id = s.id and ms.kpi_points is not null),
@@ -4386,7 +4390,7 @@ begin
   v_out := plb_sheet(p_sheet);
   if jsonb_typeof(v_out) = 'object' then
     v_out := v_out || jsonb_build_object(
-      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin'));
+      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin','hr'));
   end if;
   return v_out;
 end $function$
