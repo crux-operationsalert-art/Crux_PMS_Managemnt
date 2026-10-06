@@ -387,6 +387,17 @@ r.post("/perf/file", async (req: any, res: any) => {
 // to watch and nothing more. Both come back in one list with the depth on
 // each row, because the screen has to draw the difference and asking twice
 // is how the list and the gate start disagreeing.
+// A row in `person` that is not somebody who works here. Two kinds so far:
+// the client-bank contacts migration 238 took out of the staff list, and the
+// account the tool is administered from, which migration 243 marked.
+//
+// Written once, here, because the two lists below had the first kind spelled
+// out twice and the second kind nowhere -- so marking the service account in
+// the database changed nothing on this screen, and every administrator was
+// still offered it with a live Set-targets button.
+const NOT_STAFF = `coalesce(p.employee_type,'EMPLOYEE')
+        not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')`;
+
 r.get("/perf/team", async (req: any, res: any) => {
   const people = await many(
     `select p.id as "personId", p.full_name as name, p.employee_no as "employeeNo",
@@ -398,7 +409,7 @@ r.get("/perf/team", async (req: any, res: any) => {
        from perf_line($1) l
        join person p on p.id = l.person_id
       where p.superseded_by is null and p.employment_status = 'ACTIVE'
-        and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+        and ${NOT_STAFF}
       order by l.depth, p.full_name`,
     [req.person.id],
   );
@@ -418,8 +429,21 @@ r.get("/perf/team", async (req: any, res: any) => {
   // the screen puts it behind a search box rather than on the page --
   // because a hundred rows under the heading "my team" is how an
   // administrator came to think the tool was leaking other people's data.
-  const wide = req.person.app_role === "ADMIN" ||
-    (req.person.department ?? "") === "Human Resources";
+  // ADMIN only, and the reason matters. perf_rel answers 'admin' for an
+  // administrator over every person, so `maySet: true` on this list is the
+  // truth for them.
+  //
+  // It is NOT the truth for Human Resources. This used to include HR, from
+  // the brief window when migration 239 gave HR a setting relationship to
+  // everybody; 241 took that back, and the list was left behind. An HR
+  // person was being handed a hundred and three rows each carrying a
+  // Set-targets button that perf_may_set would refuse -- which is the exact
+  // thing 234's comment warns about, an option that is always refused.
+  //
+  // HR's work on the organisation is the people table under My team &
+  // structure, where org_may_add_under does include them. Setting one named
+  // person's targets is their own manager's.
+  const wide = req.person.app_role === "ADMIN";
   if (wide) {
     const seen = new Set(people.map((p: any) => p.personId));
     const all = await many(
@@ -430,7 +454,7 @@ r.get("/perf/team", async (req: any, res: any) => {
                 order by h.is_primary desc, ch.title limit 1) as chair
          from person p
         where p.superseded_by is null and p.employment_status = 'ACTIVE'
-          and coalesce(p.employee_type,'EMPLOYEE') <> 'CLIENT_CONTACT'
+          and ${NOT_STAFF}
           and p.id <> $1
         order by p.full_name`,
       [req.person.id],
@@ -440,11 +464,8 @@ r.get("/perf/team", async (req: any, res: any) => {
     return res.json({
       people,
       wider: all.filter((p: any) => !seen.has(p.personId)),
-      asAdministrator: req.person.app_role === "ADMIN",
-      asHumanResources: (req.person.department ?? "") === "Human Resources",
-      why: req.person.app_role === "ADMIN"
-        ? "You hold the administrator role, so you may set measures for anyone. Everyone outside your own reporting line is under Search for anyone."
-        : "You work in Human Resources, so you may set measures for anyone. Everyone outside your own reporting line is under Search for anyone.",
+      asAdministrator: true,
+      why: "You hold the administrator role, so you may set measures for anyone. Everyone outside your own reporting line is under Search for anyone.",
     });
   }
   return res.json({ people });

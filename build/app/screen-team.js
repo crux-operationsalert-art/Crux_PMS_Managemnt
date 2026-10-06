@@ -20,12 +20,34 @@
 var TM = { tree:null, cycle:null, shut:{}, sel:null, drag:null, over:null,
            busy:false, says:"", detail:null, detailFor:null, addTo:null,
            conduct:null, conductFor:null, form:null,
-           addOpts:null, addTab:"move", addErr:null, qForm:null };
+           addOpts:null, addTab:"move", addErr:null, qForm:null,
+           /* the flat list beside the chart: which of the two is on
+              screen, the payload, the search box, which gap is being
+              filtered for, how it is sorted, and the one row whose
+              reporting line is being changed. */
+           view:"chart", tbl:null, tq:"", tonly:"", tsort:"name", tedit:null };
 
 async function vPeople(){
   el("view").innerHTML = '<p class="mute">Loading&hellip;</p>';
-  TM.tree = await perfApi("/perf/team/tree");
+  /* Both at once. The list is refused for everybody but the administrator
+     and HR -- it answers {mayUse:false} with a reason rather than an error
+     -- so asking for it always is cheaper than working out first whether
+     to ask, and the answer decides whether the tab is drawn at all. */
+  var got = await Promise.all([
+    perfApi("/perf/team/tree"),
+    perfApi("/perf/team/people")
+  ]);
+  TM.tree = got[0];
+  TM.tbl  = got[1];
+  /* Somebody who manages nobody -- the administrator, and HR -- gets an
+     empty chart and used to get nothing else. For them the list IS the
+     screen, so it opens on it. */
+  if (tmMayList() && !tmRoot(TM.tree || {})) TM.view = "table";
   tmRender();
+}
+
+function tmMayList(){
+  return !!(TM.tbl && !TM.tbl.error && TM.tbl.mayUse);
 }
 
 /* Everything below hangs off one flat list of people with a depth and a
@@ -106,19 +128,255 @@ function tmBranch(by, key){
   }).join("") + '</ul>';
 }
 
+/* ============================================ the flat list of everybody
+
+   The chart above is the right drawing for "who works for whom". It is the
+   wrong one for the job this list does, which is the opposite: finding the
+   people the chart does NOT show. Somebody with no manager is drawn under
+   nobody, so on a chart they are simply absent — and absence is the one
+   thing a chart cannot point at.
+
+   Measured on the live company the day this was written: 103 members of
+   staff, of whom 3 have no manager, 2 hold no chair, 49 have no designation
+   and 13 have no location. None of that is visible on the tree; all of it
+   is one glance in a list.
+
+   Nothing here writes. Changing who somebody reports to goes through
+   org_move_person, the same call the drag does, so there is one set of
+   rules, one audit row and one refusal. */
+
+/* The gaps, as chips. Each is a count and the filter behind it, which is
+   the same question asked twice — press the number and you are looking at
+   the people it counted. */
+var TM_GAPS = [
+  { key:"",              label:"Everybody",       test:null },
+  { key:"noManager",     label:"No manager",      test:function(p){ return !p.managerId; } },
+  { key:"noChair",       label:"No chair",        test:function(p){ return !p.chair; } },
+  { key:"noDesignation", label:"No designation",  test:function(p){ return !p.designation; } },
+  { key:"noDepartment",  label:"No department",   test:function(p){ return !p.department; } },
+  { key:"noLocation",    label:"No location",     test:function(p){ return !p.location; } }
+];
+
+function tmGapTest(key){
+  for (var i = 0; i < TM_GAPS.length; i++) {
+    if (TM_GAPS[i].key === key) return TM_GAPS[i].test;
+  }
+  return null;
+}
+
+/* Everybody below a person, worked out here rather than asked for. The
+   list already carries every row's managerId, so the whole tree is in the
+   browser — and moving somebody under their own report is the one refusal
+   org_move_person makes that the screen can predict exactly. Offering it
+   and having it refused is the defect migration 242 was written for. */
+function tmBelow(personId){
+  var all = (TM.tbl && TM.tbl.people) || [];
+  var kids = {};
+  all.forEach(function(p){
+    if (!p.managerId) return;
+    (kids[p.managerId] = kids[p.managerId] || []).push(p.personId);
+  });
+  var out = {}, stack = (kids[personId] || []).slice();
+  while (stack.length) {
+    var id = stack.pop();
+    if (out[id]) continue;          /* a ring in the data must not hang the page */
+    out[id] = true;
+    (kids[id] || []).forEach(function(k){ stack.push(k); });
+  }
+  return out;
+}
+
+function tmListHead(){
+  var s = TM.tbl.summary || {};
+  var who = TM.tbl.asAdministrator ? "You hold the administrator role"
+          : "You work in Human Resources";
+  return '<div class="page-head"><div><h1>All people</h1>' +
+    '<p class="mute">' + esc(who) + ', so this is every person who works ' +
+    'here — including the ones the chart cannot draw because they report to ' +
+    'nobody. Changing who somebody reports to changes who can read their ' +
+    'numbers, so every change is recorded.</p></div>' +
+    '<div class="tmcount"><b>' + esc(s.people || 0) + '</b><span>people</span></div>' +
+    '</div>';
+}
+
+/* The rows actually on screen: the search box and the chip, applied in that
+   order, then sorted. Done here rather than in the database because the
+   whole company is a hundred rows and a round trip per keystroke is a
+   worse screen than a hundred rows of JavaScript. */
+function tmRows(){
+  var all = (TM.tbl && TM.tbl.people) || [];
+  var test = tmGapTest(TM.tonly);
+  var q = (TM.tq || "").trim().toLowerCase();
+  var rows = all.filter(function(p){
+    if (test && !test(p)) return false;
+    if (!q) return true;
+    return [p.name, p.employeeNo, p.designation, p.chair, p.location,
+            p.department, p.reportsTo, p.workEmail]
+      .join(" ").toLowerCase().indexOf(q) >= 0;
+  });
+  var k = TM.tsort;
+  /* A missing value sorts LAST whichever way the column is read: the point
+     of the list is to find the gaps, and a column of blanks at the top of
+     an alphabetical sort buries the names. The chips are how you ask for
+     the gaps. */
+  rows.sort(function(a, b){
+    if (k === "reports") return (b.reports || 0) - (a.reports || 0);
+    var x = (a[k] || ""), y = (b[k] || "");
+    if (!x && y) return 1;
+    if (x && !y) return -1;
+    if (x !== y) return x.toLowerCase() < y.toLowerCase() ? -1 : 1;
+    return (a.name || "") < (b.name || "") ? -1 : 1;
+  });
+  return rows;
+}
+
+function tmTable(){
+  var s = TM.tbl.summary || {};
+  var chips = TM_GAPS.map(function(g){
+    var n = g.key ? (s[g.key] || 0) : (s.people || 0);
+    /* A gap with nobody in it is not offered. "No chair 0" is a button
+       that leads to an empty table, which reads as a broken filter. */
+    if (g.key && !n) return "";
+    return '<button class="tmchip' + (TM.tonly === g.key ? ' on' : '') + '" ' +
+      'data-tmgap="' + esc(g.key) + '">' + esc(g.label) +
+      ' <span class="tmtg n">' + esc(n) + '</span></button>';
+  }).join("");
+
+  var cols = [["name","Name"], ["designation","Designation"],
+              ["location","Location"], ["reportsTo","Reporting to"],
+              ["reports","Reports"]];
+  var head = '<tr>' + cols.map(function(c){
+    return '<th><button class="tmsort' + (TM.tsort === c[0] ? ' on' : '') + '" ' +
+      'data-tmsort="' + c[0] + '">' + esc(c[1]) +
+      (TM.tsort === c[0] ? ' <span class="tmar">&darr;</span>' : '') +
+      '</button></th>';
+  }).join("") + '<th></th></tr>';
+
+  var rows = tmRows();
+  var body = rows.length
+    ? rows.map(tmListRow).join("")
+    : '<tr><td colspan="6" class="mute">Nobody matches that.</td></tr>';
+
+  return '<div class="tmbarrow">' +
+      '<input id="tmfind" class="pfin tmfind" placeholder="Find a name, a number, a place&hellip;" ' +
+        'value="' + esc(TM.tq || "") + '">' +
+      '<span class="mute tmshow">' + esc(rows.length) + ' of ' +
+        esc(s.people || 0) + ' shown</span>' +
+    '</div>' +
+    '<div class="tmchips">' + chips + '</div>' +
+    '<div class="card tmlist"><div class="scroll"><table class="tbl">' +
+      '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div></div>';
+}
+
+function tmListRow(p){
+  var editing = TM.tedit === p.personId;
+
+  var who = '<td><b>' + esc(p.name) + '</b>' +
+    (p.employeeNo ? ' <span class="tmtg">' + esc(p.employeeNo) + '</span>' : '') +
+    '<div class="mute">' + esc(p.workEmail || "no work e-mail") +
+      (p.department ? ' &middot; ' + esc(p.department) : '') + '</div></td>';
+
+  /* Designation and chair are two different columns in the database and
+     half the company has only the second. Showing the chair underneath is
+     not the same as pretending it is the designation — it is what the
+     person actually holds, said as what it is. */
+  var what = '<td>' + (p.designation
+      ? esc(p.designation)
+      : '<span class="tmgap">not set</span>') +
+    (p.chair ? '<div class="mute">' + esc(p.chair) + '</div>'
+             : '<div class="tmgap">no chair</div>') + '</td>';
+
+  var place = '<td>' + (p.location
+      ? esc(p.location) +
+        (p.locationFrom === "coverage"
+          ? '<div class="mute">from what they cover</div>' : '')
+      : '<span class="tmgap">not set</span>') + '</td>';
+
+  var rep = '<td>' + (editing ? tmRepForm(p)
+    : (p.reportsTo
+        ? esc(p.reportsTo)
+        : '<span class="tmgap">nobody</span>')) + '</td>';
+
+  var n = '<td class="tmn">' + (p.reports ? esc(p.reports) : '') + '</td>';
+
+  var act = '<td class="plact">' +
+    (p.mayMove && !editing
+      ? '<button class="btn" data-tmrep="' + esc(p.personId) + '">' +
+        (p.reportsTo ? 'Change' : 'Assign') + '</button>'
+      : '') + '</td>';
+
+  return '<tr' + (p.managerId ? '' : ' class="tmwarnrow"') + '>' +
+    who + what + place + rep + n + act + '</tr>';
+}
+
+/* The picker. Everybody the move would not refuse: not themselves, and
+   nobody already below them. The order is alphabetical because that is how
+   somebody looks for a name they already have in mind. */
+function tmRepForm(p){
+  var all = (TM.tbl && TM.tbl.people) || [];
+  var below = tmBelow(p.personId);
+  var opts = all.filter(function(q){
+    return q.personId !== p.personId && !below[q.personId];
+  }).map(function(q){
+    return '<option value="' + esc(q.personId) + '"' +
+      (q.personId === p.managerId ? ' selected' : '') + '>' +
+      esc(q.name) + (q.chair ? ' &middot; ' + esc(q.chair) : '') + '</option>';
+  }).join("");
+
+  return '<div class="tmrep">' +
+    '<select id="tmrepsel" class="pfin">' +
+      '<option value="">&mdash; nobody: top of the company &mdash;</option>' +
+      opts +
+    '</select>' +
+    '<div class="tmrepb">' +
+      '<button class="btn primary" data-tmrepgo="' + esc(p.personId) + '">Save</button> ' +
+      '<button class="btn" id="tmrepno">Cancel</button>' +
+    '</div></div>';
+}
+
+/* Two drawings of the same people, and the switch between them.
+   Drawn only where there are two: for everybody but the administrator and
+   HR there is one, and a tab strip with one tab on it is furniture.      */
+function tmTabs(){
+  if (!tmMayList()) return "";
+  var n = ((TM.tbl.summary || {}).people) || 0;
+  return '<div class="tmviews">' +
+    '<button class="tmview' + (TM.view === "chart" ? ' on' : '') + '" ' +
+      'data-tmview="chart">Chart</button>' +
+    '<button class="tmview' + (TM.view === "table" ? ' on' : '') + '" ' +
+      'data-tmview="table">All people <span class="tmtg n">' + esc(n) + '</span></button>' +
+    '</div>';
+}
+
 function tmRender(){
   var t = TM.tree;
-  if (!t || t.error) {
+  if ((!t || t.error) && !tmMayList()) {
     el("view").innerHTML = '<h1>My team</h1>' +
       msg("bad", (t && (t.reason || t.error)) || "The team could not be read.");
     return;
   }
-  var people = t.people || [];
-  var root = tmRoot(t);
+  /* The list comes BEFORE the chart's own empty state on purpose. The two
+     people who most need it -- the administrator and HR -- are exactly the
+     two who manage nobody, so a guard that returns early on "nobody reports
+     to you" would hide the list from the only people allowed to see it. */
+  if (TM.view === "table" && tmMayList()) {
+    el("view").innerHTML = tmListHead() + tmTabs() + tmTable() +
+      '<div id="pfmsg">' + TM.says + '</div>';
+    tmWire();
+    return;
+  }
+
+  var people = (t && t.people) || [];
+  var root = tmRoot(t || {});
   if (!root) {
-    el("view").innerHTML = '<h1>My team</h1>' +
+    el("view").innerHTML = '<h1>My team</h1>' + tmTabs() +
       '<div class="empty">Nobody reports to you, so there is no team to draw. ' +
-      'Your own measures are on Performance &amp; appraisal.</div>';
+      'Your own measures are on Performance &amp; appraisal.' +
+      (tmMayList()
+        ? ' Every person in the company is under <b>All people</b> above.'
+        : '') +
+      '</div>' + '<div id="pfmsg">' + TM.says + '</div>';
+    tmWire();
     return;
   }
   var by = tmKids(people);
@@ -141,7 +399,7 @@ function tmRender(){
       '<span class="tmsw none"></span> nothing filed' +
     '</span></div>';
 
-  el("view").innerHTML = head + bar +
+  el("view").innerHTML = head + tmTabs() + bar +
     '<div class="card tmwrap"><div class="tmoc">' +
       '<ul><li>' +
         ((by[root.personId] || []).length
@@ -495,6 +753,59 @@ function tmForm(){
 
 /* ------------------------------------------------------------- wiring */
 function tmWire(){
+  /* ------------------------------------------------- the chart / the list */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmview]"), function(b){
+    b.onclick = function(){
+      TM.view = b.getAttribute("data-tmview");
+      TM.tedit = null;
+      tmRender();
+    };
+  });
+
+  /* Typing re-draws the table, which replaces the box being typed into, so
+     the caret has to be put back where it was. Without this the field
+     loses focus after the first letter and the search is unusable. */
+  var box = el("tmfind");
+  if (box) box.oninput = function(){
+    var at = box.selectionStart;
+    TM.tq = box.value;
+    TM.tedit = null;
+    tmRender();
+    var again = el("tmfind");
+    if (!again) return;
+    again.focus();
+    try { again.setSelectionRange(at, at); } catch (e) { /* older browsers */ }
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmgap]"), function(b){
+    b.onclick = function(){
+      TM.tonly = b.getAttribute("data-tmgap");
+      TM.tedit = null;
+      tmRender();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmsort]"), function(b){
+    b.onclick = function(){ TM.tsort = b.getAttribute("data-tmsort"); tmRender(); };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmrep]"), function(b){
+    b.onclick = function(){ TM.tedit = b.getAttribute("data-tmrep"); tmRender(); };
+  });
+  if (el("tmrepno")) el("tmrepno").onclick = function(){ TM.tedit = null; tmRender(); };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmrepgo]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-tmrepgo");
+      var to = el("tmrepsel") ? el("tmrepsel").value : "";
+      TM.tedit = null;
+      /* An empty value is "nobody", which is a real answer and not a
+         missing one -- org_move_person takes a null manager and allows it
+         for exactly the two people who can see this list. */
+      await tmMove(id, to || null);
+    };
+  });
+
   if (el("tmexp")) el("tmexp").onclick = function(){ TM.shut = {}; tmRender(); };
   if (el("tmcol")) el("tmcol").onclick = function(){
     TM.shut = {};
@@ -778,6 +1089,11 @@ async function tmMove(personId, managerId){
   }
 
   TM.says = msg("good", (o && o.note) || "Moved.");
+  /* Both drawings are now wrong, and only one of them is on screen. They
+     are both re-read anyway: the commonest use of the list is several
+     moves in a row, and a chart that silently kept the old line until the
+     next visit is how somebody comes to believe a move did not take. */
   TM.tree = await perfApi("/perf/team/tree");
+  if (tmMayList()) TM.tbl = await perfApi("/perf/team/people");
   tmRender();
 }

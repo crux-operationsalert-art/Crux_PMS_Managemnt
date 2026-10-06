@@ -20,6 +20,10 @@ var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            /* everybody an administrator or HR may set for but who does not
               report to them, and the text typed to find one. Drawn only
               once `find` is two characters or more. */
+           /* the reporting line, split: `team` is whose targets are mine to
+              set, `watch` is the rest of the line -- people I can see and
+              may not set for. */
+           watch:[], watchOpen:false,
            wider:[], widerWhy:"", find:"",
            /* the open "change this measure" form, which is a different
               thing from `form` -- that one gives a measure, this one
@@ -107,7 +111,20 @@ async function vPerf(){
   PF.mayOpen = !!c.mayOpen;
   if (!PF.team) {
     var t = await plb("/plb/perf/team");
-    PF.team = t.error ? [] : (t.people || []);
+    /* The route returns the WHOLE line -- every depth -- and marks only
+       depth 1 as maySet. For Arun Bodupali that is 101 people of whom 2 are
+       his to set, and the card used to list all 101 with an identical "Set
+       targets" button on every row. He reported that he could not find how
+       to set Manish's targets; Manish was row one of a hundred and one, and
+       nothing on the row said it was different from the other hundred.
+
+       So the line is split here, once, and the two halves are drawn as two
+       different things: the people whose targets are yours, and the people
+       whose numbers you can only watch. */
+    var line = t.error ? [] : (t.people || []);
+    PF.team  = line.filter(function(p){ return p.maySet; });
+    PF.watch = line.filter(function(p){ return !p.maySet; });
+
     /* An administrator and Human Resources may set for everybody. That is a
        hundred rows, and a hundred rows under the heading "my team" is what
        made the tool look as though it were leaking other people's data. So
@@ -193,6 +210,7 @@ function pfRender(){
   }
 
   el("view").innerHTML = head + pfWindowBanner() +
+    pfSetFor() +           /* A1 whose targets are mine, said at the top   */
     pfToday() +            /* A2 today, as the one headline               */
     pfChips() +            /* A  the three score chips                    */
     pfDaily() +            /* B+D the daily table, and one submission     */
@@ -871,21 +889,90 @@ function pfSaid(o, good){
       "the screen has the button and the service does not have the route yet. " +
       "Nothing was changed.");
   }
+  /* 42883 is Postgres for "no function of that name and argument types". It
+     means the screen and the service are both newer than the database, which
+     is a deployment state and not something the person pressing the button
+     did. A bare SQLSTATE sends them hunting through logs; this says which of
+     the three parts is behind. */
+  if (o.error === "42883" ||
+      /function .* does not exist/i.test(String(o.reason || o.error))) {
+    return msg("warn", "This needs a database migration that has not been " +
+      "applied yet \u2014 the screen and the service have the button and the " +
+      "database does not have the function behind it. Nothing was changed.");
+  }
   return msg("bad", o.reason || o.error);
 }
 
 /* ------------------------- I · my team: targets, tasks and eligibility */
+/* Whose targets are mine, said at the TOP of the screen.
+
+   The blueprint puts My team ninth, after eight sections about the reader's
+   own numbers, and that order is right for somebody opening this screen to
+   file their own figures -- which is most people, most days. It is wrong for
+   a manager on the day they have to set their team's targets: Arun Bodupali
+   reported he could not find how to set Manish's, and Manish was there, nine
+   cards down.
+
+   So the order is left alone and a line is put at the top instead. It names
+   the people, so a manager can see at a glance whether the tool agrees with
+   them about who their team is, and the button goes straight to the card. */
+function pfSetFor(){
+  var t = PF.team || [];
+  if (!t.length) return "";
+  var names = t.slice(0, 4).map(function(p){ return p.name; }).join(", ");
+  return '<div class="pfsetfor">' +
+    '<div><b>' + t.length + (t.length === 1 ? ' person' : ' people') +
+      '</b> whose targets are yours to set this month' +
+      '<div class="mute">' + esc(names) +
+        (t.length > 4 ? ' and ' + (t.length - 4) + ' more' : '') + '</div></div>' +
+    '<button class="btn primary" id="pfgoteam">Set their targets</button></div>';
+}
+
+/* The rest of the line: people whose numbers this person may read and whose
+   targets are somebody else's to set. Drawn as a count that opens, never as
+   a hundred rows carrying a button that would be refused. */
+function pfWatchBlock(){
+  var w = PF.watch || [];
+  if (!w.length) return "";
+  if (!PF.watchOpen) {
+    return '<p class="pfwatch"><button class="btn" id="pfwatchopen">' +
+      'Show the rest of my line (' + w.length + ')</button> ' +
+      '<span class="mute">Their targets are set by their own manager. ' +
+      'You see how they are doing; you do not set what they are asked for.</span></p>';
+  }
+  return '<div class="pfwatch open"><h3>The rest of my line ' +
+      '<span class="mute">· ' + w.length + ' people, set by their own managers</span></h3>' +
+    '<div class="scroll"><table><tbody>' + w.map(function(p){
+      return '<tr><td><b>' + esc(p.name) + '</b>' +
+        (p.employeeNo ? ' <span class="mute">' + esc(p.employeeNo) + '</span>' : '') +
+        '<div class="mute">' + esc(p.chair || "no chair") +
+          (p.department ? ' · ' + esc(p.department) : '') + '</div></td>' +
+        '<td class="plact"><span class="mute">' +
+          (p.depth ? p.depth + ' step' + (p.depth === 1 ? '' : 's') + ' below you' : '') +
+        '</span></td></tr>';
+    }).join("") + '</tbody></table></div>' +
+    '<p><button class="btn" id="pfwatchshut">Hide them again</button></p></div>';
+}
+
 function pfTeamSection(){
   /* An administrator with nobody reporting to them still gets this card:
      the search box below is the only way they reach anybody at all. */
-  if ((!PF.team || !PF.team.length) && (!PF.wider || !PF.wider.length)) return "";
+  if ((!PF.team || !PF.team.length) && (!PF.wider || !PF.wider.length)
+      && (!PF.watch || !PF.watch.length)) return "";
   var n = Object.keys(PF.sel).filter(function(k){ return PF.sel[k]; }).length;
   var rows = (PF.team || []).map(pfTeamRow).join("");
+  var mine = (PF.team || []).length;
 
-  return '<div class="card"><h2>My team <span class="mute">· targets, tasks and eligibility</span></h2>' +
+  return '<div class="card" id="pfteam"><h2>My team ' +
+      '<span class="mute">· ' +
+      (mine ? mine + (mine === 1 ? ' person whose targets are yours to set'
+                                 : ' people whose targets are yours to set')
+            : 'targets, tasks and eligibility') + '</span></h2>' +
     (rows ? '' :
-      '<p class="mute">Nobody reports to you, so this list is empty. Use the ' +
-      'search below to reach somebody.</p>') +
+      '<p class="mute">Nobody reports to you directly, so there is nobody ' +
+      'whose targets are yours to set.' +
+      ((PF.wider || []).length ? ' Use the search below to reach somebody.' : '') +
+      '</p>') +
     '<div class="plbar">' +
       '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
         (n ? 'Give the same KPIs to ' + n + ' selected' : 'Select people to assign in bulk') + '</button>' +
@@ -894,6 +981,7 @@ function pfTeamSection(){
       '<button class="btn" id="pfelig">Eligibility matrix</button>' +
     '</div>' +
     (rows ? '<div class="scroll"><table>' + rows + '</table></div>' : '') +
+    pfWatchBlock() +
     pfFindAnyone() +
     (PF.form ? pfForm() : '') +
     (PF.taskForm ? pfTaskForm() : '') +
@@ -1356,6 +1444,23 @@ function pfWire(){
       await pfLoadMine(); pfRender();
     };
   });
+
+  /* The top-of-page pointer scrolls to the card rather than jumping by
+     anchor, so the reader keeps their place in the page and can see that
+     the card was there all along. */
+  if (el("pfgoteam")) el("pfgoteam").onclick = function(){
+    var card = el("pfteam");
+    if (!card) return;
+    try { card.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    catch (e) { card.scrollIntoView(); }
+  };
+
+  if (el("pfwatchopen")) el("pfwatchopen").onclick = function(){
+    PF.watchOpen = true; pfRender();
+  };
+  if (el("pfwatchshut")) el("pfwatchshut").onclick = function(){
+    PF.watchOpen = false; pfRender();
+  };
 
   if (el("pfadd")) el("pfadd").onclick = async function(){
     PF.form = { personId: PF.who, name: (PF.whoTree.person || {}).name, bulk:false };

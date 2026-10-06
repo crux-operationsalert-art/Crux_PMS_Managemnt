@@ -325,6 +325,22 @@ r.get("/team/tree", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// The same people as a flat list (migration 244).
+//
+// Not a second tree. The chart draws the reporting line, and the one thing
+// a chart cannot draw is somebody who is not ON it -- three people have no
+// manager, two hold no chair and forty-nine have no designation, and none
+// of that is visible in a drawing of who reports to whom. This is the list
+// that finds them, so the administrator and HR can put them right.
+//
+// Thin, like the two above it: org_people_table does its own gating and
+// returns {mayUse:false} with a reason for everybody else, so the screen
+// draws a refusal rather than an empty table.
+r.get("/team/people", async (req: any, res: any) => {
+  const o = await one(`select org_people_table($1) as o`, [req.person.id]);
+  return out(res, o.o);
+});
+
 // A drag that landed. personId moves under managerId.
 //
 // managerId may legitimately be null -- that is "out of the line

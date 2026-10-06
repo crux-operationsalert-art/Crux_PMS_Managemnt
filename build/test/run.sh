@@ -115,7 +115,7 @@ echo "== behaviour"
 # set -e that killed the script before it could print WHICH one. A test runner
 # that dies silently on a failing test is worse than no runner.
 out=""
-for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit test_offer; do
+for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit test_offer test_people test_account; do
   out="$out
 $(psq -q -f "$REPO/build/test/$t.sql" 2>&1 | sed 's/^psql:[^ ]* //' || true)"
 done
@@ -211,6 +211,23 @@ if [ -x "$NODE" ]; then
 else
   echo "   skipped: node is not on this machine."
   missing="$missing today"
+fi
+
+# The flat list of everybody. The picker on it is the one place the screen
+# predicts a refusal rather than asking for one, so it has to predict it
+# exactly; and the list has to be drawn for the administrator and HR, who
+# are the two people who manage nobody.
+echo
+echo "== all people, the flat list"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/list_check.mjs"; then
+    pass=$((pass + 34))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing list"
 fi
 
 # The navigation and the database are two readers of one access policy. They

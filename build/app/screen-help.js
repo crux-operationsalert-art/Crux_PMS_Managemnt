@@ -67,7 +67,12 @@ var HELP = {
     s:["Drag a card onto another to move that person under them.",
        "Open a card for their measures, their record, and a review.",
        "Add somebody new, or pull across somebody who already works here.",
-       "A move is recorded. It changes who may set that person's targets from that moment."] },
+       "A move is recorded. It changes who may set that person's targets from that moment.",
+       "All people is the same company as a list, for the administrator and HR. " +
+       "It is the only place somebody who reports to nobody can be seen — " +
+       "a chart cannot draw an absence.",
+       "The chips on that list count the gaps. Press one and you are looking " +
+       "at the people it counted."] },
 
   cases: { t:"Escalations",
     w:"Things that went wrong at a branch, and what is being done about them.",

@@ -163,17 +163,28 @@ r.post("/revoke", requireChair, requireScreen("access"), async (req: any, res: a
 r.get("/hr/overview", requireChair, requireScreen("hr"), async (req: any, res: any) => {
   const isHr = req.person.app_role === "ADMIN" ||
                (req.person.department || "") === "Human Resources";
+  // Not every row in `person` is somebody who works here. The client-bank
+  // contacts (migration 238) and the account the tool is administered from
+  // (migration 243) are both person rows and neither is staff.
+  //
+  // These three counts had no employee_type test at all, so "Active people"
+  // counted them, and `employee_type <> 'PARTNER' as employees` counted the
+  // service account AS AN EMPLOYEE -- which is the one thing the owner asked
+  // to stop. The test is written once and used in all three.
+  const STAFF = `employment_status = 'ACTIVE' and superseded_by is null
+             and coalesce(employee_type,'EMPLOYEE')
+                 not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')`;
   const [head, depts, types, notes, vacant] = await Promise.all([
     one(`select count(*)::int as people,
                 count(*) filter (where employee_type = 'PARTNER')::int as partners,
                 count(*) filter (where employee_type <> 'PARTNER')::int as employees,
                 count(*) filter (where manager_id is null)::int as no_manager
-           from person where employment_status = 'ACTIVE' and superseded_by is null`),
+           from person where ${STAFF}`),
     many(`select coalesce(department,'(not set)') as department, count(*)::int as n
-            from person where employment_status = 'ACTIVE' and superseded_by is null
+            from person where ${STAFF}
            group by 1 order by 2 desc`),
     many(`select coalesce(employee_type,'(not set)') as kind, count(*)::int as n
-            from person where employment_status = 'ACTIVE' and superseded_by is null
+            from person where ${STAFF}
            group by 1 order by 2 desc`),
     many(`select coalesce(note_class::text,'UNCLASSIFIED') as note_class, count(*)::int as n
             from person_event where kind = 'NOTE' group by 1 order by 2 desc`),

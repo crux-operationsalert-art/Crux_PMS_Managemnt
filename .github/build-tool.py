@@ -450,6 +450,23 @@ PATCHES.append((
       '.pfsel input[type=checkbox]{width:15px;height:15px;min-height:0;padding:0;\n'
       '  margin:0;flex:0 0 15px;accent-color:var(--blue)}\n'
       '.pfpanel{padding:2px 0 6px}\n'
+      '/* Whose targets are mine, at the top of the screen. A band rather\n'
+      '   than a card: it is a pointer to a card further down, not a place\n'
+      '   where anything is decided. */\n'
+      '.pfsetfor{display:flex;align-items:center;gap:14px;flex-wrap:wrap;\n'
+      '  margin:0 0 14px;padding:11px 14px;border-radius:10px;\n'
+      '  background:var(--green-bg);border-left:3px solid var(--green);\n'
+      '  font-size:13.5px;color:var(--body)}\n'
+      '.pfsetfor > div{flex:1;min-width:220px}\n'
+      '.pfsetfor b{color:var(--ink)}\n'
+      '.pfsetfor .mute{font-size:12px;margin-top:2px}\n'
+      '/* The rest of the line: people you watch and do not set for. Quiet,\n'
+      '   and shut until asked for -- it is context, not work. */\n'
+      '.pfwatch{margin:12px 0 0;font-size:12.5px}\n'
+      '.pfwatch.open{padding-top:10px;border-top:1px solid var(--line3)}\n'
+      '.pfwatch h3{margin:0 0 6px;font-size:12.5px;color:var(--mute);\n'
+      '  text-transform:uppercase;letter-spacing:.4px}\n'
+      '.pfwatch td{padding:5px 6px}\n'
       '/* Search for anyone. Set apart from the reporting line above it by a\n'
       '   border and a tint, because the whole point is that the two lists\n'
       '   are not the same thing: one is your team, the other is everybody. */\n'
@@ -879,6 +896,63 @@ PATCHES.append((
       ".tmq td{padding:5px 8px 5px 0;vertical-align:middle}\n"
       ".tmerrs{margin:5px 0 0;padding-left:18px}\n"
       ".tmerrs li{margin:2px 0}\n"
+      # ------------------------------- the chart and the list, side by side
+      # Two drawings of the same people. The switch is a segmented control
+      # rather than the tab strip above, because these are two views of one
+      # screen and not two screens -- and because the tab strip is already
+      # spoken for by the + panel's own two tabs.
+      ".tmviews{display:inline-flex;margin:0 0 12px;border:1px solid var(--line);\n"
+      "  border-radius:7px;overflow:hidden;background:var(--panel)}\n"
+      ".tmview{font:inherit;font-size:13px;padding:7px 14px;cursor:pointer;\n"
+      "  border:0;background:none;color:var(--mute);min-height:0;\n"
+      "  display:inline-flex;align-items:center;gap:6px}\n"
+      ".tmview + .tmview{border-left:1px solid var(--line)}\n"
+      ".tmview:hover{color:var(--ink);background:var(--panel2)}\n"
+      ".tmview.on{color:var(--white);background:var(--ink);font-weight:600}\n"
+      ".tmview.on .tmtg{color:var(--white);border-color:var(--white)}\n"
+      # The headline count, opposite the title: how many people there are
+      # is the first thing somebody cleaning a list wants to know.
+      ".tmcount{text-align:right;line-height:1.1;margin-left:auto}\n"
+      ".tmcount b{display:block;font-size:26px;color:var(--ink);\n"
+      "  font-variant-numeric:tabular-nums}\n"
+      ".tmcount span{font-size:11px;letter-spacing:.06em;color:var(--mute);\n"
+      "  text-transform:uppercase}\n"
+      ".tmfind{min-width:300px;max-width:440px;flex:1 1 300px}\n"
+      ".tmshow{font-size:12px;white-space:nowrap}\n"
+      # The gaps, as chips. Each is a count and the filter behind it, so
+      # the number and the people it counted are one press apart.
+      ".tmchips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 12px}\n"
+      ".tmchip{font:inherit;font-size:12px;padding:5px 10px;cursor:pointer;\n"
+      "  min-height:0;border:1px solid var(--line2);border-radius:999px;\n"
+      "  background:var(--panel);color:var(--body);\n"
+      "  display:inline-flex;align-items:center;gap:5px}\n"
+      ".tmchip:hover{border-color:var(--ink);background:var(--panel2);\n"
+      "  color:var(--ink)}\n"
+      ".tmchip.on{background:var(--ink);color:var(--white);border-color:var(--ink)}\n"
+      ".tmchip.on .tmtg{color:var(--white);border-color:var(--white)}\n"
+      ".tmlist{padding:0;overflow:hidden}\n"
+      ".tmlist table{font-size:13px}\n"
+      ".tmlist th{padding:0}\n"
+      # A column heading that sorts is still a heading: it reads as one and
+      # only the arrow says it was pressed.
+      ".tmsort{font:inherit;font-size:11px;letter-spacing:.06em;\n"
+      "  text-transform:uppercase;color:var(--mute);background:none;border:0;\n"
+      "  padding:9px 8px;min-height:0;cursor:pointer;width:100%;text-align:left}\n"
+      ".tmsort:hover{color:var(--ink);background:var(--panel2)}\n"
+      ".tmsort.on{color:var(--ink);font-weight:700}\n"
+      ".tmar{font-size:10px}\n"
+      ".tmn{text-align:right;font-variant-numeric:tabular-nums;color:var(--mute)}\n"
+      # A gap is said in words and never left blank: an empty cell reads as
+      # a rendering fault, and the whole point of this screen is the gaps.
+      ".tmgap{color:var(--terra-ink);font-size:12px}\n"
+      ".tmwarnrow td{background:var(--terra-bg)}\n"
+      ".tmrep{display:flex;flex-direction:column;gap:6px;min-width:230px}\n"
+      ".tmrep select{max-width:300px}\n"
+      ".tmrepb{display:flex;gap:6px}\n"
+      "@media (max-width:720px){\n"
+      "  .tmfind{min-width:0}\n"
+      "  .tmcount{text-align:left}\n"
+      "}\n"
       # ============================ the quarterly scorecard, in OKR shape
       # One band vocabulary for the whole card -- met / on track / at risk
       # / off track -- and every use of it carries the word beside the
