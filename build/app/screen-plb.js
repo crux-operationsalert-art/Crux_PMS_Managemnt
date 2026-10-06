@@ -61,6 +61,27 @@ async function vPlb(){
   }
   PB.data = d;
   if (d.maySetUp && !PB.q) PB.q = await plb("/plb/quarter?quarter=" + PB.quarter);
+
+  /* #plb/<personId> -- somebody arrived here from that person's tile under
+     My team, meaning to score THEM. Open their sheet rather than leaving
+     them on their own, which is what made this screen look as though it
+     were asking a manager to self-evaluate their report.
+
+     The id is a person; the panel wants a sheet. PB.q carries both for
+     every sheet in the quarter, so the map is already here and needs no
+     second call. If they hold no sheet this quarter, the screen is left
+     as it was -- the manager panel below says so in its own words. */
+  var want = (location.hash || "").split("/")[1];
+  if (want && PB.q && !PB.open) {
+    var row = (PB.q.sheets || []).filter(function(x){
+      return x.personId === want; })[0];
+    if (row) {
+      /* PB.open is the sheet itself, as the Open button sets it -- not a
+         wrapper around it. The panel reads PB.open.sheetId straight off. */
+      var o = await plb("/plb/sheet/" + row.sheetId);
+      if (!o.error && o.sheet) PB.open = o.sheet;
+    }
+  }
   pbRender();
 }
 

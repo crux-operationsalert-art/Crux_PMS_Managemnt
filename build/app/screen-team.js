@@ -737,8 +737,21 @@ function tmWire(){
       var where = b.getAttribute("data-tmgo");
       /* These live on Performance & appraisal and on the scheme screen.
          Sending somebody there is honest; rebuilding them here would be a
-         second implementation of a thing that already works. */
-      location.hash = (where === "quarter" || where === "score") ? "#plb" : "#perf";
+         second implementation of a thing that already works.
+
+         The PERSON goes with them. This used to send a bare "#plb", which
+         is the manager's OWN bonus screen -- so pressing "Monthly review
+         and score" on somebody's tile opened your own sheet, with your own
+         self-evaluation box on it. Read from that tile, the tool appeared
+         to be asking a manager to self-evaluate their report. Nothing was
+         ever written that way, because plb_self_eval only writes against
+         the signed-in person's own sheet; the damage was entirely to what
+         the screen appeared to be asking for.
+
+         Both destinations read the id back off the hash and open on that
+         person, the same way #cases/<id> and #ogl/<id> already work. */
+      location.hash = (where === "quarter" || where === "score")
+        ? "#plb/" + TM.sel : "#perf/" + TM.sel;
       if (typeof route === "function") route();
     };
   });

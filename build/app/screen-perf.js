@@ -25,6 +25,9 @@ var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
               thing from `form` -- that one gives a measure, this one
               changes one already given. */
            editForm:null,
+           /* the person named in the hash on the way in, remembered so a
+              later re-render does not drag the view back there. */
+           cameFor:null,
            /* the blueprint's other sections: the split, the fortnight, the
               tasks, the quarter, and the forms that write to them. */
            weighting:{}, filed:null, tasks:{}, plb:{}, score:null,
@@ -112,6 +115,24 @@ async function vPerf(){
        name into the box that asks for one. */
     PF.wider  = t.error ? [] : (t.wider || []);
     PF.widerWhy = t.error ? "" : (t.why || "");
+  }
+
+  /* #perf/<personId> -- arrived from that person's tile under My team,
+     meaning to set THEIR targets. Open them rather than leaving the
+     visitor to find the name again in a list. Only honoured for somebody
+     this caller may actually set for: the tree call behind it refuses
+     anyone else, and opening a panel that will refuse is worse than not
+     opening one.
+
+     Read once, on the first draw. After that the person is whoever the
+     screen's own buttons last chose, so a later re-render does not drag
+     the view back to where the visitor came in. */
+  var want = (location.hash || "").split("/")[1];
+  if (want && !PF.cameFor) {
+    PF.cameFor = want;
+    var known = (PF.team || []).concat(PF.wider || []).filter(function(p){
+      return p.personId === want && p.maySet; })[0];
+    if (known) { PF.who = want; PF.whoTree = null; }
   }
   /* The month, the quarter and the split are three different clocks and the
      page shows all three. Asked together because they are drawn together —
@@ -686,9 +707,17 @@ function pfTargetPanel(){
       : '<p class="mute">This target is your manager&rsquo;s to set, not yours. ' +
         'What is yours is how it divides across your team &mdash; below.</p>');
 
+  /* A target divides DOWN to a team and ACROSS to the clients it is owed
+     from, and those are two different divisions. This used to return here,
+     before pfSplitBlock() -- so a measure with nobody below it offered
+     neither, and the commonest case of wanting to split across banks is
+     exactly a person with a revenue target and no team under it. A branch
+     manager owed ten lakh from SBI, BOM and IDBI had no way to say so.
+
+     Now the absence of a team says only that there is no team. */
   if (!t.team || !t.team.length) {
-    return head + '<div class="empty">Nothing climbs into this measure, so there is ' +
-      'nothing to divide.</div>';
+    return head + '<div class="empty">Nobody reports into this measure, so there ' +
+      'is no team to divide it down to.</div>' + pfSplitBlock();
   }
 
   var rows = t.team.map(function(x){
