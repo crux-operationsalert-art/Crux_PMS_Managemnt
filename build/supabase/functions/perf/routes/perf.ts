@@ -569,6 +569,29 @@ r.get("/conduct", async (req: any, res: any) => {
 });
 
 // =====================================================================
+// The file HR holds on a Business Associate (migration 252).
+//
+// Reading is for HR, the administrator, the associate and their line --
+// partner_file_get decides which of those sees the cheque and the share, and
+// which sees only the rates. Writing is HR's and the administrator's.
+// =====================================================================
+r.get("/partner", async (req: any, res: any) => {
+  const who = req.query.get("person");
+  if (!who) return res.status(400).json({ error: "missing_person" });
+  const o = await one(`select partner_file_get($1,$2::uuid) as o`, [req.person.id, who]);
+  return out(res, o.o);
+});
+
+r.post("/partner", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.personId) return res.status(400).json({ error: "missing_person" });
+  const o = await one(
+    `select partner_file_set($1,$2::uuid,coalesce($3::text,'{}')::jsonb) as o`,
+    [req.person.id, b.personId, asObject(b.file)]);
+  return out(res, o.o);
+});
+
+// =====================================================================
 // An escalation about a person (migration 251).
 //
 // "Raise an escalation about a person, not only a case."

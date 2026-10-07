@@ -962,6 +962,16 @@ PATCHES.append((
       # The answer to an escalation, set in from the question it answers:
       # both the person who raised it and the person it was about read it,
       # so it is not a muted footnote.
+      # The Business Associate file. The read view is a grid of labelled
+      # values, the same shape as the editor it toggles into, so the two
+      # do not look like different screens.
+      ".tmpfv span{display:block;font-size:10px;letter-spacing:.07em;\n"
+      "  text-transform:uppercase;color:var(--mute)}\n"
+      ".tmpfv b{font-size:14px}\n"
+      ".tmpfall{margin:10px 0 0}\n"
+      ".tmpfall>span{text-transform:none;letter-spacing:0;font-size:13px;\n"
+      "  color:var(--ink)}\n"
+      ".tmpfck{font-size:13px}\n"
       ".tmescout{margin-top:6px;padding:7px 9px;border-left:2px solid var(--green);\n"
       "  background:var(--green-bg);border-radius:0 3px 3px 0;font-size:13px}\n"
       ".tmrep{display:flex;flex-direction:column;gap:6px;min-width:230px}\n"

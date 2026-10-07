@@ -29,7 +29,9 @@ var TM = { tree:null, cycle:null, shut:{}, sel:null, drag:null, over:null,
            /* the dropdowns the row and the bulk bar are drawn from, who is
               ticked for a change to all of them at once, and what the last
               save said about each person it refused. */
-           opts:null, tpick:{}, tsays:"", tfail:null };
+           opts:null, tpick:{}, tsays:"", tfail:null,
+           /* the file HR holds on a Business Associate, and who it is for */
+           pf:null, pfFor:null, pfEdit:false };
 
 async function vPeople(){
   el("view").innerHTML = '<p class="mute">Loading&hellip;</p>';
@@ -800,6 +802,7 @@ function tmPanel(){
         : 'No measures are set for them this month.') +
     '</p>' +
     acts +
+    tmPartner() +
     tmConduct() +
     '<h3 class="tmh3">Measure by measure</h3>' +
     (det === null
@@ -894,6 +897,211 @@ function tmConduct(){
          '<h3 class="tmh3">Warnings</h3>' + warn +
          '<h3 class="tmh3">Improvement plan</h3>' + plan +
          (TM.form ? tmForm() : '');
+}
+
+
+/* ------------------------------- the file HR holds on a Business Associate
+
+   "in their profile HR has to confirm if all the agreements are signed and
+    submitted, if not then expected dates and if we have received a security
+    cheque and its details, Rates ... and the Partnership Ratio (this is only
+    for partners)"
+
+   It sits on the person panel rather than on a screen of its own, because
+   that is where HR already is when they are looking at somebody. What comes
+   back decides what is drawn: partner_file_get returns the cheque and the
+   share only to HR, the administrator and the associate themselves, so a
+   manager opening the same panel sees the rates and not the terms, and the
+   screen does not have to know the rule.                                  */
+var TM_RATE_KIND = {
+  DOC_ITR: "Documents — ITR", DOC_STATEMENT: "Documents — Statement",
+  DOC_KYC: "Documents — KYC", DOC_OTHER: "Documents — Other",
+  OGL: "OGL", OTHER: "Anything else"
+};
+
+function tmAgrState(g){
+  if (g.state === "SIGNED") return '<span class="pill ok">signed ' +
+    esc((g.signedOn || "").slice(0, 10)) + '</span>';
+  if (g.state === "WAIVED") return '<span class="mute">waived</span>';
+  return '<span class="pill ' + (g.overdue ? 'bad' : 'warn') + '">' +
+    (g.overdue ? 'overdue — was due ' : 'expected ') +
+    esc((g.expectedOn || "").slice(0, 10)) + '</span>';
+}
+
+function tmMoney(v){
+  return v === null || v === undefined || v === "" ? "—"
+    : "₹" + Number(v).toLocaleString("en-IN");
+}
+
+function tmPartner(){
+  var f = TM.pfFor === TM.sel ? TM.pf : null;
+  if (!f) {
+    return '<p class="tmsoon"><button class="btn" id="tmpfload">' +
+      'Business Associate file</button></p>';
+  }
+  if (f.error) return msg("warn", f.reason || f.error);
+  if (!f.mayUse) return msg("warn", f.reason || "");
+  if (TM.pfEdit && f.maySet) return tmPartnerForm(f);
+
+  var ag = f.agreements || [];
+  var agr = !ag.length
+    ? '<p class="mute">No agreement is on the file yet.</p>'
+    : '<ul class="tmwarn">' + ag.map(function(g){
+        return '<li>' + tmAgrState(g) + ' <b>' + esc(g.label) + '</b>' +
+          (g.note ? '<div class="mute">' + esc(g.note) + '</div>' : '') + '</li>';
+      }).join("") + '</ul>';
+
+  var rs = f.rates || [];
+  var rates = !rs.length
+    ? '<p class="mute">No rate is on the file yet.</p>'
+    : '<div class="scroll"><table><tr><th>What</th><th>Rate</th><th>Per</th>' +
+      '<th>From</th></tr>' + rs.map(function(x){
+        return '<tr><td><b>' + esc(x.label) + '</b><div class="mute">' +
+            esc(TM_RATE_KIND[x.kind] || x.kind) + '</div></td>' +
+          '<td class="num">' + tmMoney(x.amount) + '</td>' +
+          '<td class="mute">' + esc(x.unit || "") + '</td>' +
+          '<td class="mute">' + esc((x.effectiveFrom || "").slice(0, 10)) + '</td></tr>';
+      }).join("") + '</table></div>';
+
+  var c = f.cheque, r = f.ratio;
+  var terms = !f.seesTerms
+    ? '<p class="mute">The security cheque and the share are terms between ' +
+      'Crux and them, so they are Human Resources’ and theirs.</p>'
+    : '<div class="tmedg">' +
+        '<div class="tmpfv"><span>Security cheque</span><b>' +
+          (c && c.held
+            ? esc(c.no || "") + ' · ' + esc(c.bank || "")
+            : '<span class="tmgap">not received</span>') + '</b>' +
+          (c && c.held
+            ? '<div class="mute">' + tmMoney(c.amount) +
+              (c.receivedOn ? ' · received ' + esc(c.receivedOn.slice(0,10)) : '') +
+              '</div>'
+            : '') +
+        '</div>' +
+        (r
+          ? '<div class="tmpfv"><span>Partnership ratio</span><b>' +
+            (r.partnerPct === null || r.partnerPct === undefined
+              ? '<span class="tmgap">not set</span>'
+              : esc(r.partnerPct) + '% them &middot; ' + esc(r.cruxPct) + '% Crux') +
+            '</b>' + (r.note ? '<div class="mute">' + esc(r.note) + '</div>' : '') +
+            '</div>'
+          : '') +
+      '</div>';
+
+  return '<h3 class="tmh3">Business Associate file</h3>' +
+    '<p class="mute">' +
+      (f.agreementsAll
+        ? 'Confirmed as all signed and in' +
+          (f.confirmedBy ? ' by ' + esc(f.confirmedBy) : '') +
+          (f.confirmedAt ? ' on ' + esc(f.confirmedAt.slice(0,10)) : '') + '.'
+        : 'Not yet confirmed as all signed and in.') +
+      (f.overdueCount ? ' <span class="tmover">' + esc(f.overdueCount) +
+        ' overdue</span>' : (f.openCount ? ' ' + esc(f.openCount) + ' still to come.' : '')) +
+    '</p>' +
+    terms +
+    '<h4 class="plh">Agreements</h4>' + agr +
+    '<h4 class="plh">Rates</h4>' + rates +
+    (f.note ? '<p class="mute">' + esc(f.note) + '</p>' : '') +
+    (f.maySet
+      ? '<p><button class="btn" id="tmpfedit">Confirm the file</button></p>'
+      : '') +
+    '<div id="tmpfmsg"></div>';
+}
+
+/* Three empty rows under whatever is there, for the reason the sub-measure
+   form has them: a form that makes somebody press Add before they can type
+   the first line is a form asking permission to be used. */
+function tmPfAgrRow(g, i){
+  var v = function(x){ return x === null || x === undefined ? "" : esc(x); };
+  return '<tr>' +
+    '<td><input class="tmpfal" data-i="' + i + '" value="' + v(g && g.label) +
+      '" placeholder="Franchise agreement"></td>' +
+    '<td><select class="tmpfas" data-i="' + i + '">' +
+      ["PENDING","SIGNED","WAIVED"].map(function(k){
+        return '<option value="' + k + '"' +
+          (g && g.state === k ? ' selected' : '') + '>' +
+          (k === "PENDING" ? "Not yet" : k === "SIGNED" ? "Signed" : "Waived") +
+          '</option>'; }).join("") + '</select></td>' +
+    '<td><input class="tmpfag" data-i="' + i + '" type="date" value="' +
+      v(g && (g.signedOn || "").slice(0,10)) + '"></td>' +
+    '<td><input class="tmpfae" data-i="' + i + '" type="date" value="' +
+      v(g && (g.expectedOn || "").slice(0,10)) + '"></td>' +
+    '</tr>';
+}
+
+function tmPfRateRow(x, i){
+  var v = function(y){ return y === null || y === undefined ? "" : esc(y); };
+  return '<tr>' +
+    '<td><select class="tmpfrk" data-i="' + i + '">' +
+      Object.keys(TM_RATE_KIND).map(function(k){
+        return '<option value="' + k + '"' + (x && x.kind === k ? ' selected' : '') +
+          '>' + esc(TM_RATE_KIND[k]) + '</option>'; }).join("") + '</select></td>' +
+    '<td><input class="tmpfrl" data-i="' + i + '" value="' + v(x && x.label) +
+      '" placeholder="ITR"></td>' +
+    '<td><input class="tmpfra" data-i="' + i + '" type="number" step="0.01" value="' +
+      v(x && x.amount) + '"></td>' +
+    '<td><input class="tmpfru" data-i="' + i + '" value="' + v(x && x.unit) +
+      '" placeholder="per document"></td>' +
+    '</tr>';
+}
+
+function tmPartnerForm(f){
+  var ag = (f.agreements || []).concat([null, null, null]);
+  var rs = (f.rates || []).concat([null, null, null]);
+  var c = f.cheque || {}, r = f.ratio;
+  var v = function(x){ return x === null || x === undefined ? "" : esc(x); };
+
+  return '<h3 class="tmh3">Business Associate file</h3>' +
+    '<div class="tmedit">' +
+    '<p class="mute">Nothing is saved unless every line is accepted. An ' +
+    'agreement that is not signed carries the date it is expected; a cheque ' +
+    'that is held carries its number and its bank.</p>' +
+
+    '<h4 class="plh">Agreements</h4>' +
+    '<div class="scroll"><table class="pbparts"><tr><th>What</th><th>State</th>' +
+      '<th>Signed on</th><th>Expected by</th></tr>' +
+      ag.map(tmPfAgrRow).join("") + '</table></div>' +
+    '<label class="tmf tmpfall"><span>' +
+      '<input id="tmpfall" type="checkbox"' + (f.agreementsAll ? ' checked' : '') +
+      '> Everything is signed and submitted</span></label>' +
+
+    '<h4 class="plh">Security cheque</h4>' +
+    '<div class="tmedg">' +
+      tmField("Received", "", '<label class="tmpfck">' +
+        '<input id="tmpfch" type="checkbox"' + (c.held ? ' checked' : '') +
+        '> we hold it</label>') +
+      tmField("Cheque number", "", '<input id="tmpfcn" class="pfin" value="' +
+        v(c.no) + '">') +
+      tmField("Bank", "", '<input id="tmpfcb" class="pfin" value="' +
+        v(c.bank) + '">') +
+      tmField("Amount", "", '<input id="tmpfca" class="pfin" type="number" ' +
+        'step="0.01" value="' + v(c.amount) + '">') +
+      tmField("Dated", "", '<input id="tmpfcd" class="pfin" type="date" value="' +
+        v((c.datedOn || "").slice(0,10)) + '">') +
+      tmField("Received on", "", '<input id="tmpfcr" class="pfin" type="date" ' +
+        'value="' + v((c.receivedOn || "").slice(0,10)) + '">') +
+    '</div>' +
+
+    '<h4 class="plh">Rates</h4>' +
+    '<div class="scroll"><table class="pbparts"><tr><th>What for</th><th>Named</th>' +
+      '<th>Amount</th><th>Per</th></tr>' +
+      rs.map(tmPfRateRow).join("") + '</table></div>' +
+
+    (r
+      ? '<h4 class="plh">Partnership ratio</h4>' +
+        '<div class="tmedg">' +
+          tmField("Their share", "Crux takes what is left",
+            '<input id="tmpfrp" class="pfin" type="number" step="0.01" min="0" ' +
+            'max="100" value="' + v(r.partnerPct) + '">') +
+          tmField("Note", "", '<input id="tmpfrn" class="pfin" value="' +
+            v(r.note) + '">') +
+        '</div>'
+      : '<p class="mute">A partnership ratio is only for a partner.</p>') +
+
+    '<div class="tmedb">' +
+      '<button class="btn primary" id="tmpfsave">Save the file</button> ' +
+      '<button class="btn" id="tmpfno">Cancel</button>' +
+    '</div></div><div id="tmpfmsg"></div>';
 }
 
 /* ------------------------------------------------- escalations (251)
@@ -1362,6 +1570,78 @@ function tmWire(){
     TM.tree = await perfApi("/perf/team/tree");
     tmRender();
   }
+
+  /* --------------------------------- the Business Associate file (252) */
+  if (el("tmpfload")) el("tmpfload").onclick = async function(){
+    el("tmpfload").disabled = true;
+    TM.pfFor = TM.sel;
+    TM.pf = await perfApi("/perf/partner?person=" + encodeURIComponent(TM.sel));
+    TM.pfEdit = false;
+    tmRender();
+  };
+  if (el("tmpfedit")) el("tmpfedit").onclick = function(){ TM.pfEdit = true; tmRender(); };
+  if (el("tmpfno")) el("tmpfno").onclick = function(){ TM.pfEdit = false; tmRender(); };
+  if (el("tmpfsave")) el("tmpfsave").onclick = async function(){
+    var pick = function(cls, i){
+      var e = el("view").querySelector("." + cls + '[data-i="' + i + '"]');
+      return e && e.value !== "" ? e.value : null;
+    };
+    var ags = [], rates = [];
+    Array.prototype.forEach.call(el("view").querySelectorAll(".tmpfal"), function(t){
+      var i = t.getAttribute("data-i");
+      var label = (t.value || "").trim();
+      if (!label) return;            /* an empty line is an empty line */
+      ags.push({ label: label, state: pick("tmpfas", i) || "PENDING",
+                 signedOn: pick("tmpfag", i), expectedOn: pick("tmpfae", i) });
+    });
+    Array.prototype.forEach.call(el("view").querySelectorAll(".tmpfrl"), function(t){
+      var i = t.getAttribute("data-i");
+      var label = (t.value || "").trim();
+      if (!label) return;
+      rates.push({ kind: pick("tmpfrk", i) || "OTHER", label: label,
+                   amount: pick("tmpfra", i), unit: pick("tmpfru", i) });
+    });
+
+    var file = {
+      agreementsAll: el("tmpfall") ? el("tmpfall").checked : false,
+      agreements: ags,
+      rates: rates,
+      cheque: {
+        held: el("tmpfch") ? el("tmpfch").checked : false,
+        no: el("tmpfcn") ? el("tmpfcn").value : "",
+        bank: el("tmpfcb") ? el("tmpfcb").value : "",
+        amount: el("tmpfca") ? el("tmpfca").value : "",
+        datedOn: el("tmpfcd") ? el("tmpfcd").value : "",
+        receivedOn: el("tmpfcr") ? el("tmpfcr").value : ""
+      }
+    };
+    /* The ratio is only sent where the file carried one, so saving an
+       employee's agreements never offers a share the database would refuse. */
+    if (el("tmpfrp")) {
+      file.ratio = { partnerPct: el("tmpfrp").value,
+                     note: el("tmpfrn") ? el("tmpfrn").value : "" };
+    }
+
+    if (TM.busy) return;
+    TM.busy = true;
+    var o = await perfApi("/perf/partner",
+      { method:"POST", body:{ personId: TM.sel, file: file } });
+    TM.busy = false;
+    if (o && o.error) {
+      /* The database names the box; the form stays open with the answer in it. */
+      TM.says = msg("bad", (o.reason || o.error) +
+        (o.fields && o.fields.length
+          ? " " + o.fields.map(function(f){ return f.reason; }).join(" ")
+          : ""));
+      tmRender();
+      return;
+    }
+    TM.says = msg("good", (o && o.note) || "Saved.");
+    TM.pf = await perfApi("/perf/partner?person=" + encodeURIComponent(TM.sel));
+    TM.pfFor = TM.sel;
+    TM.pfEdit = false;
+    tmRender();
+  };
 
   /* ------------------------------------------------- escalations (251) */
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmescclose]"), function(b){
