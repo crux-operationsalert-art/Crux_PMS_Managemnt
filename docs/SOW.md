@@ -281,6 +281,8 @@ against the measure they were filed for.
 | 2026-10-07 | A part **withdrawn, never erased**, and one row per name for the life of the sheet | 246's rule. "What was Bank A asked for in October" is a question asked in a dispute, and it must have one answer. |
 | 2026-10-07 | **Direction is set by the one-up manager, per KPI, alongside the target** — the registry only suggests | The owner's answer to Q3: "lower or higher depends on the KPI... we only suggest that xyz KPI can be given then the one up manager decides". The guess from the unit string is what made 181 goal KPIs pay more for a worse number (253). |
 | 2026-10-07 | **A target of zero is a promise; a null target is "nobody has set one"** | The owner's answer to Q2: "there is a possibility of 0 in KPIs like 0 escalation but then the one up manager should be adding 0 in the target and not keep it blank." `coalesce(target,0)=0` had made zero unsayable (253). |
+| 2026-10-07 | **A patch's sentinel must be a string that patch itself writes** | Patch 18's sentinel was `function vPerf(`, which app_page already carried, so the build skipped the patch on every run and said it was already applied. The build now refuses a sentinel that appears in none of the patch's own rules. |
+| 2026-10-07 | **Every jsonb parameter is sent as text and cast on the server** | Third appearance of the same defect (`/issue`, `/team/set`, then three routes calling an `asObject()` nobody had written). `coalesce($n::text,'{}')::jsonb` everywhere is cheaper than finding the fourth one in production. |
 | 2026-10-07 | **The payout curve does not move** | Both scorers now call one `perf_ratio` and the over-achievement formula inside it is carried across unchanged. Changing the curve in the same migration would have made the correction indistinguishable from the change. |
 | 2026-10-07 | `build/app/screen-plb.js` is a **mirror**, and only what is bracketed in it ships | Found by measuring the live page: a fix written there, tested, committed and published had reached no screen. The markers now say so, and the build refuses to run without them. |
 
@@ -295,21 +297,42 @@ against the measure they were filed for.
 
 ## 15. Status and next actions
 
-**Live.** Everything up to and including migration 250. `plb` v11, `perf`
-v11, `ops` v8. The published page carries every screen change up to and
-including patch 17.
+**Live.** Everything up to and including migration 253. `plb` v12, `perf`
+v12 (both `verify_jwt: false`), `ops` v8.
 
-**Built, tested, committed — NOT yet live.** The Supabase approval gate in
-this session began refusing every call, including `select 1`, and has not
-reopened. Three migrations and one deploy are waiting, one call each:
-
-| | What | |
+| | What | Applied |
 |---|---|---|
-| 251 | an escalation about a person | apply |
-| 252 | a partner is a Business Associate, and HR holds the file | apply |
-| 253 | the manager says which way a measure points; zero is a target | apply |
-| — | `perf`, carrying `/escalate`, `/escalate/act`, `/partner` | redeploy, `verify_jwt: false` |
-| O4 | `drop index perf_assignment_once_top_old;` | tidiness only since 250 |
+| 251 | an escalation about a person | table, routing, list, raise, act, the conduct-panel substitution and the guard |
+| 252 | a partner is a Business Associate, and HR holds the file | the designation, the three tables, `partner_file_may_set`/`_get`/`_set` and the guard |
+| 253 | the manager says which way a measure points; zero is a target | the three `direction` columns, `perf_ratio`, `perf_direction_of`, and the substitutions over `perf_kpi_score`, `plb_month_suggest`, `perf_assign` and `perf_assign_edit` |
+| `perf` v12 | `/escalate`, `/escalate/act`, `GET`+`POST /partner` | deployed |
+| `plb` v12 | `/kpi/parts` hardened the same way | deployed |
+
+The gate refused roughly one call in three through this, and retrying the
+identical call worked every time. It still refuses any statement containing
+`drop `, so **O4** (`drop index perf_assignment_once_top_old;`) is still
+open — tidiness only, since 250 revives a withdrawn measure instead of
+inserting a second one.
+
+**Two defects found while applying it, both of the same shape: it passed
+the build and reached no screen.**
+
+`asObject()` was called in three of `perf`'s routes and defined in none of
+them, so `/partner`, `/escalate` and `/escalate/act` would have thrown a
+`ReferenceError` on the first request. It is written now, and every jsonb
+parameter in both services goes through it onto
+`coalesce($n::text,'{}')::jsonb` — the third appearance of the defect that
+made `/issue` receive `{}` where it was sent `[]` and made `/team/set`
+answer "Send the fields to change." without any changes.
+
+Patch 18 had **never once been applied**. Its sentinel was `function
+vPerf(`, which `app_page` has carried since the Performance rebuild landed
+in it, so the build answered "already in app_page; skipped" on every run.
+The sentinel is now a string the patch itself writes, and the build refuses
+any patch whose sentinel appears in none of its own rules — checked before
+a line of the page is touched. All eighteen pass. Found by measuring the
+published page, not by reading the code that writes it; the same way the
+mirror in `screen-plb.js` was found.
 
 **The owner's P1 list of 7 October.** All seven items are answered; §10 and the
 commit log say how, and two of them were not defects.
@@ -318,14 +341,17 @@ commit log say how, and two of them were not defects.
 
 | | | Standing |
 |---|---|---|
-| #40 | raise an escalation about a person | **Done** (251). Anybody may raise one about anybody but themselves; it routes to their manager, a step higher when the raiser is that manager, or to HR. The subject does not see it while it is open. |
-| #41 | merge or remove the tiles that duplicate the rebuilt screens | **Done** (patch 18). Measured rather than guessed: every screen was listed with the endpoints it reads, and `vPms` was still reachable at `#pms` wearing the rebuilt Performance screen's sub-tabs. `#pms` now opens the rebuilt screen. |
-| #42 | what a zero target means for a bonus, and the direction defect | **Answered and built** (253). Direction is the one-up manager's, set beside the target; the registry only suggests. A target of zero is a promise; null is "nobody has set one yet". The payout curve is unchanged. |
+| #40 | raise an escalation about a person | **Done and live** (251). Anybody may raise one about anybody but themselves; it routes to their manager, a step higher when the raiser is that manager, or to HR. The subject does not see it while it is open. |
+| #41 | merge or remove the tiles that duplicate the rebuilt screens | **Done** (patch 18). Measured rather than guessed: every screen was listed with the endpoints it reads, and `vPms` was still reachable at `#pms` wearing the rebuilt Performance screen's sub-tabs. `#pms` now opens the rebuilt screen — for the first time, since the patch had been skipped on every build until the sentinel was corrected. |
+| #42 | what a zero target means for a bonus, and the direction defect | **Answered, built and live** (253). Direction is the one-up manager's, set beside the target; the registry only suggests. A target of zero is a promise; null is "nobody has set one yet". The payout curve is unchanged. |
 
-**Business Associates** (252) is built and tested: the designation, the
-agreements with their expected dates, the security cheque, the rates Crux
-pays per document and per OGL case, and the partnership ratio. HR confirms
-it; the line sees the rates and not the terms.
+**Business Associates** (252) is live: the designation, the agreements with
+their expected dates, the security cheque, the rates Crux pays per document
+and per OGL case, and the partnership ratio. HR confirms it; the line sees
+the rates and not the terms. The ratio — "80-20", where the associate takes
+80% of the revenue and Crux 20% — is held for understanding and nothing
+reads it to price or pay anything. It is a different number from
+`partner_rate`, and the comment in 252 says so.
 
-**Next**: apply 251 and 252, redeploy `perf`, then #42 once Q2 and Q3 are
-answered.
+**Next**: nothing is waiting on the gate. The remaining items are O4 and
+whatever the owner raises next.
