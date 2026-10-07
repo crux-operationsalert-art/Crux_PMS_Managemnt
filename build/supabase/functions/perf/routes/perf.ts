@@ -568,6 +568,33 @@ r.get("/conduct", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// =====================================================================
+// An escalation about a person (migration 251).
+//
+// "Raise an escalation about a person, not only a case."
+//
+// Thin, like the rest: person_escalation_raise decides where it goes and
+// person_escalation_act decides who may close it. Anybody may raise one, so
+// there is no gate here at all -- which is the point of it. The person who
+// hits the problem is usually outside the line of the person causing it.
+// =====================================================================
+r.post("/escalate", async (req: any, res: any) => {
+  const o = await one(
+    `select person_escalation_raise($1,coalesce($2::text,'{}')::jsonb) as o`,
+    [req.person.id, asObject(req.body)]);
+  return out(res, o.o);
+});
+
+// Seen, Close or Withdraw. The refusals are the function's.
+r.post("/escalate/act", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.id) return res.status(400).json({ error: "missing_escalation" });
+  const o = await one(
+    `select person_escalation_act($1,$2::uuid,$3,coalesce($4::text,'{}')::jsonb) as o`,
+    [req.person.id, b.id, b.action || "", asObject(b)]);
+  return out(res, o.o);
+});
+
 r.post("/warn", async (req: any, res: any) => {
   const o = await one(`select person_warn($1,$2::jsonb) as o`,
     [req.person.id, JSON.stringify(req.body || {})]);

@@ -959,6 +959,11 @@ PATCHES.append((
       # a rendering fault, and the whole point of this screen is the gaps.
       ".tmgap{color:var(--terra-ink);font-size:12px}\n"
       ".tmwarnrow td{background:var(--terra-bg)}\n"
+      # The answer to an escalation, set in from the question it answers:
+      # both the person who raised it and the person it was about read it,
+      # so it is not a muted footnote.
+      ".tmescout{margin-top:6px;padding:7px 9px;border-left:2px solid var(--green);\n"
+      "  background:var(--green-bg);border-radius:0 3px 3px 0;font-size:13px}\n"
       ".tmrep{display:flex;flex-direction:column;gap:6px;min-width:230px}\n"
       ".tmrep select{max-width:300px}\n"
       ".tmrepb{display:flex;gap:6px}\n"
@@ -1645,6 +1650,43 @@ PATCHES.append((
          "    var o = await plb(\"/plb/sheet/\" + PB.open.sheetId);\n"
          "    PB.open = o && o.sheet ? o.sheet : null;\n    await pbOpenMonths();\n  }", 1),
     ],
+))
+
+
+# =====================================================================
+# 18. THE SCREENS THE REBUILDS REPLACED
+#
+# "Merge or remove the tiles that duplicate the rebuilt screens."
+#
+# Measured rather than guessed: every screen function in the published page
+# was listed with the endpoints it reads, and two of them read what nothing
+# else reads any more.
+#
+#   vPms     /pms/cycle/current, /pms/daily, /pms/raise
+#            The PMS screen the Performance rebuild replaced. It is not in
+#            NAV and not in SCREENS, so it has no tile -- but `run` still
+#            mapped `pms` to it and UNDER still filed it under Performance,
+#            so #pms opened it, wearing Performance's own sub-tabs. A second
+#            Performance screen, reachable by anybody with an old link or an
+#            old bookmark, showing numbers the rebuilt one does not.
+#
+#   vPeople  /people/org, /people/team
+#            Replaced by vTeamScreen in patch "my team is the people tree".
+#            Already unreachable: `run` maps people:vTeamScreen.
+#
+# #pms now opens the rebuilt Performance screen rather than the old one, so
+# every old link still lands somewhere right instead of somewhere stale. The
+# two bodies are left where they are: they are unreachable, app_page is one
+# row and 15 patches, and cutting a thousand lines out of the middle of it to
+# save weight is a much better way to break a page than to tidy one.
+# =====================================================================
+PATCHES.append((
+    "the screens the rebuilds replaced are no longer reachable",
+    "function vPerf(",
+    [("pms:vPms, plb:vPlb, perf:vPerf,",
+      "/* pms was the screen the Performance rebuild replaced. The key stays\n"
+      "       so an old link still works, and opens the rebuilt screen. */\n"
+      "    pms:vPerf, plb:vPlb, perf:vPerf,", 1)],
 ))
 
 
