@@ -108,8 +108,15 @@ create table if not exists partner_file (
   -- Not derived from the agreement rows, because "all of them" is a
   -- judgement about whether the list is complete, and only HR knows that.
   agreements_all   boolean not null default false,
-  -- Ratio. Stored as the associate's share; Crux's is what is left, worked
-  -- out where it is read rather than stored twice and allowed to disagree.
+  -- The partnership ratio -- "80-20", where the associate takes 80% of the
+  -- revenue and Crux 20%. It is held for understanding and nothing reads it
+  -- to price or pay anything, which is why one number is enough: Crux's share
+  -- is what is left, worked out where it is read rather than stored twice and
+  -- allowed to disagree with itself.
+  --
+  -- It is a different thing from partner_rate below, which is what Crux pays
+  -- per document or per OGL case. Both are "a rate" in conversation and they
+  -- are not the same number.
   partner_share_pct numeric,
   ratio_note       text,
   cheque_held      boolean not null default false,

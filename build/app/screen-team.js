@@ -982,8 +982,15 @@ function tmPartner(){
           ? '<div class="tmpfv"><span>Partnership ratio</span><b>' +
             (r.partnerPct === null || r.partnerPct === undefined
               ? '<span class="tmgap">not set</span>'
-              : esc(r.partnerPct) + '% them &middot; ' + esc(r.cruxPct) + '% Crux') +
-            '</b>' + (r.note ? '<div class="mute">' + esc(r.note) + '</div>' : '') +
+              /* Written the way it is agreed and spoken -- "80-20" -- rather
+                 than as two percentages somebody has to put back together. */
+              : esc(r.partnerPct) + ' &ndash; ' + esc(r.cruxPct)) +
+            '</b><div class="mute">of revenue: ' +
+            (r.partnerPct === null || r.partnerPct === undefined
+              ? 'theirs and ours'
+              : esc(r.partnerPct) + '% theirs, ' + esc(r.cruxPct) + '% Crux') +
+            '</div>' +
+            (r.note ? '<div class="mute">' + esc(r.note) + '</div>' : '') +
             '</div>'
           : '') +
       '</div>';
@@ -1090,7 +1097,7 @@ function tmPartnerForm(f){
     (r
       ? '<h4 class="plh">Partnership ratio</h4>' +
         '<div class="tmedg">' +
-          tmField("Their share", "Crux takes what is left",
+          tmField("Their share of revenue", "80 here means 80\u201320: Crux takes what is left",
             '<input id="tmpfrp" class="pfin" type="number" step="0.01" min="0" ' +
             'max="100" value="' + v(r.partnerPct) + '">') +
           tmField("Note", "", '<input id="tmpfrn" class="pfin" value="' +
