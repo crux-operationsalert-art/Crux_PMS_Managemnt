@@ -1436,6 +1436,15 @@ function pfQuarterCard(){
 function pfQEditor(){
   var o = PF.qopts;
   if (!o) return '<div class="pfqedit"><p class="mute">Loading the measure list…</p></div>';
+  /* A route that is not there yet is not a refusal, and must not be dressed
+     as one. "These measures are not yours to change" told to somebody whose
+     measures they are is how a deploy that has not happened gets mistaken
+     for a permission problem and chased for an afternoon. */
+  if (o.error === "no_route" || o.error === "no_such_function") {
+    return '<div class="pfqedit"><div class="empty">The measure editor is ' +
+      'built but not published to the server yet. Nothing is wrong with your ' +
+      'account. Everything else on this card is live and correct.</div></div>';
+  }
   if (o.error || !o.maySet) {
     return '<div class="pfqedit"><div class="empty">' +
       esc(o.why || o.reason || 'These measures are not yours to change.') +
