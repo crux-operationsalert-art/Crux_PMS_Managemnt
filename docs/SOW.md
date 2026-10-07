@@ -279,6 +279,9 @@ against the measure they were filed for.
 | 2026-10-07 | The **application role** is the administrator's and not HR's, and nobody changes their own | It is the only field on the row that changes what somebody can DO rather than what they are. The same sentence `perf_rel` says about targets. |
 | 2026-10-07 | A **quarterly sub-measure is a breakdown, not a second measure** | The sheet says a manager "selects no KPI, adds none and removes none"; that sentence is about fairness between people holding the same chair. A part carries no weight and `plb_compute` does not read it (249). |
 | 2026-10-07 | A part **withdrawn, never erased**, and one row per name for the life of the sheet | 246's rule. "What was Bank A asked for in October" is a question asked in a dispute, and it must have one answer. |
+| 2026-10-07 | **Direction is set by the one-up manager, per KPI, alongside the target** — the registry only suggests | The owner's answer to Q3: "lower or higher depends on the KPI... we only suggest that xyz KPI can be given then the one up manager decides". The guess from the unit string is what made 181 goal KPIs pay more for a worse number (253). |
+| 2026-10-07 | **A target of zero is a promise; a null target is "nobody has set one"** | The owner's answer to Q2: "there is a possibility of 0 in KPIs like 0 escalation but then the one up manager should be adding 0 in the target and not keep it blank." `coalesce(target,0)=0` had made zero unsayable (253). |
+| 2026-10-07 | **The payout curve does not move** | Both scorers now call one `perf_ratio` and the over-achievement formula inside it is carried across unchanged. Changing the curve in the same migration would have made the correction indistinguishable from the change. |
 | 2026-10-07 | `build/app/screen-plb.js` is a **mirror**, and only what is bracketed in it ships | Found by measuring the live page: a fix written there, tested, committed and published had reached no screen. The markers now say so, and the build refuses to run without them. |
 
 ## 14. Open questions
@@ -298,13 +301,14 @@ including patch 17.
 
 **Built, tested, committed — NOT yet live.** The Supabase approval gate in
 this session began refusing every call, including `select 1`, and has not
-reopened. Two migrations and one deploy are waiting:
+reopened. Three migrations and one deploy are waiting, one call each:
 
-| | What | One call each |
+| | What | |
 |---|---|---|
-| 251 | an escalation about a person | apply the migration |
-| 252 | a partner is a Business Associate, and HR holds the file | apply the migration |
-| — | `perf`, carrying `/escalate`, `/escalate/act` and `/partner` | redeploy, `verify_jwt: false` |
+| 251 | an escalation about a person | apply |
+| 252 | a partner is a Business Associate, and HR holds the file | apply |
+| 253 | the manager says which way a measure points; zero is a target | apply |
+| — | `perf`, carrying `/escalate`, `/escalate/act`, `/partner` | redeploy, `verify_jwt: false` |
 | O4 | `drop index perf_assignment_once_top_old;` | tidiness only since 250 |
 
 **The owner's P1 list of 7 October.** All seven items are answered; §10 and the
@@ -316,7 +320,7 @@ commit log say how, and two of them were not defects.
 |---|---|---|
 | #40 | raise an escalation about a person | **Done** (251). Anybody may raise one about anybody but themselves; it routes to their manager, a step higher when the raiser is that manager, or to HR. The subject does not see it while it is open. |
 | #41 | merge or remove the tiles that duplicate the rebuilt screens | **Done** (patch 18). Measured rather than guessed: every screen was listed with the endpoints it reads, and `vPms` was still reachable at `#pms` wearing the rebuilt Performance screen's sub-tabs. `#pms` now opens the rebuilt screen. |
-| #42 | what a zero target means for a bonus, and `plb_compute`'s direction | **Blocked on the owner.** Q2 and Q3 below. It is the only thing in the PMS that is waiting on a decision rather than on work. |
+| #42 | what a zero target means for a bonus, and the direction defect | **Answered and built** (253). Direction is the one-up manager's, set beside the target; the registry only suggests. A target of zero is a promise; null is "nobody has set one yet". The payout curve is unchanged. |
 
 **Business Associates** (252) is built and tested: the designation, the
 agreements with their expected dates, the security cheque, the rates Crux
