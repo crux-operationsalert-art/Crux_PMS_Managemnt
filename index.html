@@ -4090,7 +4090,9 @@ function route(){
   paintNav();
   paintSub();
   el("view").innerHTML = '<p class="mute">Loading…</p>';
-  var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, pms:vPms, plb:vPlb, perf:vPerf,
+  var run = {today:vToday, cases:vCases, ogl:vOgl, matrix:vMatrix, /* pms was the screen the Performance rebuild replaced. The key stays
+       so an old link still works, and opens the rebuilt screen. */
+    pms:vPerf, plb:vPlb, perf:vPerf,
     people:vTeamScreen, penalties:vPenalties, org:vOrg, data:vData, mail:vMail,
     whatsapp:vWhats, config:vConfig, coverage:vCoverage,
     clients:vClients, history:vHistory, visits:vVisits, ideas:vIdeas, hr:vHR, joining:vJoining, access:vAccess, mis:vMis, tenday:vTenday, reports:vReports, rates:vRates,
