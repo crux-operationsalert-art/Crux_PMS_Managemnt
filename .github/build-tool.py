@@ -1692,13 +1692,36 @@ PATCHES.append((
 # =====================================================================
 PATCHES.append((
     "the screens the rebuilds replaced are no longer reachable",
-    "function vPerf(",
+    # The sentinel asks "is THIS patch already in app_page", and the only
+    # honest answer to that is a string this patch itself writes. It used to
+    # be `function vPerf(`, which app_page has carried since the Performance
+    # rebuild landed in it -- so the build skipped this patch on every run,
+    # printed "already in app_page", and published a page that still routed
+    # #pms to the screen vPerf replaced. The same trap as the mirror in
+    # screen-plb.js: it passed the build and reached no screen.
+    "pms was the screen the Performance rebuild replaced",
     [("pms:vPms, plb:vPlb, perf:vPerf,",
       "/* pms was the screen the Performance rebuild replaced. The key stays\n"
       "       so an old link still works, and opens the rebuilt screen. */\n"
       "    pms:vPerf, plb:vPlb, perf:vPerf,", 1)],
 ))
 
+
+# A sentinel asks one question -- "has this patch already been folded into
+# app_page?" -- and the only string that can answer it honestly is one THIS
+# patch writes. A sentinel the application carries for some other reason is
+# always true, so the patch is skipped on every run, the build says
+# "already in app_page", and the change reaches no screen. That is exactly
+# what happened to patch 18 for as long as it existed, and it is the same
+# shape as the mirror in screen-plb.js: it passed the build and changed
+# nothing. Checked here, before a line of the page is touched, because a
+# silent skip is the one failure this file cannot otherwise see.
+for name, sentinel, rules in PATCHES:
+    if not any(sentinel in new for _, new, _ in rules):
+        sys.exit("::error::%s: the sentinel %r is not written by any of this "
+                 "patch's own rules, so it can only ever report somebody "
+                 "else's work and skip this patch for ever. Use a string this "
+                 "patch inserts." % (name, sentinel[:60]))
 
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
