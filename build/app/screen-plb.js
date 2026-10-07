@@ -60,7 +60,13 @@ async function vPlb(){
     return;
   }
   PB.data = d;
-  if (d.maySetUp && !PB.q) PB.q = await plb("/plb/quarter?quarter=" + PB.quarter);
+  /* Asked for by EVERYBODY, not only the people who run the scheme.
+     plb_quarter is already scoped -- `where perf_rel(p_actor, p.id) is not
+     null` -- so a manager gets their own line and nobody else's, and every
+     row carries maySet. Gating the CALL on maySetUp was what locked a
+     manager out of their own team's quarter: the data was always theirs to
+     have, the screen simply never asked for it. */
+  if (!PB.q) PB.q = await plb("/plb/quarter?quarter=" + PB.quarter);
 
   /* #plb/<personId> -- somebody arrived here from that person's tile under
      My team, meaning to score THEM. Open their sheet rather than leaving
@@ -630,10 +636,42 @@ function pbResult(s){
 }
 
 /* ------------------------------------------------------- the manager view */
+/* ============================================ whose quarter is mine to run
+
+   "as a manager I am still not able to change the KPIs for quarterly score
+    card ... as well as Monthly targets"
+   "I can still update and change my own targets, which is wrong. Only my One
+    up should be able to do that and no one else."
+
+   Both are the same defect, and it is migration 242's again: this card was
+   drawn on `maySetUp` -- who RUNS the scheme, which is HR, Business
+   Excellence and an administrator -- rather than on who manages the person
+   whose sheet it is. So a manager with a team saw nothing at all, and an
+   administrator saw every sheet including their OWN and could set their own
+   target.
+
+   plb_quarter has carried the right answer all along: every sheet comes back
+   with `maySet`, which is perf_rel(you, them) in ('manage','admin') -- the
+   same test the monthly side uses, and the one that answers 'self' for your
+   own sheet and 'watch' for your manager's manager. So the screen asks that
+   instead. One rule, read in one place.                                   */
+function pbMine(){
+  return ((PB.q || {}).sheets || []).filter(function(s){ return s.maySet; });
+}
+function pbMayIssue(p){
+  /* The same question for somebody who has no sheet yet. */
+  return p.rel === "manage" || p.rel === "admin";
+}
+
 function pbManager(){
   var q = PB.q;
   if (!q) return "";
-  var sheets = q.sheets || [], pending = (q.inScheme || []).filter(function(p){ return !p.hasSheet; });
+  var mine = pbMine();
+  /* Nobody sets their own quarter. perf_rel answers 'self' first, for
+     administrators as much as for anybody, so a sheet of your own is simply
+     not in `mine` -- and the row below says so where the Open button was. */
+  var sheets = (q.sheets || []).filter(function(s){ return s.maySet || s.rel === "self"; });
+  var pending = (q.inScheme || []).filter(function(p){ return !p.hasSheet && pbMayIssue(p); });
 
   var srows = sheets.length ? sheets.map(function(s){
     return '<tr><td><b>' + esc(s.person) + '</b><div class="mute">' +
@@ -645,7 +683,10 @@ function pbManager(){
       '<td class="num">' + pbMoney(s.targetPlb) + '</td>' +
       '<td class="num">' + (s.published ? pbMoney(s.amount)
         : (s.certified ? pbMoney(s.amount) + '<div class="mute">certified</div>' : '—')) + '</td>' +
-      '<td class="plact"><button class="btn" data-pbopen="' + esc(s.sheetId) + '">Open</button></td></tr>';
+      '<td class="plact">' + (s.maySet
+        ? '<button class="btn" data-pbopen="' + esc(s.sheetId) + '">Open</button>'
+        : '<span class="mute">your own &mdash; your manager&rsquo;s to set</span>') +
+      '</td></tr>';
   }).join("") : '<tr><td colspan="7" class="mute">No goal sheet has been issued for this quarter.</td></tr>';
 
   var prows = pending.length ? pending.map(function(p){
@@ -658,7 +699,10 @@ function pbManager(){
         '" data-pbname="' + esc(p.person) + '">Issue a sheet</button></td></tr>';
   }).join("") : '<tr><td colspan="4" class="mute">Everyone in the scheme has a sheet for this quarter.</td></tr>';
 
-  return '<div class="card"><h2>Running the quarter</h2>' +
+  return '<div class="card"><h2>Running the quarter ' +
+      '<span class="mute">&middot; ' +
+      (mine.length ? mine.length + (mine.length === 1 ? ' sheet' : ' sheets') + ' yours to set'
+                   : 'nobody&rsquo;s quarter is yours to set') + '</span></h2>' +
     '<p class="mute">You give your team no KPIs — theirs are designated in the registry, ' +
     'identical for every person in that chair. What you give them is three things: the ' +
     'target, the monthly split, and approval of their two growth attributes. Those three ' +
@@ -865,7 +909,10 @@ function pbRender(){
              ' The scheme covers Branch Manager level and above; the Board, the Managing ' +
              'Director, Legal &amp; Compliance and business partners are outside it entirely.</div>') +
          '</div>') +
-    (d.maySetUp ? pbManager() : "");
+    /* Drawn for anybody who has somebody to run a quarter FOR, not only for
+       the people who run the scheme. pbMine() answers that question from the
+       payload rather than from a role. */
+    (pbMine().length || d.maySetUp ? pbManager() : "");
 
   if (PB.open && el("pbpanel")) el("pbpanel").innerHTML = pbOpenSheet();
   pbWire();

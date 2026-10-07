@@ -1352,7 +1352,7 @@ function pfEditForm(ms){
     '<div class="hragrid">' +
       '<label class="hrafield"><span>Call it</span>' +
         '<input data-pfe="name" value="' + esc(f.name || "") + '"></label>' +
-      '<label class="hrafield"><span>Counted in</span>' +
+      '<label class="hrafield"><span>Measured in <i class="hrahint">cases, rupees, %, days</i></span>' +
         '<input data-pfe="unit" value="' + esc(f.unit || "") + '"></label>' +
       '<label class="hrafield"><span>Weight %</span>' +
         '<input data-pfe="weight" type="number" step="any" value="' + esc(f.weight || "") + '"></label>' +
@@ -1362,7 +1362,7 @@ function pfEditForm(ms){
           return '<option value="' + c + '"' + (f.cadence === c ? ' selected' : '') + '>' +
             c.toLowerCase() + '</option>'; }).join("") +
       '</select></label>' +
-      '<label class="hrafield"><span>Climbs into</span><select data-pfe="rollsInto">' +
+      '<label class="hrafield"><span>Adds up into <i class="hrahint">which of YOUR measures this one feeds</i></span><select data-pfe="rollsInto">' +
         '<option value="">— nothing —</option>' +
         mine.map(function(m){
           return '<option value="' + esc(m.assignmentId) + '"' +
@@ -1412,7 +1412,7 @@ function pfForm(){
       ? '<label class="hrafield"><span>Call it</span>' +
           '<input data-pff="newName" value="' + esc(f.newName || "") +
           '" placeholder="Name it the way they would say it"></label>' +
-        '<label class="hrafield"><span>Counted in</span>' +
+        '<label class="hrafield"><span>Measured in <i class="hrahint">cases, rupees, %, days</i></span>' +
           '<input data-pff="unit" value="' + esc(f.unit || "") +
           '" placeholder="cases, visits, rupees, %"></label>'
       : '') +
@@ -1425,7 +1425,7 @@ function pfForm(){
       '<label class="hrafield"><span>On which day</span>' +
         '<input data-pff="cadenceDay" type="number" min="1" max="28" ' +
         'placeholder="10 for the 10th, 5 for Friday" value="' + esc(f.cadenceDay || "") + '"></label>' +
-      '<label class="hrafield"><span>Climbs into</span><select data-pff="rollsInto">' +
+      '<label class="hrafield"><span>Adds up into <i class="hrahint">which of YOUR measures this one feeds</i></span><select data-pff="rollsInto">' +
         '<option value="">— nothing yet —</option>' +
         mine.map(function(m){
           return '<option value="' + esc(m.assignmentId) + '"' +

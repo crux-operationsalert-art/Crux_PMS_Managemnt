@@ -147,13 +147,19 @@ r.get("/registry", async (_req: any, res: any) => {
 
 // ----------------------------------------------------------------- write
 
+// Issuing, recording an actual and scoring a month are the REPORTING
+// MANAGER'S -- the Constitution says so -- and were gated here on maySetUp,
+// which is who runs the scheme. That locked every manager out of their own
+// team's quarter and let an administrator open their OWN sheet and set their
+// own target. Migration 247 moved the question into plb_sheet_issue,
+// plb_actual_set and plb_score_month, where it is asked as
+// `perf_may_set(actor, person) or plb_runs_scheme(actor)` -- the same test
+// the monthly side uses, which answers 'self' for your own sheet and 'watch'
+// for your manager's manager.
+//
+// So these three carry no gate here. A rule enforced in a route is a rule
+// exactly one caller obeys.
 r.post("/issue", async (req: any, res: any) => {
-  if (!maySetUp(req)) {
-    return res.status(403).json({
-      error: "not_permitted",
-      reason: "Issuing a goal sheet is the reporting manager's, through HR.",
-    });
-  }
   const b = req.body || {};
   // $5::text, and JSON.stringify, on purpose. postgres.js decides how to
   // serialise by the JS type it is given: an object becomes JSON, but an
@@ -204,8 +210,9 @@ r.post("/score/lock", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// Gated in the database by migration 247, not here: plb_actual_set had no
+// actor check at all and was safe only because this line refused first.
 r.post("/actual", async (req: any, res: any) => {
-  if (!maySetUp(req)) return res.status(403).json({ error: "not_permitted" });
   const b = req.body || {};
   const o = await one(`select plb_actual_set($1,$2,$3,$4) as o`,
     [req.person.id, b.sheetId, b.kpiId, b.actual]);
