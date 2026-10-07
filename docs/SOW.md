@@ -207,20 +207,16 @@ leave one behind.
 
 ## 10. Open items the owner must apply
 
-This session's MCP approval gate refuses some calls and cannot be answered
-from here. Each item below is written, tested against the local baseline, and
-committed.
+Migrations 245, 246 and 247 are **applied live** (7 Oct 2026). What is left is
+three edge-function deploys, which this session's approval gate refuses, and
+one index.
 
 | # | What | Why it matters |
 |---|---|---|
-| O1 | Apply `build/migration/245_the_service_account_has_no_line_above_it_and_none_below.sql` | Until it lands the People upload template still carries the service account (104 rows, one of them the account), so the next upload puts it back as an employee. |
-| O2 | Redeploy the **plb** edge function, `verify_jwt: false` | HR is still handed 103 rows each with a Set-targets button that `perf_may_set` refuses; administrators are still offered the service account. |
-| O3 | Redeploy the **ops** edge function, `verify_jwt: false` | `/hr/overview` still counts the service account as an employee. |
-| O4 | Apply `build/migration/246_the_month_can_be_reopened_and_a_measure_taken_back.sql` and redeploy **perf** | The database half of the P1 fix. The screen half is already published: the KPI controls now explain instead of refusing. Until 246 lands, `perf_assign_remove` is still missing (Remove returns SQLSTATE 42883) and nobody can reopen a shut month. |
-
-**`verify_jwt` must be false on every one of these.** The page sends
-`x-crux-token` and no `Authorization` header; leaving it true 401s every
-request before a line of the function runs. It has happened twice.
+| O1 | Redeploy **plb** from `build/supabase/functions/plb` — **`verify_jwt: false`** | **The one that matters today.** The quarterly card is now drawn for a manager, but `/issue` and `/actual` still carry the old `maySetUp` route gate, so pressing Save refuses. The database half (247) is live and correct; the route is stale. |
+| O2 | Redeploy **perf**, `verify_jwt: false` | Adds `POST /perf/cycle/extend`, which the **Reopen it** control calls. Until then it answers "the service does not have the route yet". |
+| O3 | Redeploy **ops**, `verify_jwt: false` | `/hr/overview` still counts the service account as an employee. |
+| O4 | `drop index perf_assignment_once_top_old;` | The replacement index is live and correct; the old one was renamed, not dropped, because this session's gate refuses `drop`. While it is there, re-giving a KPI that was taken back in the same month fails on a unique violation. |
 
 ## 11. Risks and known limitations
 
