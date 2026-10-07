@@ -342,6 +342,140 @@ function pbOkr(s){
 }
 /* OKR-SCORECARD-END */
 
+/* QUARTER-AS-MONTHS-START ------------------------------------------
+   Everything between these two markers is INJECTED into the published
+   page by .github/build-tool.py, because the quarterly screen lives in
+   app_page and not in this file. The rest of this file is the mirror
+   the tests read; only what is bracketed here actually ships, and the
+   patch that ships it edits the app_page copy of pbGoalSheet, pbManager,
+   pbOpenSheet, vPlb and pbWire in place.
+
+   That distinction has already cost this project once. The fix that
+   lets a manager set their own team's quarter -- pbMine below -- was
+   written in this file, passed its tests, was committed and was
+   published, and reached no screen at all, because nothing injected
+   it. A file that is only a mirror has to say so where somebody
+   editing it will read it.
+   ------------------------------------------------------------------ */
+
+/* ============================================ whose quarter is mine to run
+
+   "as a manager I am still not able to change the KPIs for quarterly score
+    card ... as well as Monthly targets"
+   "I can still update and change my own targets, which is wrong. Only my One
+    up should be able to do that and no one else."
+
+   Both are the same defect, and it is migration 242's again: this card was
+   drawn on `maySetUp` -- who RUNS the scheme, which is HR, Business
+   Excellence and an administrator -- rather than on who manages the person
+   whose sheet it is. So a manager with a team saw nothing at all, and an
+   administrator saw every sheet including their OWN and could set their own
+   target.
+
+   plb_quarter has carried the right answer all along: every sheet comes back
+   with `maySet`, which is perf_rel(you, them) in ('manage','admin') -- the
+   same test the monthly side uses, and the one that answers 'self' for your
+   own sheet and 'watch' for your manager's manager. So the screen asks that
+   instead. One rule, read in one place.                                   */
+function pbMine(){
+  return ((PB.q || {}).sheets || []).filter(function(s){ return s.maySet; });
+}
+function pbMayIssue(p){
+  /* The same question for somebody who has no sheet yet. */
+  return p.rel === "manage" || p.rel === "admin";
+}
+
+/* -------------------------------------- sub-measures, the manager's side
+
+   "add sub KPIs in both monthly and the quaterly score card"
+
+   The monthly side has had these since migration 230 -- a target split
+   across clients, written by perf_split_set. This is the quarterly twin,
+   and it is deliberately the same KIND of thing rather than a new measure:
+   the sheet says, in the tool's own words, that a manager "selects no KPI,
+   adds none and removes none -- they come from your chair's published
+   measure set, identical for every seat of the chair". That sentence is
+   about fairness between people holding the same chair, so a part carries
+   no weight and enters no arithmetic. What it does is let "sixty cases"
+   be written down as "Bank A forty, Bank B twenty".
+
+   Whether the parts add up is said and never enforced: refusing a
+   breakdown halfway through writing one would make the manager do the
+   arithmetic before the tool would take the first line.                  */
+function pbPartsRow(p, i){
+  var v = function(x){ return x === null || x === undefined ? "" : esc(x); };
+  return '<tr>' +
+    '<td><input class="pbpl" data-i="' + i + '" value="' + v(p && p.label) +
+      '" placeholder="Bank A"></td>' +
+    '<td><input class="pbpt" data-i="' + i + '" type="number" step="0.01" value="' +
+      v(p && p.target) + '"></td>' +
+    '<td><input class="pbpa" data-i="' + i + '" type="number" step="0.01" value="' +
+      v(p && p.actual) + '"></td>' +
+    '<td><input class="pbpn" data-i="' + i + '" value="' + v(p && p.note) +
+      '" placeholder="a note, if one helps"></td>' +
+    '</tr>';
+}
+
+function pbPartsPanel(){
+  var mm = PB.openMonths && !PB.openMonths.error ? PB.openMonths : null;
+  if (!mm) return "";
+  if (!mm.maySet) {
+    return '<h4 class="plh">Sub-measures</h4>' +
+      '<p class="mute">Breaking a measure into parts is the manager that ' +
+      'person reports to, and the people who run the scheme.</p>';
+  }
+
+  var list = (mm.measures || []).map(function(x){
+    var open = PB.partsFor === x.goalKpiId;
+    var parts = x.parts || [];
+    return '<div class="pbpart">' +
+      '<div class="pbparth"><b>' + esc(x.name) + '</b>' +
+        '<span class="mute">' + pbNum(x.quarterly) + ' ' + esc(x.unit || "") + '</span>' +
+        (parts.length
+          ? '<span class="pill' + (x.partsAddUp === false ? ' warn' : ' ok') + '">' +
+            esc(parts.length) + ' part' + (parts.length === 1 ? '' : 's') +
+            (x.partsAddUp === false ? ', ' + pbNum(x.partsTotal) + ' of ' +
+              pbNum(x.quarterly) : '') + '</span>'
+          : '<span class="mute">not broken down</span>') +
+        '<button class="btn" data-pbparts="' + esc(x.goalKpiId) + '">' +
+          (open ? 'Close' : (parts.length ? 'Change' : 'Break it down')) + '</button>' +
+      '</div>' +
+      (open
+        ? '<div class="scroll"><table class="pbparts">' +
+            '<tr><th>Part</th><th>Target</th><th>Actual</th><th>Note</th></tr>' +
+            /* Whatever is there, plus three empty lines. A form that makes
+               somebody press Add before they can type the first part is a
+               form that asks permission to be used. */
+            parts.concat([null, null, null]).map(pbPartsRow).join("") +
+          '</table></div>' +
+          '<div class="plbar">' +
+            '<button class="btn primary" data-pbpsave="' + esc(x.goalKpiId) + '">' +
+              'Save the breakdown</button>' +
+            '<span class="mute">Leave every line blank to remove it. A part ' +
+            'carries no weight of its own &mdash; the measure keeps all of it.</span>' +
+          '</div>'
+        : "") +
+    '</div>';
+  }).join("");
+
+  return '<h4 class="plh">Sub-measures &mdash; one measure written out in its parts</h4>' +
+    '<p class="mute">The chair’s measure set does not change: a part is a ' +
+    'breakdown of a measure, not a measure of its own, so every seat of this ' +
+    'chair is still being asked for the same things.</p>' +
+    '<div class="pbpartlist">' + list + '</div><div id="pbpartmsg"></div>';
+}
+
+/* The open sheet read in the monthly shape as well, because the manager
+   panel is where the parts of a measure are written and a part hangs off
+   the GOAL-SHEET row, not off the measure definition. PB.months is the
+   signed-in person's own sheet; this is whoever they have opened. */
+async function pbOpenMonths(){
+  PB.openMonths = PB.open && PB.open.sheetId
+    ? await plb("/plb/kpi/months?sheet=" + encodeURIComponent(PB.open.sheetId))
+    : null;
+  PB.partsFor = null;
+}
+
 /* ------------------------------------- the quarter, in the monthly shape
 
    "FOrmat/UI/UX of monthly score card is good and easy to understand, so
@@ -424,6 +558,7 @@ function pbQMeasure(x, i){
     ptable + '</div>';
 }
 
+/* QUARTER-AS-MONTHS-END */
 function pbGoalSheet(s){
   var kpis = s.kpis || [], attrs = s.attributes || [];
   var mm = PB.months && !PB.months.error ? PB.months : null;
@@ -742,32 +877,6 @@ function pbResult(s){
 }
 
 /* ------------------------------------------------------- the manager view */
-/* ============================================ whose quarter is mine to run
-
-   "as a manager I am still not able to change the KPIs for quarterly score
-    card ... as well as Monthly targets"
-   "I can still update and change my own targets, which is wrong. Only my One
-    up should be able to do that and no one else."
-
-   Both are the same defect, and it is migration 242's again: this card was
-   drawn on `maySetUp` -- who RUNS the scheme, which is HR, Business
-   Excellence and an administrator -- rather than on who manages the person
-   whose sheet it is. So a manager with a team saw nothing at all, and an
-   administrator saw every sheet including their OWN and could set their own
-   target.
-
-   plb_quarter has carried the right answer all along: every sheet comes back
-   with `maySet`, which is perf_rel(you, them) in ('manage','admin') -- the
-   same test the monthly side uses, and the one that answers 'self' for your
-   own sheet and 'watch' for your manager's manager. So the screen asks that
-   instead. One rule, read in one place.                                   */
-function pbMine(){
-  return ((PB.q || {}).sheets || []).filter(function(s){ return s.maySet; });
-}
-function pbMayIssue(p){
-  /* The same question for somebody who has no sheet yet. */
-  return p.rel === "manage" || p.rel === "admin";
-}
 
 function pbManager(){
   var q = PB.q;
@@ -848,85 +957,6 @@ function pbWaiting(s){
    so what is editable here is exactly what is theirs: the Target PLB, each
    measure's target, the basis level it was set from, and the monthly split.
    The actual is the quarter-end fact, beside the target it is read against. */
-/* -------------------------------------- sub-measures, the manager's side
-
-   "add sub KPIs in both monthly and the quaterly score card"
-
-   The monthly side has had these since migration 230 -- a target split
-   across clients, written by perf_split_set. This is the quarterly twin,
-   and it is deliberately the same KIND of thing rather than a new measure:
-   the sheet says, in the tool's own words, that a manager "selects no KPI,
-   adds none and removes none -- they come from your chair's published
-   measure set, identical for every seat of the chair". That sentence is
-   about fairness between people holding the same chair, so a part carries
-   no weight and enters no arithmetic. What it does is let "sixty cases"
-   be written down as "Bank A forty, Bank B twenty".
-
-   Whether the parts add up is said and never enforced: refusing a
-   breakdown halfway through writing one would make the manager do the
-   arithmetic before the tool would take the first line.                  */
-function pbPartsRow(p, i){
-  var v = function(x){ return x === null || x === undefined ? "" : esc(x); };
-  return '<tr>' +
-    '<td><input class="pbpl" data-i="' + i + '" value="' + v(p && p.label) +
-      '" placeholder="Bank A"></td>' +
-    '<td><input class="pbpt" data-i="' + i + '" type="number" step="0.01" value="' +
-      v(p && p.target) + '"></td>' +
-    '<td><input class="pbpa" data-i="' + i + '" type="number" step="0.01" value="' +
-      v(p && p.actual) + '"></td>' +
-    '<td><input class="pbpn" data-i="' + i + '" value="' + v(p && p.note) +
-      '" placeholder="a note, if one helps"></td>' +
-    '</tr>';
-}
-
-function pbPartsPanel(){
-  var mm = PB.openMonths && !PB.openMonths.error ? PB.openMonths : null;
-  if (!mm) return "";
-  if (!mm.maySet) {
-    return '<h4 class="plh">Sub-measures</h4>' +
-      '<p class="mute">Breaking a measure into parts is the manager that ' +
-      'person reports to, and the people who run the scheme.</p>';
-  }
-
-  var list = (mm.measures || []).map(function(x){
-    var open = PB.partsFor === x.goalKpiId;
-    var parts = x.parts || [];
-    return '<div class="pbpart">' +
-      '<div class="pbparth"><b>' + esc(x.name) + '</b>' +
-        '<span class="mute">' + pbNum(x.quarterly) + ' ' + esc(x.unit || "") + '</span>' +
-        (parts.length
-          ? '<span class="pill' + (x.partsAddUp === false ? ' warn' : ' ok') + '">' +
-            esc(parts.length) + ' part' + (parts.length === 1 ? '' : 's') +
-            (x.partsAddUp === false ? ', ' + pbNum(x.partsTotal) + ' of ' +
-              pbNum(x.quarterly) : '') + '</span>'
-          : '<span class="mute">not broken down</span>') +
-        '<button class="btn" data-pbparts="' + esc(x.goalKpiId) + '">' +
-          (open ? 'Close' : (parts.length ? 'Change' : 'Break it down')) + '</button>' +
-      '</div>' +
-      (open
-        ? '<div class="scroll"><table class="pbparts">' +
-            '<tr><th>Part</th><th>Target</th><th>Actual</th><th>Note</th></tr>' +
-            /* Whatever is there, plus three empty lines. A form that makes
-               somebody press Add before they can type the first part is a
-               form that asks permission to be used. */
-            parts.concat([null, null, null]).map(pbPartsRow).join("") +
-          '</table></div>' +
-          '<div class="plbar">' +
-            '<button class="btn primary" data-pbpsave="' + esc(x.goalKpiId) + '">' +
-              'Save the breakdown</button>' +
-            '<span class="mute">Leave every line blank to remove it. A part ' +
-            'carries no weight of its own &mdash; the measure keeps all of it.</span>' +
-          '</div>'
-        : "") +
-    '</div>';
-  }).join("");
-
-  return '<h4 class="plh">Sub-measures &mdash; one measure written out in its parts</h4>' +
-    '<p class="mute">The chair’s measure set does not change: a part is a ' +
-    'breakdown of a measure, not a measure of its own, so every seat of this ' +
-    'chair is still being asked for the same things.</p>' +
-    '<div class="pbpartlist">' + list + '</div><div id="pbpartmsg"></div>';
-}
 
 function pbOpenSheet(){
   var s = PB.open;
@@ -1114,16 +1144,6 @@ async function pbDo(btn, path, body, box){
   if (out.error) { pbSay(box || "pbmsg", "bad", out.reason || out.error); return null; }
   pbSay(box || "pbmsg", "ok", out.note || "Done.");
   return out;
-}
-/* The open sheet read in the monthly shape as well, because the manager
-   panel is where the parts of a measure are written and a part hangs off
-   the GOAL-SHEET row, not off the measure definition. PB.months is the
-   signed-in person's own sheet; this is whoever they have opened. */
-async function pbOpenMonths(){
-  PB.openMonths = PB.open && PB.open.sheetId
-    ? await plb("/plb/kpi/months?sheet=" + encodeURIComponent(PB.open.sheetId))
-    : null;
-  PB.partsFor = null;
 }
 
 async function pbReload(){

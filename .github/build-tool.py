@@ -1478,6 +1478,176 @@ PATCHES.append((
       '  me = person;', 1)],
 ))
 
+# =====================================================================
+# 17. THE QUARTER BELONGS TO THE MANAGER, AND READS LIKE THE MONTH
+#
+# "As a manager I am still not able to change the KPIs for quaterly score
+#  card and add sub KPIs in both monthly and the quaterly score card as
+#  well as Monthly targets"
+# "Also I can still update and change my own targets, whihc is wrong. Only
+#  my One up should be able to do that and no one else."
+# "FOrmat/UI/UX of monthly score card is good and easy to understand, so
+#  use the same for [the quarterly] too but should be linked with the
+#  quaterly."
+#
+# WHY THIS PATCH EXISTS AT ALL. The quarterly screen lives in app_page, and
+# build/app/screen-plb.js is a MIRROR of it that the tests read. Patch 13
+# injects one block of that mirror -- the OKR card -- and nothing else. So
+# the fix for the first two complaints was written in the mirror, passed
+# its tests, was committed and was published, and reached no screen: there
+# was no patch to carry it across. That is the defect this is written for,
+# and it is the same defect as pfTeam(): code fixed in the copy nobody
+# runs.
+#
+# Three changes, and they are one change said three ways:
+#
+#   WHO.    plb_quarter has always returned maySet per sheet -- perf_rel in
+#           ('manage','admin'), which answers 'self' for your own and
+#           'watch' for your manager's manager. The screen asked maySetUp
+#           instead, which is who RUNS the scheme. That one substitution
+#           locked every manager out of their team's quarter AND let an
+#           administrator open their own. pbMine() asks the right question.
+#   PARTS.  A measure broken into named parts (migration 249). Not a second
+#           measure: the chair's published set is identical for every seat
+#           of the chair and must stay so.
+#   SHAPE.  The monthly card's shape on the quarterly card -- a target,
+#           what was filed, and how it reads -- three times, one per month,
+#           with what the quarter's split IMPLIES that month should be
+#           beside the real monthly target in PMS. That last pair is the
+#           link: where they differ, the two halves of the tool are asking
+#           for two different things.
+# =====================================================================
+_A2 = _PLB_SRC.index("/* QUARTER-AS-MONTHS-START")
+_B2 = _PLB_SRC.index("/* QUARTER-AS-MONTHS-END */")
+PLB_QM = _PLB_SRC[_A2:_B2]
+for _needed in ("function pbMine(", "function pbQMeasure(", "function pbPartsPanel(",
+                "async function pbOpenMonths("):
+    if _needed not in PLB_QM:
+        sys.exit("::error::" + _needed + " is outside the QUARTER-AS-MONTHS markers "
+                 "in screen-plb.js, so it would not ship")
+
+PATCHES.append((
+    "the quarter belongs to the manager, and reads like the month",
+    "function pbQMeasure(",
+    [
+        # The functions, immediately above the card they rebuild.
+        ("function pbGoalSheet(s){", PLB_QM + "\nfunction pbGoalSheet(s){", 1),
+
+        # What the screen holds: the quarter read month by month, the same
+        # for whichever sheet a manager has opened, and which measure is
+        # being broken into parts while it is being done.
+        ('var PB = { q:null, data:null, quarter:null, tab:"mine", busy:false, open:null, reg:null };',
+         'var PB = { q:null, data:null, quarter:null, tab:"mine", busy:false, open:null, reg:null,\n'
+         '           months:null, openMonths:null, partsFor:null, partsDraft:null };', 1),
+
+        # Asked for by everybody, not only the people who run the scheme.
+        # plb_quarter is already scoped `where perf_rel(p_actor, p.id) is
+        # not null`, so a manager gets their own line and nobody else's.
+        ('  if (d.maySetUp && !PB.q) PB.q = await plb("/plb/quarter?quarter=" + PB.quarter);\n'
+         '  pbRender();',
+         '  if (!PB.q) PB.q = await plb("/plb/quarter?quarter=" + PB.quarter);\n'
+         '  /* The same sheet read in the monthly card\'s shape. */\n'
+         '  PB.months = (d.sheet && d.sheet.sheetId)\n'
+         '    ? await plb("/plb/kpi/months?sheet=" + encodeURIComponent(d.sheet.sheetId))\n'
+         '    : null;\n'
+         '  pbRender();', 1),
+
+        # The KPI table becomes one block per measure, three months each.
+        ("function pbGoalSheet(s){\n  var kpis = s.kpis || [], attrs = s.attributes || [];\n"
+         "  var rows = kpis.map(function(k, i){",
+         "function pbGoalSheet(s){\n  var kpis = s.kpis || [], attrs = s.attributes || [];\n"
+         "  var mm = PB.months && !PB.months.error ? PB.months : null;\n"
+         "  var rows = mm ? (mm.measures || []).map(pbQMeasure).join(\"\") :\n"
+         "    kpis.map(function(k, i){", 1),
+
+        # The heading carries a real em dash and a real middle dot in
+        # app_page, not entities. Matching the bytes that are there is the
+        # whole job of an anchor.
+        ("'<h4 class=\"plh\">KPIs \u2014 what you deliver \u00b7 75% of the monthly score, "
+         "all of Achievement</h4>' +",
+         "'<h4 class=\"plh\">KPIs \u2014 what you deliver \u00b7 75% of the monthly score, "
+         "all of Achievement</h4>' + (mm ? (mm.disagree ? msg(\"warn\", esc(mm.note)) "
+         ": '<p class=\"mute\">' + esc(mm.note) + '</p>') + rows : '') +", 1),
+
+        # Only the manager's own sheets, and only sheets they may set.
+        ("  var sheets = q.sheets || [], pending = (q.inScheme || []).filter(function(p){ return !p.hasSheet; });",
+         "  /* Only what is THEIRS to set. plb_quarter returns the whole line --\n"
+         "     including their own sheet and their manager's manager's view --\n"
+         "     and maySet is the one that says which rows carry a button. */\n"
+         "  var sheets = (q.sheets || []).filter(function(s){ return s.maySet || s.rel === \"self\"; });\n"
+         "  var pending = (q.inScheme || []).filter(function(p){ return !p.hasSheet && pbMayIssue(p); });", 1),
+
+        ("'<td class=\"plact\"><button class=\"btn\" data-pbopen=\"' + esc(s.sheetId) + '\">Open</button></td></tr>';",
+         "'<td class=\"plact\">' + (s.maySet\n"
+         "        ? '<button class=\"btn\" data-pbopen=\"' + esc(s.sheetId) + '\">Open</button>'\n"
+         "        : '<span class=\"mute\">your own &mdash; your manager&rsquo;s to set</span>')\n"
+         "      + '</td></tr>';", 1),
+
+        # Drawn for anybody who has somebody to run a quarter FOR.
+        ("    (d.maySetUp ? pbManager() : \"\");",
+         "    (pbMine().length || d.maySetUp ? pbManager() : \"\");", 1),
+
+        # Sub-measures, in the manager's panel.
+        ("    pbMgrAttributes(s) +\n    pbMgrCountersign(s) +",
+         "    pbPartsPanel() +\n    pbMgrAttributes(s) +\n    pbMgrCountersign(s) +", 1),
+
+        # The open sheet is read in the monthly shape too, because a part
+        # hangs off the goal-sheet row and not off the measure definition.
+        ("      PB.open = o.sheet; pbRender();",
+         "      PB.open = o.sheet; await pbOpenMonths(); pbRender();", 1),
+        ("  if (el(\"pbclose\")) el(\"pbclose\").onclick = function(){ PB.open = null; pbRender(); };",
+         "  if (el(\"pbclose\")) el(\"pbclose\").onclick = function(){\n"
+         "    PB.open = null; PB.openMonths = null; PB.partsFor = null; pbRender();\n"
+         "  };\n"
+         "\n"
+         "  /* ------------------------------------------------ sub-measures */\n"
+         "  Array.prototype.forEach.call(el(\"view\").querySelectorAll(\"[data-pbparts]\"), function(b){\n"
+         "    b.onclick = function(){\n"
+         "      var id = b.getAttribute(\"data-pbparts\");\n"
+         "      PB.partsFor = PB.partsFor === id ? null : id;\n"
+         "      pbRender();\n"
+         "    };\n"
+         "  });\n"
+         "  Array.prototype.forEach.call(el(\"view\").querySelectorAll(\"[data-pbpsave]\"), function(b){\n"
+         "    b.onclick = async function(){\n"
+         "      var parts = [], bad = null;\n"
+         "      Array.prototype.forEach.call(el(\"view\").querySelectorAll(\".pbpl\"), function(t){\n"
+         "        var i = t.getAttribute(\"data-i\");\n"
+         "        var pick = function(cls){\n"
+         "          var e = el(\"view\").querySelector(\".\" + cls + '[data-i=\"' + i + '\"]');\n"
+         "          return e && e.value !== \"\" ? e.value : null;\n"
+         "        };\n"
+         "        var label = (t.value || \"\").trim();\n"
+         "        if (!label) {\n"
+         "          /* A line with a number and no name is a mistake, not an\n"
+         "             empty line. Dropping it would lose what somebody typed. */\n"
+         "          if (pick(\"pbpt\") !== null || pick(\"pbpa\") !== null) {\n"
+         "            bad = bad || \"A part with a number but no name. Name it, or clear the number.\";\n"
+         "          }\n"
+         "          return;\n"
+         "        }\n"
+         "        parts.push({ label: label, target: pick(\"pbpt\"), actual: pick(\"pbpa\"),\n"
+         "                     note: pick(\"pbpn\") });\n"
+         "      });\n"
+         "      if (bad) { pbSay(\"pbpartmsg\", \"bad\", bad); return; }\n"
+         "      var o = await pbDo(b, \"/plb/kpi/parts\",\n"
+         "        { goalKpiId: b.getAttribute(\"data-pbpsave\"), parts: parts }, \"pbpartmsg\");\n"
+         "      if (!o) return;\n"
+         "      await pbOpenMonths();\n"
+         "      pbRender();\n"
+         "    };\n"
+         "  });", 1),
+
+        ("async function pbReload(){\n  PB.q = null;\n  if (PB.open) {\n"
+         "    var o = await plb(\"/plb/sheet/\" + PB.open.sheetId);\n"
+         "    PB.open = o && o.sheet ? o.sheet : null;\n  }",
+         "async function pbReload(){\n  PB.q = null;\n  if (PB.open) {\n"
+         "    var o = await plb(\"/plb/sheet/\" + PB.open.sheetId);\n"
+         "    PB.open = o && o.sheet ? o.sheet : null;\n    await pbOpenMonths();\n  }", 1),
+    ],
+))
+
+
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
