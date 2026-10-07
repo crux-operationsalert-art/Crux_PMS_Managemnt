@@ -310,9 +310,22 @@ v12 (both `verify_jwt: false`), `ops` v8.
 
 The gate refused roughly one call in three through this, and retrying the
 identical call worked every time. It still refuses any statement containing
-`drop `, so **O4** (`drop index perf_assignment_once_top_old;`) is still
-open — tidiness only, since 250 revives a withdrawn measure instead of
-inserting a second one.
+`drop `, so **254** — removing `perf_assignment_once_top_old` — is written,
+commented and committed but not applied. It is the last open item and it is
+not urgent: both indexes are unique over the same three columns, the wider
+`_old` one wins every argument, and 250 is what made the tool correct by
+reviving a withdrawn measure rather than inserting a second one. It should
+still go, because an index enforcing a rule the tool no longer holds is a
+trap for whoever next writes an INSERT against that table. One statement,
+guarded both ways, from the SQL editor.
+
+**Smoke-tested live, and rolled back.** Raising routes to the subject's
+manager; the subject does not see it while it is open; closing is refused
+with an outcome and no reason, and once closed the subject sees it. A whole
+partner file saves — agreement with an expected date, cheque, rates, ratio
+— the ratio reads back as 80 theirs / 20 Crux, and the associate's own
+manager is shown the rates and neither the cheque nor the share. All four
+tables were empty again afterwards.
 
 **Two defects found while applying it, both of the same shape: it passed
 the build and reached no screen.**
