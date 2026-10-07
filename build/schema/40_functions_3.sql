@@ -8,54 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.perf_carry_forward(p_actor uuid, p_cycle uuid, p_person uuid, p_keep_targets boolean DEFAULT false)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare c perf_cycle; prev perf_cycle; n int := 0; r record; v_id uuid;
-begin
-  if not perf_may_set(p_actor, p_person) then
-    return jsonb_build_object('error','not_permitted');
-  end if;
-  select * into c from perf_cycle where id = p_cycle;
-  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
-  if current_date > c.assign_closes
-     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
-    return jsonb_build_object('error','window_closed',
-      'reason','KPIs for ' || c.period_start || ' had to be set by ' || c.assign_closes || '. HR or an administrator can reopen the month.');
-  end if;
-  select * into prev from perf_cycle
-   where period_kind = c.period_kind and period_start < c.period_start
-   order by period_start desc limit 1;
-  if prev.id is null then
-    return jsonb_build_object('ok', true, 'copied', 0,
-      'note','There is no earlier cycle to carry forward from.');
-  end if;
-  for r in select * from perf_assignment
-            where cycle_id = prev.id and person_id = p_person and part_of_id is null
-              and state is distinct from 'WITHDRAWN'
-            order by name loop
-    insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit,
-        target_value, weight_pct, cadence_day, set_by, carried_from_id, note)
-    values (c.id, p_person, r.kpi_id, r.name, r.unit,
-            case when p_keep_targets then r.target_value else null end,
-            r.weight_pct, r.cadence_day, p_actor, r.id, r.note)
-    on conflict do nothing
-    returning id into v_id;
-    if v_id is not null then
-      execute format('update perf_assignment set cadence = (select cadence from perf_assignment where id = %L) where id = %L', r.id, v_id);
-      n := n + 1;
-    end if;
-  end loop;
-  return jsonb_build_object('ok', true, 'copied', n,
-    'note', n || ' measure(s) carried from ' || prev.period_start ||
-      case when p_keep_targets then ' with last month''s targets.'
-           else '. The targets are blank on purpose -- last month''s number is not this month''s promise.' end);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.perf_cascade(p_assignment uuid, p_depth integer DEFAULT 0)
  RETURNS integer
  LANGUAGE plpgsql
@@ -213,6 +165,19 @@ AS $function$
   select case when lower(coalesce(p_unit, ''))
                    ~ 'below|variance|returned|escalat|attrition|error|vacant|dso|days to|cost per|per case'
               then 'CEILING' else 'FLOOR' end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_direction_of(p_kpi uuid, p_unit text, p_override text DEFAULT NULL::text)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select coalesce(
+    nullif(btrim(coalesce(p_override,'')),''),
+    (select k.direction from kpi_definition k where k.id = p_kpi),
+    case when perf_direction(p_unit) = 'CEILING' then 'LOWER' else 'HIGHER' end);
 $function$
 ;
 
@@ -560,15 +525,16 @@ begin
             where a.person_id = p_person and a.cycle_id = p_cycle and a.state <> 'WITHDRAWN' and a.part_of_id is null
             order by a.name loop
     v := perf_value(r.id);
-    if coalesce(r.target_value, 0) = 0 or v is null then
+    if r.target_value is null or v is null then
       skipped := skipped + 1;
       rows := rows || jsonb_build_object('name', r.name, 'value', v,
         'target', r.target_value, 'counted', false,
         'why', array_to_string(array_remove(array[
-                 case when coalesce(r.target_value, 0) = 0 then 'no target was set' end,
+                 case when r.target_value is null then 'no target has been set yet' end,
                  case when v is null then 'nothing filed yet' end], null), ' and '));
     else
-      ratio := least(150, round(100.0 * v / r.target_value, 2));
+      ratio := perf_ratio(perf_direction_of(r.kpi_id, r.unit, r.direction),
+                          r.target_value, v);
       wsum := wsum + ratio * coalesce(r.weight_pct, 1);
       w := w + coalesce(r.weight_pct, 1);
       n := n + 1;
@@ -773,6 +739,28 @@ begin
   end if;
   return v;
 end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_ratio(p_direction text, p_target numeric, p_actual numeric)
+ RETURNS numeric
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$
+  select case
+    when p_target is null or p_actual is null then null
+    when coalesce(p_direction,'HIGHER') = 'LOWER' then
+      case
+        when p_target = 0 then case when p_actual = 0 then 100 else 0 end
+        when p_actual = 0 then 150
+        else least(150, round(100.0 * p_target / p_actual, 2))
+      end
+    else
+      case
+        when p_target = 0 then case when p_actual > 0 then 150 else 100 end
+        else least(150, round(100.0 * p_actual / p_target, 2))
+      end
+  end;
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_rel(p_actor uuid, p_person uuid)
@@ -1922,7 +1910,9 @@ begin
        where pl.person_id = p_person
        order by case when pl.state in ('OPEN','EXTENDED') then 0 else 1 end,
                 pl.opened_at desc
-       limit 1));
+       limit 1),
+    'escalations', person_escalation_list(p_actor, p_person),
+    'mayRaise', p_actor <> p_person);
 end $function$
 ;
 
@@ -1979,6 +1969,274 @@ AS $function$
   from (
     select key, min(nm) as nm, jsonb_agg(who order by (who->>'weight')::int desc) as sides
       from side group by key) g;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.person_escalation_act(p_actor uuid, p_id uuid, p_action text, p_in jsonb DEFAULT '{}'::jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a person; e person_escalation; v_act text; v_outcome text; v_note text;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+  select * into e from person_escalation where id = p_id;
+  if e.id is null then return jsonb_build_object('error','no_such_escalation'); end if;
+
+  v_act := upper(coalesce(nullif(btrim(coalesce(p_action,'')),''),''));
+
+  if v_act = 'WITHDRAW' then
+    if p_actor <> e.raised_by then
+      return jsonb_build_object('error','not_permitted',
+        'reason','Only the person who raised it can withdraw it. Anybody it '
+              || 'went to can close it, with an outcome.');
+    end if;
+    if e.state in ('CLOSED','WITHDRAWN') then
+      return jsonb_build_object('ok', true, 'changed', false,
+        'note','It is already ' || lower(e.state) || '.');
+    end if;
+    update person_escalation set state = 'WITHDRAWN', closed_at = now(),
+           closed_by = p_actor,
+           outcome_note = nullif(btrim(coalesce(p_in->>'note','')),'')
+     where id = p_id;
+    insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                             old_value, new_value)
+    values (p_actor, 'PERSON_ESCALATION_WITHDRAWN', 'person', e.about_id::text,
+            jsonb_build_object('state', e.state), jsonb_build_object('state','WITHDRAWN'));
+    return jsonb_build_object('ok', true, 'changed', true,
+      'note','Withdrawn. It stays on the record as having been raised and '
+          || 'withdrawn, because a thing that was said was said.');
+  end if;
+
+  if not (p_actor = e.routed_to
+          or a.app_role = 'ADMIN'
+          or coalesce(a.department,'') = 'Human Resources'
+          or perf_may_set(p_actor, e.about_id)) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','This was put to somebody else. They, their own manager, HR and '
+            || 'the administrator can act on it.');
+  end if;
+
+  if v_act = 'SEEN' then
+    if e.state <> 'OPEN' then
+      return jsonb_build_object('ok', true, 'changed', false,
+        'note','Already ' || lower(e.state) || '.');
+    end if;
+    update person_escalation set state = 'SEEN', seen_at = now() where id = p_id;
+    return jsonb_build_object('ok', true, 'changed', true,
+      'note','Marked as read. The clock does not stop for that; closing it does.');
+  end if;
+
+  if v_act = 'CLOSE' then
+    if e.state in ('CLOSED','WITHDRAWN') then
+      return jsonb_build_object('ok', true, 'changed', false,
+        'note','It is already ' || lower(e.state) || '.');
+    end if;
+    v_outcome := upper(coalesce(nullif(btrim(coalesce(p_in->>'outcome','')),''),''));
+    if v_outcome not in ('UPHELD','PARTLY_UPHELD','NOT_UPHELD','RESOLVED','NO_ACTION') then
+      return jsonb_build_object('error','invalid',
+        'reason','Upheld, Partly upheld, Not upheld, Resolved or No action.');
+    end if;
+    v_note := nullif(btrim(coalesce(p_in->>'note','')),'');
+    if v_note is null then
+      return jsonb_build_object('error','invalid',
+        'reason','Say what was decided and why. Both the person who raised it '
+              || 'and the person it was about will read this.');
+    end if;
+    update person_escalation
+       set state = 'CLOSED', closed_at = now(), closed_by = p_actor,
+           outcome = v_outcome, outcome_note = v_note,
+           seen_at = coalesce(seen_at, now())
+     where id = p_id;
+    insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                             old_value, new_value)
+    values (p_actor, 'PERSON_ESCALATION_CLOSED', 'person', e.about_id::text,
+            jsonb_build_object('state', e.state),
+            jsonb_build_object('state','CLOSED','outcome', v_outcome));
+    return jsonb_build_object('ok', true, 'changed', true, 'outcome', v_outcome,
+      'note','Closed as ' || lower(replace(v_outcome,'_',' ')) ||
+             '. It is now on ' ||
+             (select full_name from person where id = e.about_id) ||
+             '''s own panel, with what was decided. Upholding it is not a '
+             'warning: if one is warranted, issue it.');
+  end if;
+
+  return jsonb_build_object('error','invalid',
+    'reason','Seen, Close or Withdraw.');
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.person_escalation_list(p_actor uuid, p_person uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a person; v_wide boolean;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then return '[]'::jsonb; end if;
+
+  v_wide := a.app_role = 'ADMIN'
+         or coalesce(a.department,'') = 'Human Resources'
+         or perf_may_set(p_actor, p_person);
+
+  return coalesce((
+    select jsonb_agg(jsonb_build_object(
+             'id', e.id, 'subject', e.subject, 'detail', e.detail,
+             'kind', e.about_kind, 'state', e.state,
+             'raisedAt', e.raised_at, 'dueOn', e.due_on,
+             'overdue', e.state in ('OPEN','SEEN') and e.due_on < current_date,
+             'raisedBy', rb.full_name,
+             'routedTo', rt.full_name, 'routedToId', e.routed_to,
+             'routeNote', e.route_note,
+             'outcome', e.outcome, 'outcomeNote', e.outcome_note,
+             'closedAt', e.closed_at, 'closedBy', cb.full_name,
+             'mine', e.raised_by = p_actor,
+             'mayAct', e.state in ('OPEN','SEEN')
+                       and (e.routed_to = p_actor or v_wide),
+             'mayWithdraw', e.raised_by = p_actor and e.state in ('OPEN','SEEN'))
+           order by e.raised_at desc)
+      from person_escalation e
+      left join person rb on rb.id = e.raised_by
+      left join person rt on rt.id = e.routed_to
+      left join person cb on cb.id = e.closed_by
+     where e.about_id = p_person
+       and (v_wide
+            or e.raised_by = p_actor
+            or e.routed_to = p_actor
+            -- The subject, once it has been decided and not before.
+            or (p_actor = p_person and e.state in ('CLOSED','WITHDRAWN')))
+  ), '[]'::jsonb);
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.person_escalation_raise(p_actor uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a person; s person;
+  v_about uuid; v_subject text; v_kind text;
+  v_to uuid; v_why text; v_id uuid; v_due date;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+
+  v_about := nullif(btrim(coalesce(p_in->>'personId','')),'')::uuid;
+  select * into s from person
+   where id = v_about and employment_status = 'ACTIVE' and superseded_by is null;
+  if s.id is null then
+    return jsonb_build_object('error','no_such_person');
+  end if;
+  if coalesce(s.employee_type,'EMPLOYEE') in ('SERVICE_ACCOUNT','CLIENT_CONTACT') then
+    return jsonb_build_object('error','not_staff',
+      'reason', s.full_name || ' is not a member of staff.');
+  end if;
+  if v_about = p_actor then
+    return jsonb_build_object('error','not_permitted',
+      'reason','An escalation is raised about somebody else. If this is about '
+            || 'your own work, your manager is the person to tell.');
+  end if;
+
+  v_subject := btrim(coalesce(p_in->>'subject',''));
+  if v_subject = '' then
+    return jsonb_build_object('error','invalid',
+      'reason','Say in one line what this is about. The person it goes to has '
+            || 'to be able to recognise it without opening it.');
+  end if;
+  if length(v_subject) > 160 then
+    return jsonb_build_object('error','invalid',
+      'reason','One line, not a paragraph. The detail goes underneath.');
+  end if;
+
+  v_kind := upper(coalesce(nullif(btrim(coalesce(p_in->>'kind','')),''),'CONDUCT'));
+  if v_kind not in ('CONDUCT','PERFORMANCE','PROCESS','SAFETY','OTHER') then
+    return jsonb_build_object('error','invalid',
+      'reason','Conduct, Performance, Process, Safety or Other.');
+  end if;
+
+  select to_id, why into v_to, v_why from person_escalation_route(p_actor, v_about);
+  if v_to is null then
+    return jsonb_build_object('error','nowhere_to_send',
+      'reason','There is nobody this can go to: ' || coalesce(v_why,'') || '. '
+            || 'Ask the administrator to put somebody above them first.');
+  end if;
+
+  v_due := plb_wd_after(current_date, 3);
+
+  insert into person_escalation (about_id, raised_by, routed_to, route_note,
+                                 subject, detail, about_kind, due_on)
+  values (v_about, p_actor, v_to, v_why, v_subject,
+          nullif(btrim(coalesce(p_in->>'detail','')),''), v_kind, v_due)
+  returning id into v_id;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'PERSON_ESCALATION_RAISED', 'person', v_about::text, null,
+          jsonb_build_object('id', v_id, 'subject', v_subject, 'kind', v_kind,
+                             'routedTo', v_to));
+
+  return jsonb_build_object('ok', true, 'id', v_id,
+    'routedTo', v_to,
+    'routedToName', (select full_name from person where id = v_to),
+    'dueOn', v_due,
+    'note', 'Raised with ' || (select full_name from person where id = v_to) ||
+            ' — ' || v_why || '. They have until ' || v_due ||
+            '. ' || s.full_name || ' is not shown it while it is open.');
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.person_escalation_route(p_raiser uuid, p_about uuid)
+ RETURNS TABLE(to_id uuid, why text)
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_mgr uuid; v_up uuid; v_hr uuid;
+begin
+  select manager_id into v_mgr from person where id = p_about;
+  if v_mgr is not null and v_mgr <> p_raiser then
+    return query select v_mgr, 'their manager'::text;
+    return;
+  end if;
+  -- The raiser IS the manager. Asking themselves is not an escalation, so it
+  -- goes one step further up.
+  if v_mgr is not null and v_mgr = p_raiser then
+    select manager_id into v_up from person where id = v_mgr;
+    if v_up is not null then
+      return query select v_up, 'you are their manager, so this goes to yours'::text;
+      return;
+    end if;
+  end if;
+  select id into v_hr from person
+   where employment_status = 'ACTIVE' and superseded_by is null
+     and coalesce(department,'') = 'Human Resources'
+     and coalesce(employee_type,'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
+   order by case when app_role = 'ADMIN' then 1 else 0 end, full_name
+   limit 1;
+  if v_hr is not null then
+    return query select v_hr, 'nobody is above them, so this goes to Human Resources'::text;
+    return;
+  end if;
+  return query select null::uuid,
+    'nobody is above them and there is no one in Human Resources'::text;
+end
 $function$
 ;
 
@@ -4164,7 +4422,7 @@ begin
   end if;
 
   for r in
-    select gk.kpi_id, k.name, k.unit, gk.weight_pct
+    select gk.kpi_id, k.name, k.unit, gk.weight_pct, gk.direction
       from plb_goal_kpi gk
       join kpi_definition k on k.id = gk.kpi_id
      where gk.sheet_id = p_sheet
@@ -4188,9 +4446,8 @@ begin
     -- A ceiling measure is met by being small. Turning it the right way up
     -- here rather than in the caller is the difference between rewarding a
     -- low error rate and punishing it.
-    ratio := case when perf_direction(r.unit) = 'CEILING'
-                  then case when v = 0 then 150 else least(150, round(100.0 * ratio / v, 2)) end
-                  else least(150, round(100.0 * v / ratio, 2)) end;
+    ratio := perf_ratio(perf_direction_of(r.kpi_id, r.unit, r.direction),
+                        ratio, v);
 
     pts := case when ratio >= 100 then 2.0
                 when ratio >= 50  then 1.0
@@ -4743,80 +5000,5 @@ AS $function$
       end)
   from s, c, fence, k, a, m left join r on true;
 $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_sheet_for(p_actor uuid, p_sheet uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_rel text; v_out jsonb;
-begin
-  v_rel := plb_sheet_rel(p_actor, p_sheet);
-  if v_rel is null then
-    if not exists (select 1 from plb_goal_sheet where id = p_sheet) then
-      return jsonb_build_object('error','no_such_sheet');
-    end if;
-    return jsonb_build_object('error','not_permitted',
-      'reason','A goal sheet is the employee''s and the line above them.');
-  end if;
-  v_out := plb_sheet(p_sheet);
-  if jsonb_typeof(v_out) = 'object' then
-    v_out := v_out || jsonb_build_object(
-      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin'));
-  end if;
-  return v_out;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_sheet_from_perf(p_actor uuid, p_person uuid, p_quarter date, p_plb_inr numeric DEFAULT 0)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_sheet uuid; o jsonb; r record; v_n int := 0; v numeric; a person;
-begin
-  select * into a from person where id = p_actor
-     and employment_status = 'ACTIVE' and superseded_by is null;
-
-  -- Running the scheme is HR's and Business Excellence's; managing the
-  -- person is their manager's. Either may issue a sheet, which is the set
-  -- plb_sheet_issue has always served. Gating this on perf_may_set alone
-  -- would have stopped HR doing their own job.
-  if not (perf_may_set(p_actor, p_person)
-          or a.app_role = 'ADMIN'
-          or coalesce(a.department,'') in ('Human Resources','Business Excellence')) then
-    return jsonb_build_object('error','not_permitted',
-      'reason','Issuing somebody''s goal sheet belongs to the person they '
-               'report to, or to HR.');
-  end if;
-  if p_actor = p_person then
-    return jsonb_build_object('error','not_permitted',
-      'reason','Nobody issues their own goal sheet.');
-  end if;
-
-  -- Issue it empty, so the registry decides the measures and the weights.
-  o := plb_sheet_issue(p_actor, p_person, p_quarter, p_plb_inr,
-                       '[]'::jsonb, false);
-  if o->>'error' is not null then return o; end if;
-  v_sheet := (o->>'sheetId')::uuid;
-
-  for r in select gk.kpi_id from plb_goal_kpi gk where gk.sheet_id = v_sheet loop
-    v := plb_quarter_from_months(p_person, r.kpi_id,
-                                 date_trunc('quarter', p_quarter)::date);
-    if v is not null then
-      update plb_goal_kpi set target_value = v
-       where sheet_id = v_sheet and kpi_id = r.kpi_id;
-      v_n := v_n + 1;
-    end if;
-  end loop;
-
-  return jsonb_build_object('ok', true, 'sheetId', v_sheet, 'fromMonths', v_n,
-    'note', v_n || ' quarterly target(s) read off the monthly targets that '
-            'already existed, rather than typed in again. Where the months '
-            'said nothing, the quarter is left blank.');
-end $function$
 ;
 

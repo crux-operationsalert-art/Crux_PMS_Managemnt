@@ -41,6 +41,7 @@ alter table public.escalation_instance add constraint escalation_instance_trigge
 alter table public.forecast_config add constraint forecast_config_id_check CHECK ((id = 1));
 alter table public.idea add constraint idea_decision_reason CHECK (((stage <> ALL (ARRAY['REJECTED'::idea_stage, 'ON_HOLD'::idea_stage])) OR (decision_reason IS NOT NULL)));
 alter table public.job_config add constraint job_disable_needs_reason CHECK ((enabled OR ((reason IS NOT NULL) AND (disabled_by IS NOT NULL))));
+alter table public.kpi_definition add constraint kpi_definition_direction_check CHECK (((direction IS NULL) OR (direction = ANY (ARRAY['HIGHER'::text, 'LOWER'::text]))));
 alter table public.kpi_definition add constraint kpi_scope CHECK ((NOT ((chair_id IS NOT NULL) AND (person_id IS NOT NULL))));
 alter table public.kpi_eligibility add constraint kpi_elig_effect CHECK ((((on_miss = 'DEDUCT'::text) AND (deduct_points IS NOT NULL)) OR ((on_miss = 'DEFAULT_SCORE'::text) AND (default_score IS NOT NULL))));
 alter table public.kpi_eligibility add constraint kpi_eligibility_on_miss_check CHECK ((on_miss = ANY (ARRAY['DEDUCT'::text, 'DEFAULT_SCORE'::text])));
@@ -55,9 +56,19 @@ alter table public.ogl_escalation_matrix add constraint ogl_escalation_matrix_es
 alter table public.op_node add constraint op_node_level_check CHECK ((level = ANY (ARRAY['GROUP'::text, 'ZONE'::text, 'LOCATION'::text])));
 alter table public.ops_alert add constraint ops_alert_severity_check CHECK ((severity = ANY (ARRAY['INFO'::text, 'WARN'::text, 'URGENT'::text])));
 alter table public.otp_challenge add constraint otp_challenge_purpose_check CHECK ((purpose = ANY (ARRAY['activate'::text, 'reset'::text])));
+alter table public.partner_agreement add constraint partner_agreement_pending_has_a_date CHECK (((state <> 'PENDING'::text) OR (expected_on IS NOT NULL)));
+alter table public.partner_agreement add constraint partner_agreement_said CHECK ((btrim(label) <> ''::text));
+alter table public.partner_agreement add constraint partner_agreement_signed_has_a_date CHECK (((state <> 'SIGNED'::text) OR (signed_on IS NOT NULL)));
+alter table public.partner_agreement add constraint partner_agreement_state CHECK ((state = ANY (ARRAY['SIGNED'::text, 'PENDING'::text, 'WAIVED'::text])));
+alter table public.partner_file add constraint partner_file_cheque_has_details CHECK (((NOT cheque_held) OR ((btrim(COALESCE(cheque_no, ''::text)) <> ''::text) AND (btrim(COALESCE(cheque_bank, ''::text)) <> ''::text))));
+alter table public.partner_file add constraint partner_file_share_is_a_share CHECK (((partner_share_pct IS NULL) OR ((partner_share_pct >= (0)::numeric) AND (partner_share_pct <= (100)::numeric))));
+alter table public.partner_rate add constraint partner_rate_kind CHECK ((kind = ANY (ARRAY['DOC_ITR'::text, 'DOC_STATEMENT'::text, 'DOC_KYC'::text, 'DOC_OTHER'::text, 'OGL'::text, 'OTHER'::text])));
+alter table public.partner_rate add constraint partner_rate_not_negative CHECK (((amount IS NULL) OR (amount >= (0)::numeric)));
+alter table public.partner_rate add constraint partner_rate_said CHECK ((btrim(label) <> ''::text));
 alter table public.penalty_instance add constraint penalty_amount_frozen CHECK ((amount >= (0)::numeric));
 alter table public.penalty_instance add constraint penalty_waiver_needs_reason CHECK (((state <> 'WAIVED'::penalty_state) OR ((waived_by IS NOT NULL) AND (waive_reason IS NOT NULL))));
 alter table public.perf_assignment add constraint perf_assignment_cadence_day_check CHECK (((cadence_day IS NULL) OR ((cadence_day >= 1) AND (cadence_day <= 28))));
+alter table public.perf_assignment add constraint perf_assignment_direction_check CHECK (((direction IS NULL) OR (direction = ANY (ARRAY['HIGHER'::text, 'LOWER'::text]))));
 alter table public.perf_assignment add constraint perf_assignment_not_its_own_parent CHECK ((rolls_into_id IS DISTINCT FROM id));
 alter table public.perf_assignment add constraint perf_assignment_not_its_own_part CHECK ((part_of_id IS DISTINCT FROM id));
 alter table public.perf_assignment add constraint perf_assignment_split_is_complete CHECK ((((split_kind IS NULL) AND (split_ref IS NULL) AND (part_of_id IS NULL)) OR ((split_kind IS NOT NULL) AND (part_of_id IS NOT NULL))));
@@ -77,6 +88,11 @@ alter table public.person add constraint person_not_own_manager CHECK (((manager
 alter table public.person add constraint person_service_account_reports_to_nobody CHECK (((employee_type IS DISTINCT FROM 'SERVICE_ACCOUNT'::text) OR (manager_id IS NULL)));
 alter table public.person_document add constraint person_document_kind_check CHECK ((kind = ANY (ARRAY['ID_PROOF'::text, 'ADDRESS_PROOF'::text, 'QUALIFICATION'::text, 'BANK_DETAILS'::text])));
 alter table public.person_document add constraint person_document_state_check CHECK ((state = ANY (ARRAY['WITH_HR'::text, 'VERIFIED'::text, 'REVISION_REQUESTED'::text, 'WITH_ACCOUNTS'::text])));
+alter table public.person_escalation add constraint person_escalation_closed_says_how CHECK (((state <> 'CLOSED'::text) OR ((outcome IS NOT NULL) AND (btrim(COALESCE(outcome_note, ''::text)) <> ''::text))));
+alter table public.person_escalation add constraint person_escalation_kind CHECK ((about_kind = ANY (ARRAY['CONDUCT'::text, 'PERFORMANCE'::text, 'PROCESS'::text, 'SAFETY'::text, 'OTHER'::text])));
+alter table public.person_escalation add constraint person_escalation_not_self CHECK ((about_id <> raised_by));
+alter table public.person_escalation add constraint person_escalation_said CHECK ((btrim(subject) <> ''::text));
+alter table public.person_escalation add constraint person_escalation_state CHECK ((state = ANY (ARRAY['OPEN'::text, 'SEEN'::text, 'CLOSED'::text, 'WITHDRAWN'::text])));
 alter table public.person_request add constraint person_request_employee_type_check CHECK ((employee_type = ANY (ARRAY['EMPLOYEE'::text, 'PARTNER'::text, 'INTERN'::text, 'CONTRACT'::text])));
 alter table public.person_request add constraint person_request_finance_state_check CHECK ((finance_state = ANY (ARRAY['NOT_REQUIRED'::text, 'AWAITING'::text, 'APPROVED'::text, 'REFUSED'::text])));
 alter table public.person_request add constraint person_request_reject_reason CHECK (((state <> 'REJECTED'::approval_state) OR (reject_reason IS NOT NULL)));
@@ -91,6 +107,7 @@ alter table public.plb_dispute add constraint plb_dispute_points_at_something CH
 alter table public.plb_dispute add constraint plb_dispute_stage CHECK ((stage = ANY (ARRAY['RAISED'::text, 'RESPONDED'::text, 'ESCALATED'::text, 'DECIDED'::text, 'WITHDRAWN'::text])));
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_state CHECK ((state = ANY (ARRAY['EMPTY'::text, 'PROPOSED'::text, 'APPROVED'::text, 'RETURNED'::text])));
 alter table public.plb_goal_kpi add constraint plb_goal_kpi_basis_level_check CHECK (((basis_level >= 1) AND (basis_level <= 4)));
+alter table public.plb_goal_kpi add constraint plb_goal_kpi_direction_check CHECK (((direction IS NULL) OR (direction = ANY (ARRAY['HIGHER'::text, 'LOWER'::text]))));
 alter table public.plb_goal_kpi add constraint plb_goal_kpi_weight_pct_check CHECK (((weight_pct > (0)::numeric) AND (weight_pct <= (100)::numeric)));
 alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_label_said CHECK ((btrim(label) <> ''::text));
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_status_check CHECK ((status = ANY (ARRAY['DRAFT'::text, 'ISSUED'::text, 'ACKNOWLEDGED'::text, 'LOCKED'::text])));

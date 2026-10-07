@@ -773,7 +773,8 @@ create table if not exists public.kpi_definition (
   "position" integer default 1 not null,
   parent_id uuid,
   cadence kpi_cadence default 'DAILY'::kpi_cadence not null,
-  accrual kpi_accrual default 'ADDS'::kpi_accrual not null
+  accrual kpi_accrual default 'ADDS'::kpi_accrual not null,
+  direction text
 );
 
 create table if not exists public.kpi_eligibility (
@@ -1061,6 +1062,50 @@ create table if not exists public.outbox (
   created_at timestamp with time zone default now() not null
 );
 
+create table if not exists public.partner_agreement (
+  id uuid default gen_random_uuid() not null,
+  person_id uuid not null,
+  label text not null,
+  state text default 'PENDING'::text not null,
+  signed_on date,
+  expected_on date,
+  note text,
+  "position" integer default 0 not null,
+  removed_at timestamp with time zone
+);
+
+create table if not exists public.partner_file (
+  person_id uuid not null,
+  agreements_all boolean default false not null,
+  partner_share_pct numeric,
+  ratio_note text,
+  cheque_held boolean default false not null,
+  cheque_no text,
+  cheque_bank text,
+  cheque_amount numeric,
+  cheque_dated_on date,
+  cheque_received_on date,
+  cheque_note text,
+  note text,
+  confirmed_by uuid,
+  confirmed_at timestamp with time zone,
+  updated_by uuid,
+  updated_at timestamp with time zone default now() not null
+);
+
+create table if not exists public.partner_rate (
+  id uuid default gen_random_uuid() not null,
+  person_id uuid not null,
+  kind text not null,
+  label text not null,
+  amount numeric,
+  unit text,
+  effective_from date,
+  note text,
+  "position" integer default 0 not null,
+  removed_at timestamp with time zone
+);
+
 create table if not exists public.penalty_instance (
   id uuid default gen_random_uuid() not null,
   rule_id uuid not null,
@@ -1118,7 +1163,8 @@ create table if not exists public.perf_assignment (
   carried_from_id uuid,
   note text,
   cadence kpi_cadence,
-  target_source text default 'SEEDED'::text not null
+  target_source text default 'SEEDED'::text not null,
+  direction text
 );
 
 create table if not exists public.perf_collection (
@@ -1235,6 +1281,25 @@ create table if not exists public.person_document (
   note text,
   updated_by uuid,
   updated_at timestamp with time zone default now() not null
+);
+
+create table if not exists public.person_escalation (
+  id uuid default gen_random_uuid() not null,
+  about_id uuid not null,
+  raised_by uuid not null,
+  raised_at timestamp with time zone default now() not null,
+  routed_to uuid,
+  route_note text,
+  subject text not null,
+  detail text,
+  about_kind text default 'CONDUCT'::text not null,
+  due_on date,
+  state text default 'OPEN'::text not null,
+  seen_at timestamp with time zone,
+  closed_at timestamp with time zone,
+  closed_by uuid,
+  outcome text,
+  outcome_note text
 );
 
 create table if not exists public.person_event (
@@ -1388,7 +1453,8 @@ create table if not exists public.plb_goal_kpi (
   m1_share numeric(6,3) default 0 not null,
   m2_share numeric(6,3) default 0 not null,
   m3_share numeric(6,3) default 0 not null,
-  actual_value numeric(16,4)
+  actual_value numeric(16,4),
+  direction text
 );
 
 create table if not exists public.plb_goal_kpi_part (

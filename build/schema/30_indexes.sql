@@ -72,6 +72,8 @@ CREATE INDEX ops_alert_open_idx ON public.ops_alert USING btree (severity, opene
 CREATE UNIQUE INDEX ops_alert_open_uniq ON public.ops_alert USING btree (dedupe_key) WHERE (resolved_at IS NULL);
 CREATE INDEX otp_challenge_mobile_purpose_idx ON public.otp_challenge USING btree (mobile, purpose);
 CREATE INDEX outbox_due_idx ON public.outbox USING btree (not_before) WHERE (state = 'QUEUED'::outbox_state);
+CREATE UNIQUE INDEX partner_agreement_once ON public.partner_agreement USING btree (person_id, lower(btrim(label)));
+CREATE UNIQUE INDEX partner_rate_once ON public.partner_rate USING btree (person_id, kind, lower(btrim(label)));
 CREATE UNIQUE INDEX penalty_no_duplicate ON public.penalty_instance USING btree (rule_id, person_id, occurred_on, entity_id) NULLS NOT DISTINCT;
 CREATE INDEX penalty_person_period_idx ON public.penalty_instance USING btree (person_id, period);
 CREATE INDEX penalty_recovery_idx ON public.penalty_instance USING btree (recovered_by, state, period);
@@ -88,6 +90,8 @@ CREATE INDEX perf_month_person_idx ON public.perf_month USING btree (person_id, 
 CREATE INDEX perf_revenue_period_idx ON public.perf_revenue USING btree (period DESC);
 CREATE UNIQUE INDEX person_auth_user_uniq ON public.person USING btree (auth_user_id) WHERE (auth_user_id IS NOT NULL);
 CREATE UNIQUE INDEX person_employee_no_uniq ON public.person USING btree (lower(btrim(employee_no))) WHERE ((employee_no IS NOT NULL) AND (superseded_by IS NULL));
+CREATE INDEX person_escalation_about ON public.person_escalation USING btree (about_id, raised_at DESC);
+CREATE INDEX person_escalation_to ON public.person_escalation USING btree (routed_to, state);
 CREATE INDEX person_event_person_idx ON public.person_event USING btree (person_id, at DESC);
 CREATE UNIQUE INDEX person_mobile_key ON public.person USING btree (mobile) WHERE (left_on IS NULL);
 CREATE UNIQUE INDEX person_one_primary_chair ON public.chair_holder USING btree (person_id) WHERE (is_primary AND (to_date IS NULL));

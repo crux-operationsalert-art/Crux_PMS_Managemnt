@@ -8,62 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_attach_done(p_assignment uuid, p_actor uuid, p_key text, p_file_name text, p_mime text DEFAULT NULL::text, p_bytes bigint DEFAULT NULL::bigint, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid, p_caption text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a assignment%rowtype; v_id uuid;
-begin
-  select * into a from assignment where id = p_assignment;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-  -- the key has to be one we would have issued for this assignment
-  if p_key not like (a.ref || '/%') then
-    return jsonb_build_object('error','key_mismatch',
-      'reason','That storage key does not belong to this assignment.');
-  end if;
-
-  insert into ogl_attachment (assignment_id, requirement_id, doc_kind, file_name,
-    party_kind, party_seq, storage_key, mime, bytes, uploaded_by, uploaded_at, caption)
-  values (p_assignment, p_requirement, upper(coalesce(nullif(btrim(p_doc_kind),''),'EVIDENCE')),
-    btrim(p_file_name), 'APPLICANT', 1, p_key, p_mime, p_bytes, p_actor, now(), p_caption)
-  returning id into v_id;
-
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (p_assignment, 'EVIDENCE_ATTACHED', p_actor,
-          jsonb_build_object('attachment', v_id, 'file', btrim(p_file_name),
-                             'requirement', p_requirement, 'bytes', p_bytes));
-
-  return jsonb_build_object('id', v_id, 'file_name', btrim(p_file_name));
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_attach_remove(p_attachment uuid, p_actor uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare t ogl_attachment%rowtype; a assignment%rowtype;
-begin
-  select * into t from ogl_attachment where id = p_attachment;
-  if not found then return jsonb_build_object('error','no_such_attachment'); end if;
-  select * into a from assignment where id = t.assignment_id;
-  if p_actor not in (t.uploaded_by, a.assignor_id)
-     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
-    return jsonb_build_object('error','not_yours',
-      'reason','The person who attached it, the assignor, or an administrator.');
-  end if;
-  update ogl_attachment set removed_at = now(), removed_by = p_actor
-   where id = p_attachment and removed_at is null;
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (t.assignment_id, 'EVIDENCE_REMOVED', p_actor,
-          jsonb_build_object('attachment', p_attachment, 'file', t.file_name));
-  return jsonb_build_object('id', p_attachment, 'removed', true);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_attachments(p_assignment uuid, p_person uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4613,6 +4557,329 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.partner_file_get(p_actor uuid, p_person uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a person; s person; f partner_file;
+  v_set boolean; v_close boolean; v_see_money boolean;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+  select * into s from person where id = p_person;
+  if s.id is null then return jsonb_build_object('error','no_such_person'); end if;
+
+  v_set   := partner_file_may_set(p_actor);
+  v_close := p_actor = p_person or perf_rel(p_actor, p_person) is not null;
+  if not (v_set or v_close) then
+    return jsonb_build_object('mayUse', false,
+      'reason','This is the file HR holds on a Business Associate. It is theirs, '
+            || 'the associate''s and their line''s.');
+  end if;
+
+  v_see_money := v_set or p_actor = p_person;
+
+  select * into f from partner_file where person_id = p_person;
+
+  return jsonb_build_object(
+    'mayUse', true,
+    'personId', p_person,
+    'name', s.full_name,
+    'isPartner', coalesce(s.employee_type,'') = 'PARTNER',
+    'maySet', v_set,
+    'seesTerms', v_see_money,
+    'agreementsAll', coalesce(f.agreements_all, false),
+    'confirmedBy', (select full_name from person where id = f.confirmed_by),
+    'confirmedAt', f.confirmed_at,
+    'note', f.note,
+    'agreements', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', g.id, 'label', g.label, 'state', g.state,
+               'signedOn', g.signed_on, 'expectedOn', g.expected_on,
+               'note', g.note,
+               'overdue', g.state = 'PENDING' and g.expected_on < current_date)
+             order by g.position, g.label)
+        from partner_agreement g
+       where g.person_id = p_person and g.removed_at is null), '[]'::jsonb),
+    'rates', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'id', rt.id, 'kind', rt.kind, 'label', rt.label,
+               'amount', rt.amount, 'unit', rt.unit,
+               'effectiveFrom', rt.effective_from, 'note', rt.note)
+             order by rt.kind, rt.position, rt.label)
+        from partner_rate rt
+       where rt.person_id = p_person and rt.removed_at is null), '[]'::jsonb),
+    'cheque', case when v_see_money then jsonb_build_object(
+        'held', coalesce(f.cheque_held, false),
+        'no', f.cheque_no, 'bank', f.cheque_bank, 'amount', f.cheque_amount,
+        'datedOn', f.cheque_dated_on, 'receivedOn', f.cheque_received_on,
+        'note', f.cheque_note) else null end,
+    'ratio', case when v_see_money and coalesce(s.employee_type,'') = 'PARTNER'
+      then jsonb_build_object(
+        'partnerPct', f.partner_share_pct,
+        'cruxPct', case when f.partner_share_pct is null then null
+                        else 100 - f.partner_share_pct end,
+        'note', f.ratio_note) else null end,
+    'openCount', (select count(*) from partner_agreement g
+                   where g.person_id = p_person and g.removed_at is null
+                     and g.state = 'PENDING'),
+    'overdueCount', (select count(*) from partner_agreement g
+                      where g.person_id = p_person and g.removed_at is null
+                        and g.state = 'PENDING' and g.expected_on < current_date),
+    'rateKinds', jsonb_build_array(
+       jsonb_build_array('DOC_ITR','Documents — ITR'),
+       jsonb_build_array('DOC_STATEMENT','Documents — Statement'),
+       jsonb_build_array('DOC_KYC','Documents — KYC'),
+       jsonb_build_array('DOC_OTHER','Documents — Other'),
+       jsonb_build_array('OGL','OGL'),
+       jsonb_build_array('OTHER','Anything else')));
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.partner_file_may_set(p_actor uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select exists (select 1 from person a
+                  where a.id = p_actor
+                    and a.employment_status = 'ACTIVE' and a.superseded_by is null
+                    and (a.app_role = 'ADMIN'
+                         or coalesce(a.department,'') = 'Human Resources'));
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.partner_file_set(p_actor uuid, p_person uuid, p_in jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  s person; x jsonb; i int := 0;
+  v_bad jsonb := '[]'::jsonb;
+  v_all boolean; v_held boolean; v_share numeric;
+  v_state text; v_kind text; v_signed date; v_expected date;
+  n_open int;
+begin
+  if not partner_file_may_set(p_actor) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Confirming a Business Associate''s file is Human Resources'' '
+            || 'and the administrator''s.');
+  end if;
+  select * into s from person
+   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null;
+  if s.id is null then return jsonb_build_object('error','no_such_person'); end if;
+  if p_in is null or jsonb_typeof(p_in) <> 'object' then
+    return jsonb_build_object('error','nothing_to_set',
+      'reason','Send the file. This call carried '
+            || coalesce(jsonb_typeof(p_in),'nothing') || '.');
+  end if;
+
+  v_all  := coalesce((p_in->>'agreementsAll')::boolean, false);
+  v_held := coalesce((p_in#>>'{cheque,held}')::boolean, false);
+
+  if v_held and (btrim(coalesce(p_in#>>'{cheque,no}','')) = ''
+                 or btrim(coalesce(p_in#>>'{cheque,bank}','')) = '') then
+    v_bad := v_bad || jsonb_build_object('field','cheque',
+      'reason','A cheque that is held is a cheque somebody can find. Give the '
+            || 'number and the bank.');
+  end if;
+
+  if p_in ? 'ratio' and jsonb_typeof(p_in->'ratio') = 'object'
+     and (p_in#>>'{ratio,partnerPct}') is not null
+     and btrim(p_in#>>'{ratio,partnerPct}') <> '' then
+    if coalesce(s.employee_type,'') <> 'PARTNER' then
+      v_bad := v_bad || jsonb_build_object('field','ratio',
+        'reason','A partnership ratio is only for a partner. ' || s.full_name ||
+                 ' is on the books as ' ||
+                 lower(coalesce(s.employee_type,'an employee')) || '.');
+    else
+      begin
+        v_share := (p_in#>>'{ratio,partnerPct}')::numeric;
+      exception when others then
+        v_share := null;
+        v_bad := v_bad || jsonb_build_object('field','ratio',
+          'reason','A share is a number out of a hundred.');
+      end;
+      if v_share is not null and (v_share < 0 or v_share > 100) then
+        v_bad := v_bad || jsonb_build_object('field','ratio',
+          'reason','A share is between nought and a hundred. Crux takes what '
+                || 'is left, so there is only one number to type.');
+      end if;
+    end if;
+  end if;
+
+  if jsonb_typeof(coalesce(p_in->'agreements','[]'::jsonb)) <> 'array' then
+    v_bad := v_bad || jsonb_build_object('field','agreements',
+      'reason','Send the agreements as a list.');
+  else
+    for x in select jsonb_array_elements(coalesce(p_in->'agreements','[]'::jsonb)) loop
+      i := i + 1;
+      if btrim(coalesce(x->>'label','')) = '' then
+        v_bad := v_bad || jsonb_build_object('field','agreements',
+          'reason','Agreement ' || i || ' has no name.');
+      end if;
+      v_state := upper(coalesce(nullif(btrim(coalesce(x->>'state','')),''),'PENDING'));
+      if v_state not in ('SIGNED','PENDING','WAIVED') then
+        v_bad := v_bad || jsonb_build_object('field','agreements',
+          'reason','Agreement ' || i || ': signed, pending or waived.');
+      end if;
+      if v_state = 'PENDING'
+         and nullif(btrim(coalesce(x->>'expectedOn','')),'') is null then
+        v_bad := v_bad || jsonb_build_object('field','agreements',
+          'reason','Agreement ' || i || ' is not signed, so say when it is '
+                || 'expected. An open item with no date is an open item '
+                || 'nobody is holding.');
+      end if;
+      if v_state = 'SIGNED'
+         and nullif(btrim(coalesce(x->>'signedOn','')),'') is null then
+        v_bad := v_bad || jsonb_build_object('field','agreements',
+          'reason','Agreement ' || i || ' is signed, so say when.');
+      end if;
+    end loop;
+  end if;
+
+  i := 0;
+  if jsonb_typeof(coalesce(p_in->'rates','[]'::jsonb)) <> 'array' then
+    v_bad := v_bad || jsonb_build_object('field','rates',
+      'reason','Send the rates as a list.');
+  else
+    for x in select jsonb_array_elements(coalesce(p_in->'rates','[]'::jsonb)) loop
+      i := i + 1;
+      v_kind := upper(coalesce(nullif(btrim(coalesce(x->>'kind','')),''),'OTHER'));
+      if v_kind not in ('DOC_ITR','DOC_STATEMENT','DOC_KYC','DOC_OTHER','OGL','OTHER') then
+        v_bad := v_bad || jsonb_build_object('field','rates',
+          'reason','Rate ' || i || ': ITR, Statement, KYC, Other document, OGL '
+                || 'or anything else.');
+      end if;
+      if btrim(coalesce(x->>'label','')) = '' then
+        v_bad := v_bad || jsonb_build_object('field','rates',
+          'reason','Rate ' || i || ' has no name. "250" against nothing is not '
+                || 'a rate.');
+      end if;
+      if nullif(btrim(coalesce(x->>'amount','')),'') is not null
+         and (x->>'amount')::numeric < 0 then
+        v_bad := v_bad || jsonb_build_object('field','rates',
+          'reason','Rate ' || i || ' is negative.');
+      end if;
+    end loop;
+  end if;
+
+  if jsonb_array_length(v_bad) > 0 then
+    return jsonb_build_object('error','invalid', 'fields', v_bad,
+      'reason','Nothing was saved. Put these right and send it again.');
+  end if;
+
+  insert into partner_file (person_id, agreements_all, partner_share_pct,
+      ratio_note, cheque_held, cheque_no, cheque_bank, cheque_amount,
+      cheque_dated_on, cheque_received_on, cheque_note, note,
+      confirmed_by, confirmed_at, updated_by, updated_at)
+  values (p_person, v_all, v_share,
+          nullif(btrim(coalesce(p_in#>>'{ratio,note}','')),''),
+          v_held,
+          nullif(btrim(coalesce(p_in#>>'{cheque,no}','')),''),
+          nullif(btrim(coalesce(p_in#>>'{cheque,bank}','')),''),
+          nullif(btrim(coalesce(p_in#>>'{cheque,amount}','')),'')::numeric,
+          nullif(btrim(coalesce(p_in#>>'{cheque,datedOn}','')),'')::date,
+          nullif(btrim(coalesce(p_in#>>'{cheque,receivedOn}','')),'')::date,
+          nullif(btrim(coalesce(p_in#>>'{cheque,note}','')),''),
+          nullif(btrim(coalesce(p_in->>'note','')),''),
+          case when v_all then p_actor else null end,
+          case when v_all then now() else null end,
+          p_actor, now())
+  on conflict (person_id) do update
+     set agreements_all = excluded.agreements_all,
+         partner_share_pct = excluded.partner_share_pct,
+         ratio_note = excluded.ratio_note,
+         cheque_held = excluded.cheque_held,
+         cheque_no = excluded.cheque_no,
+         cheque_bank = excluded.cheque_bank,
+         cheque_amount = excluded.cheque_amount,
+         cheque_dated_on = excluded.cheque_dated_on,
+         cheque_received_on = excluded.cheque_received_on,
+         cheque_note = excluded.cheque_note,
+         note = excluded.note,
+         confirmed_by = case when excluded.agreements_all
+                             then coalesce(partner_file.confirmed_by, excluded.confirmed_by)
+                             else null end,
+         confirmed_at = case when excluded.agreements_all
+                             then coalesce(partner_file.confirmed_at, excluded.confirmed_at)
+                             else null end,
+         updated_by = excluded.updated_by,
+         updated_at = now();
+
+  if p_in ? 'agreements' then
+    update partner_agreement set removed_at = now()
+     where person_id = p_person and removed_at is null;
+  end if;
+  if p_in ? 'rates' then
+    update partner_rate set removed_at = now()
+     where person_id = p_person and removed_at is null;
+  end if;
+
+  i := 0;
+  for x in select jsonb_array_elements(coalesce(p_in->'agreements','[]'::jsonb)) loop
+    i := i + 1;
+    v_state := upper(coalesce(nullif(btrim(coalesce(x->>'state','')),''),'PENDING'));
+    v_signed := nullif(btrim(coalesce(x->>'signedOn','')),'')::date;
+    v_expected := nullif(btrim(coalesce(x->>'expectedOn','')),'')::date;
+    insert into partner_agreement (person_id, label, state, signed_on, expected_on,
+                                   note, position)
+    values (p_person, btrim(x->>'label'), v_state, v_signed, v_expected,
+            nullif(btrim(coalesce(x->>'note','')),''), i)
+    on conflict (person_id, lower(btrim(label))) do update
+       set state = excluded.state, signed_on = excluded.signed_on,
+           expected_on = excluded.expected_on, note = excluded.note,
+           position = excluded.position, removed_at = null;
+  end loop;
+
+  i := 0;
+  for x in select jsonb_array_elements(coalesce(p_in->'rates','[]'::jsonb)) loop
+    i := i + 1;
+    v_kind := upper(coalesce(nullif(btrim(coalesce(x->>'kind','')),''),'OTHER'));
+    insert into partner_rate (person_id, kind, label, amount, unit,
+                              effective_from, note, position)
+    values (p_person, v_kind, btrim(x->>'label'),
+            nullif(btrim(coalesce(x->>'amount','')),'')::numeric,
+            nullif(btrim(coalesce(x->>'unit','')),''),
+            nullif(btrim(coalesce(x->>'effectiveFrom','')),'')::date,
+            nullif(btrim(coalesce(x->>'note','')),''), i)
+    on conflict (person_id, kind, lower(btrim(label))) do update
+       set amount = excluded.amount, unit = excluded.unit,
+           effective_from = excluded.effective_from, note = excluded.note,
+           position = excluded.position, removed_at = null;
+  end loop;
+
+  select count(*) into n_open from partner_agreement
+   where person_id = p_person and removed_at is null and state = 'PENDING';
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'PARTNER_FILE_SET', 'person', p_person::text, null, p_in);
+
+  return jsonb_build_object('ok', true, 'personId', p_person,
+    'agreementsAll', v_all, 'open', n_open,
+    'note', case
+      when v_all and n_open > 0 then
+        'Saved. You have marked everything signed and ' || n_open ||
+        ' agreement(s) are still pending on the list below. One of the two '
+        'is out of date.'
+      when v_all then 'Saved, and confirmed as all signed and in.'
+      when n_open > 0 then 'Saved. ' || n_open || ' agreement(s) still to come.'
+      else 'Saved.' end);
+end
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.penalty_recovery_for(p_person uuid, p_rule uuid)
  RETURNS text
  LANGUAGE sql
@@ -4810,7 +5077,7 @@ begin
 
   insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit, target_value,
       weight_pct, cadence_day, part_of_id, split_kind, split_ref, split_label,
-      rolls_into_id, set_by, note)
+      rolls_into_id, set_by, note, direction)
   values (c.id, v_person, k.id,
           coalesce(p_in->>'name', k.name),
           coalesce(p_in->>'unit', k.unit),
@@ -4822,7 +5089,8 @@ begin
           nullif(p_in->>'splitRef','')::uuid,
           nullif(p_in->>'splitLabel',''),
           nullif(p_in->>'rollsInto','')::uuid,
-          p_actor, nullif(p_in->>'note',''))
+          p_actor, nullif(p_in->>'note',''),
+          nullif(upper(btrim(coalesce(p_in->>'direction',''))),''))
   returning id into v_id;
   if p_in ? 'cadence' and (p_in->>'cadence') is not null then
     execute format('update perf_assignment set cadence = %L where id = %L',
@@ -4915,6 +5183,9 @@ begin
              'note', a.note);
   update perf_assignment set
     name        = v_name,
+    direction   = case when p_in ? 'direction'
+                       then nullif(upper(btrim(coalesce(p_in->>'direction',''))),'')
+                       else direction end,
     unit        = case when p_in ? 'unit' then nullif(btrim(coalesce(p_in->>'unit','')),'') else unit end,
     weight_pct  = case when p_in ? 'weight' then nullif(p_in->>'weight','')::numeric else weight_pct end,
     cadence_day = case when p_in ? 'cadenceDay' then nullif(p_in->>'cadenceDay','')::int else cadence_day end,
@@ -5012,6 +5283,54 @@ begin
     end if;
   end if;
   return new;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_carry_forward(p_actor uuid, p_cycle uuid, p_person uuid, p_keep_targets boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare c perf_cycle; prev perf_cycle; n int := 0; r record; v_id uuid;
+begin
+  if not perf_may_set(p_actor, p_person) then
+    return jsonb_build_object('error','not_permitted');
+  end if;
+  select * into c from perf_cycle where id = p_cycle;
+  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  if current_date > c.assign_closes
+     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
+    return jsonb_build_object('error','window_closed',
+      'reason','KPIs for ' || c.period_start || ' had to be set by ' || c.assign_closes || '. HR or an administrator can reopen the month.');
+  end if;
+  select * into prev from perf_cycle
+   where period_kind = c.period_kind and period_start < c.period_start
+   order by period_start desc limit 1;
+  if prev.id is null then
+    return jsonb_build_object('ok', true, 'copied', 0,
+      'note','There is no earlier cycle to carry forward from.');
+  end if;
+  for r in select * from perf_assignment
+            where cycle_id = prev.id and person_id = p_person and part_of_id is null
+              and state is distinct from 'WITHDRAWN'
+            order by name loop
+    insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit,
+        target_value, weight_pct, cadence_day, set_by, carried_from_id, note)
+    values (c.id, p_person, r.kpi_id, r.name, r.unit,
+            case when p_keep_targets then r.target_value else null end,
+            r.weight_pct, r.cadence_day, p_actor, r.id, r.note)
+    on conflict do nothing
+    returning id into v_id;
+    if v_id is not null then
+      execute format('update perf_assignment set cadence = (select cadence from perf_assignment where id = %L) where id = %L', r.id, v_id);
+      n := n + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'copied', n,
+    'note', n || ' measure(s) carried from ' || prev.period_start ||
+      case when p_keep_targets then ' with last month''s targets.'
+           else '. The targets are blank on purpose -- last month''s number is not this month''s promise.' end);
 end $function$
 ;
 

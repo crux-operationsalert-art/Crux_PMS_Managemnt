@@ -165,6 +165,11 @@ alter table public.onboarding add constraint onboarding_person_request_id_fkey F
 alter table public.op_node add constraint op_node_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES op_node(id) ON DELETE CASCADE;
 alter table public.op_node_alias add constraint op_node_alias_created_by_fkey FOREIGN KEY (created_by) REFERENCES person(id);
 alter table public.ops_alert add constraint ops_alert_acknowledged_by_fkey FOREIGN KEY (acknowledged_by) REFERENCES person(id);
+alter table public.partner_agreement add constraint partner_agreement_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id) ON DELETE CASCADE;
+alter table public.partner_file add constraint partner_file_confirmed_by_fkey FOREIGN KEY (confirmed_by) REFERENCES person(id);
+alter table public.partner_file add constraint partner_file_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id) ON DELETE CASCADE;
+alter table public.partner_file add constraint partner_file_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES person(id);
+alter table public.partner_rate add constraint partner_rate_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id) ON DELETE CASCADE;
 alter table public.penalty_instance add constraint penalty_instance_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id);
 alter table public.penalty_instance add constraint penalty_instance_rule_id_fkey FOREIGN KEY (rule_id) REFERENCES penalty_rule(id);
 alter table public.penalty_instance add constraint penalty_instance_waived_by_fkey FOREIGN KEY (waived_by) REFERENCES person(id);
@@ -198,6 +203,10 @@ alter table public.person add constraint person_manager_id_fkey FOREIGN KEY (man
 alter table public.person add constraint person_superseded_by_fkey FOREIGN KEY (superseded_by) REFERENCES person(id);
 alter table public.person_document add constraint person_document_person_id_fkey FOREIGN KEY (person_id) REFERENCES person(id) ON DELETE CASCADE;
 alter table public.person_document add constraint person_document_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES person(id);
+alter table public.person_escalation add constraint person_escalation_about_id_fkey FOREIGN KEY (about_id) REFERENCES person(id);
+alter table public.person_escalation add constraint person_escalation_closed_by_fkey FOREIGN KEY (closed_by) REFERENCES person(id);
+alter table public.person_escalation add constraint person_escalation_raised_by_fkey FOREIGN KEY (raised_by) REFERENCES person(id);
+alter table public.person_escalation add constraint person_escalation_routed_to_fkey FOREIGN KEY (routed_to) REFERENCES person(id);
 alter table public.person_event add constraint person_event_actor_id_fkey FOREIGN KEY (actor_id) REFERENCES person(id);
 alter table public.person_event add constraint person_event_case_id_fkey FOREIGN KEY (case_id) REFERENCES "case"(id);
 alter table public.person_event add constraint person_event_issued_by_fkey FOREIGN KEY (issued_by) REFERENCES person(id);

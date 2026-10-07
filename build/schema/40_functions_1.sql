@@ -3368,3 +3368,59 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ogl_attach_done(p_assignment uuid, p_actor uuid, p_key text, p_file_name text, p_mime text DEFAULT NULL::text, p_bytes bigint DEFAULT NULL::bigint, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid, p_caption text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a assignment%rowtype; v_id uuid;
+begin
+  select * into a from assignment where id = p_assignment;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+  -- the key has to be one we would have issued for this assignment
+  if p_key not like (a.ref || '/%') then
+    return jsonb_build_object('error','key_mismatch',
+      'reason','That storage key does not belong to this assignment.');
+  end if;
+
+  insert into ogl_attachment (assignment_id, requirement_id, doc_kind, file_name,
+    party_kind, party_seq, storage_key, mime, bytes, uploaded_by, uploaded_at, caption)
+  values (p_assignment, p_requirement, upper(coalesce(nullif(btrim(p_doc_kind),''),'EVIDENCE')),
+    btrim(p_file_name), 'APPLICANT', 1, p_key, p_mime, p_bytes, p_actor, now(), p_caption)
+  returning id into v_id;
+
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (p_assignment, 'EVIDENCE_ATTACHED', p_actor,
+          jsonb_build_object('attachment', v_id, 'file', btrim(p_file_name),
+                             'requirement', p_requirement, 'bytes', p_bytes));
+
+  return jsonb_build_object('id', v_id, 'file_name', btrim(p_file_name));
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_attach_remove(p_attachment uuid, p_actor uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare t ogl_attachment%rowtype; a assignment%rowtype;
+begin
+  select * into t from ogl_attachment where id = p_attachment;
+  if not found then return jsonb_build_object('error','no_such_attachment'); end if;
+  select * into a from assignment where id = t.assignment_id;
+  if p_actor not in (t.uploaded_by, a.assignor_id)
+     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_yours',
+      'reason','The person who attached it, the assignor, or an administrator.');
+  end if;
+  update ogl_attachment set removed_at = now(), removed_by = p_actor
+   where id = p_attachment and removed_at is null;
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (t.assignment_id, 'EVIDENCE_REMOVED', p_actor,
+          jsonb_build_object('attachment', p_attachment, 'file', t.file_name));
+  return jsonb_build_object('id', p_attachment, 'removed', true);
+end $function$
+;
+

@@ -100,6 +100,9 @@ alter table public.op_node_alias add constraint op_node_alias_pkey PRIMARY KEY (
 alter table public.ops_alert add constraint ops_alert_pkey PRIMARY KEY (id);
 alter table public.otp_challenge add constraint otp_challenge_pkey PRIMARY KEY (id);
 alter table public.outbox add constraint outbox_pkey PRIMARY KEY (id);
+alter table public.partner_agreement add constraint partner_agreement_pkey PRIMARY KEY (id);
+alter table public.partner_file add constraint partner_file_pkey PRIMARY KEY (person_id);
+alter table public.partner_rate add constraint partner_rate_pkey PRIMARY KEY (id);
 alter table public.penalty_instance add constraint penalty_instance_pkey PRIMARY KEY (id);
 alter table public.penalty_rule add constraint penalty_rule_pkey PRIMARY KEY (id);
 alter table public.perf_assignment add constraint perf_assignment_pkey PRIMARY KEY (id);
@@ -111,6 +114,7 @@ alter table public.perf_revenue add constraint perf_revenue_pkey PRIMARY KEY (id
 alter table public.perf_rollup_map add constraint perf_rollup_map_pair PRIMARY KEY (child_family, parent_family);
 alter table public.person add constraint person_pkey PRIMARY KEY (id);
 alter table public.person_document add constraint person_document_pkey PRIMARY KEY (id);
+alter table public.person_escalation add constraint person_escalation_pkey PRIMARY KEY (id);
 alter table public.person_event add constraint person_event_pkey PRIMARY KEY (id);
 alter table public.person_request add constraint person_request_pkey PRIMARY KEY (id);
 alter table public.person_warning add constraint person_warning_pkey PRIMARY KEY (id);

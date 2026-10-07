@@ -8,6 +8,81 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_sheet_for(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_rel text; v_out jsonb;
+begin
+  v_rel := plb_sheet_rel(p_actor, p_sheet);
+  if v_rel is null then
+    if not exists (select 1 from plb_goal_sheet where id = p_sheet) then
+      return jsonb_build_object('error','no_such_sheet');
+    end if;
+    return jsonb_build_object('error','not_permitted',
+      'reason','A goal sheet is the employee''s and the line above them.');
+  end if;
+  v_out := plb_sheet(p_sheet);
+  if jsonb_typeof(v_out) = 'object' then
+    v_out := v_out || jsonb_build_object(
+      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin'));
+  end if;
+  return v_out;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_sheet_from_perf(p_actor uuid, p_person uuid, p_quarter date, p_plb_inr numeric DEFAULT 0)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_sheet uuid; o jsonb; r record; v_n int := 0; v numeric; a person;
+begin
+  select * into a from person where id = p_actor
+     and employment_status = 'ACTIVE' and superseded_by is null;
+
+  -- Running the scheme is HR's and Business Excellence's; managing the
+  -- person is their manager's. Either may issue a sheet, which is the set
+  -- plb_sheet_issue has always served. Gating this on perf_may_set alone
+  -- would have stopped HR doing their own job.
+  if not (perf_may_set(p_actor, p_person)
+          or a.app_role = 'ADMIN'
+          or coalesce(a.department,'') in ('Human Resources','Business Excellence')) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Issuing somebody''s goal sheet belongs to the person they '
+               'report to, or to HR.');
+  end if;
+  if p_actor = p_person then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Nobody issues their own goal sheet.');
+  end if;
+
+  -- Issue it empty, so the registry decides the measures and the weights.
+  o := plb_sheet_issue(p_actor, p_person, p_quarter, p_plb_inr,
+                       '[]'::jsonb, false);
+  if o->>'error' is not null then return o; end if;
+  v_sheet := (o->>'sheetId')::uuid;
+
+  for r in select gk.kpi_id from plb_goal_kpi gk where gk.sheet_id = v_sheet loop
+    v := plb_quarter_from_months(p_person, r.kpi_id,
+                                 date_trunc('quarter', p_quarter)::date);
+    if v is not null then
+      update plb_goal_kpi set target_value = v
+       where sheet_id = v_sheet and kpi_id = r.kpi_id;
+      v_n := v_n + 1;
+    end if;
+  end loop;
+
+  return jsonb_build_object('ok', true, 'sheetId', v_sheet, 'fromMonths', v_n,
+    'note', v_n || ' quarterly target(s) read off the monthly targets that '
+            'already existed, rather than typed in again. Where the months '
+            'said nothing, the quarter is left blank.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_sheet_issue(p_actor uuid, p_person uuid, p_quarter date, p_target numeric, p_targets jsonb DEFAULT '[]'::jsonb, p_default boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
