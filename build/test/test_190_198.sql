@@ -406,7 +406,7 @@ begin
   perform t_ok('a measure with no target is left out, not counted as zero',
                (s->>'achievement')::numeric = before, s::text);
   perform t_ok('and it is named with the reason',
-               s::text like '%no target was set%', s::text);
+               s::text like '%no target has been set yet%', s::text);
   perform t_ok('and the count says how many were skipped',
                (s->>'skipped')::int = 1, s::text);
 end $$;
