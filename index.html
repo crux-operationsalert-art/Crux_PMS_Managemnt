@@ -1299,9 +1299,36 @@ async function call(base, path, opts){
   opts.headers = Object.assign({"content-type":"application/json"}, opts.headers||{});
   if (token) opts.headers["x-crux-token"] = token;
   if (opts.body && typeof opts.body !== "string") opts.body = JSON.stringify(opts.body);
-  var r = await fetch(base + path, opts);
+  /* THIS FUNCTION MUST NEVER REJECT.
+     Every caller in the tool is written `X = await plb(...); render();` with
+     no catch, so a rejection here does not surface as an error -- it aborts
+     the handler mid-way, the render that was going to follow never runs, and
+     whatever placeholder was on screen stays there for ever. That is the
+     "Loading..." that sat under a name on My team with no reason and no way
+     back: the fetch had failed, and not one of the dozens of callers was
+     ever going to hear about it.
+     Fixing it in the callers would mean a catch in every one of them and a
+     new one forgotten every time somebody adds a screen. Fixed here, every
+     caller gets an object with .error on it -- which they all already know
+     how to draw -- and none of them has to remember anything. */
+  var r, b;
+  try {
+    r = await fetch(base + path, opts);
+  } catch (e) {
+    return { error: "unreachable",
+             reason: "The tool could not reach that service. This is usually "
+                   + "the connection rather than anything you did \u2014 try "
+                   + "again in a moment.",
+             _status: 0 };
+  }
   var ct = r.headers.get("content-type")||"";
-  var b = ct.indexOf("json")>=0 ? await r.json() : { _text: await r.text() };
+  try {
+    b = ct.indexOf("json")>=0 ? await r.json() : { _text: await r.text() };
+  } catch (e) {
+    /* A body that will not parse is still an answer about what happened. */
+    b = {};
+  }
+  if (!b || typeof b !== "object") b = { value: b };
   b._status = r.status;
   /* Our own session check saying "not signed in" is a reason to sign out.
      A gateway refusing a single service is not: it says nothing about the
@@ -1315,6 +1342,15 @@ async function call(base, path, opts){
       b.reason = "That part of the tool refused the request before it arrived. "
         + "It is nothing to do with your sign-in, and nothing else is affected.";
     }
+  }
+  /* Anything else that failed and did not say so in words. Without this a
+     500 that returns a page of HTML arrives as a body with no .error, and
+     the screen draws it as an empty result -- which reads as "there is
+     nothing here" when it means "this did not work". */
+  if (!r.ok && !b.error) {
+    b.error = "service_error";
+    b.reason = "That part of the tool answered with " + r.status
+             + " and no explanation. Nothing has been saved.";
   }
   return b;
 }
@@ -7567,7 +7603,15 @@ function pfNode(m, depth, isTeam){
 function pfPersonPanel(){
   var t = PF.whoTree;
   if (!t) return '<p class="mute">Loading…</p>';
-  if (t.error) return msg("bad", t.reason || t.error);
+  /* A reason, and a way out of it. This panel used to sit on "Loading…" for
+     ever when the call failed, because call() rejected and the render that
+     was going to follow never ran. call() no longer rejects, so the reason
+     arrives here -- and a reason somebody cannot act on is only half the
+     repair, hence the button. */
+  if (t.error) {
+    return msg("bad", t.reason || t.error) +
+      '<p><button class="btn" id="pfwhoretry">Try again</button></p>';
+  }
   var ms = t.measures || [];
   return '<div class="pfpanel">' +
     (ms.length
@@ -7864,6 +7908,14 @@ function pfQWire(){
 /* ---------------------------------------------------------------- wiring */
 function pfWire(){
   pfQWire();
+
+  if (el("pfwhoretry")) el("pfwhoretry").onclick = async function(){
+    if (!PF.who || !PF.cycle) return;
+    PF.whoTree = null; pfRender();
+    PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id +
+                           "&person=" + encodeURIComponent(PF.who));
+    pfRender();
+  };
   if (el("pfperiod")) el("pfperiod").onchange = async function(){
     PF.period = el("pfperiod").value; PF.tree = null; PF.who = null;
     PF.whoTree = null; PF.says = ""; PF.measures = null; PF.measuresFor = null;
