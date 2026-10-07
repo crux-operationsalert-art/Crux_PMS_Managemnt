@@ -120,6 +120,7 @@ alter table public.plb_correction enable row level security;
 alter table public.plb_dispute enable row level security;
 alter table public.plb_goal_attribute enable row level security;
 alter table public.plb_goal_kpi enable row level security;
+alter table public.plb_goal_kpi_part enable row level security;
 alter table public.plb_goal_sheet enable row level security;
 alter table public.plb_month_score enable row level security;
 alter table public.plb_result enable row level security;

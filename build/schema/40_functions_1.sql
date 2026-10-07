@@ -3312,3 +3312,59 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ogl_attach_begin(p_assignment uuid, p_actor uuid, p_file_name text, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a assignment%rowtype; v_ext text; v_key text; v_may boolean;
+  v_bucket text; v_limit bigint;
+begin
+  select * into a from assignment where id = p_assignment;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+
+  v_may := p_actor in (a.assignor_id, a.allocated_to_id)
+        or (select app_role from person where id = p_actor) = 'ADMIN'
+        or exists (select 1 from temp_participant_grant g
+                    where g.assignment_id = p_assignment and g.person_id = p_actor
+                      and g.revoked_at is null and g.expires_at > now());
+  if not v_may then
+    return jsonb_build_object('error','not_yours',
+      'reason','Only the people working on this assignment may attach to it.');
+  end if;
+  if a.current_state in ('CLOSED','CANCELLED') then
+    return jsonb_build_object('error','finished',
+      'reason','This assignment is ' || a.current_state || '. Reopen it first.');
+  end if;
+  if coalesce(btrim(coalesce(p_file_name,'')),'') = '' then
+    return jsonb_build_object('error','no_file_name');
+  end if;
+
+  v_ext := lower(coalesce(substring(p_file_name from '\.([A-Za-z0-9]{1,5})$'), 'bin'));
+  v_bucket := case v_ext
+                when 'pdf' then 'case-documents'
+                when 'jpg' then 'visit-photos' when 'jpeg' then 'visit-photos'
+                when 'png' then 'visit-photos' when 'heic' then 'visit-photos'
+                else null end;
+  if v_bucket is null then
+    return jsonb_build_object('error','unsupported_type',
+      'reason','Attach a photograph (jpg, png or heic) or a PDF. "' || v_ext || '" is neither.');
+  end if;
+
+  select file_size_limit into v_limit from storage.buckets where id = v_bucket;
+
+  -- assignment/cycle/uuid: readable enough to find by hand, and impossible
+  -- to guess your way into
+  v_key := a.ref || '/' || a.breach_cycle_no || '/' ||
+           gen_random_uuid()::text || '.' || v_ext;
+
+  return jsonb_build_object('bucket', v_bucket, 'key', v_key, 'ext', v_ext,
+    'ref', a.ref, 'cycle', a.breach_cycle_no, 'max_bytes', v_limit,
+    'mime', case v_ext when 'pdf' then 'application/pdf'
+                       when 'png' then 'image/png'
+                       when 'heic' then 'image/heic'
+                       else 'image/jpeg' end);
+end $function$
+;
+

@@ -120,6 +120,7 @@ alter table public.plb_correction add constraint plb_correction_pkey PRIMARY KEY
 alter table public.plb_dispute add constraint plb_dispute_pkey PRIMARY KEY (id);
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_pkey PRIMARY KEY (id);
 alter table public.plb_goal_kpi add constraint plb_goal_kpi_pkey PRIMARY KEY (id);
+alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_pkey PRIMARY KEY (id);
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_pkey PRIMARY KEY (id);
 alter table public.plb_month_score add constraint plb_month_score_pkey PRIMARY KEY (id);
 alter table public.plb_result add constraint plb_result_pkey PRIMARY KEY (id);

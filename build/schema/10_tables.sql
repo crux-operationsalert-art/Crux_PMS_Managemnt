@@ -1391,6 +1391,20 @@ create table if not exists public.plb_goal_kpi (
   actual_value numeric(16,4)
 );
 
+create table if not exists public.plb_goal_kpi_part (
+  id uuid default gen_random_uuid() not null,
+  goal_kpi_id uuid not null,
+  label text not null,
+  target_value numeric,
+  actual_value numeric,
+  "position" integer default 0 not null,
+  note text,
+  set_by uuid,
+  set_at timestamp with time zone default now() not null,
+  removed_at timestamp with time zone,
+  removed_by uuid
+);
+
 create table if not exists public.plb_goal_sheet (
   id uuid default gen_random_uuid() not null,
   person_id uuid not null,

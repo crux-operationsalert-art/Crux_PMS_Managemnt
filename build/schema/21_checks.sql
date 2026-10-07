@@ -92,6 +92,7 @@ alter table public.plb_dispute add constraint plb_dispute_stage CHECK ((stage = 
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_state CHECK ((state = ANY (ARRAY['EMPTY'::text, 'PROPOSED'::text, 'APPROVED'::text, 'RETURNED'::text])));
 alter table public.plb_goal_kpi add constraint plb_goal_kpi_basis_level_check CHECK (((basis_level >= 1) AND (basis_level <= 4)));
 alter table public.plb_goal_kpi add constraint plb_goal_kpi_weight_pct_check CHECK (((weight_pct > (0)::numeric) AND (weight_pct <= (100)::numeric)));
+alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_label_said CHECK ((btrim(label) <> ''::text));
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_status_check CHECK ((status = ANY (ARRAY['DRAFT'::text, 'ISSUED'::text, 'ACKNOWLEDGED'::text, 'LOCKED'::text])));
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_target_plb_inr_check CHECK ((target_plb_inr >= (0)::numeric));
 alter table public.plb_month_score add constraint plb_month_score_attr_points_check CHECK (((attr_points >= (0)::numeric) AND (attr_points <= (10)::numeric)));

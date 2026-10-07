@@ -8,86 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.perf_assign_remove(p_actor uuid, p_assignment uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a perf_assignment; c perf_cycle; n_filed int; n_kids int; n_split int;
-begin
-  select * into a from perf_assignment where id = p_assignment;
-  if a.id is null then return jsonb_build_object('error','no_such_assignment'); end if;
-  if not perf_may_set(p_actor, a.person_id) then
-    return jsonb_build_object('error','not_permitted',
-      'reason','A measure is taken back by the person''s own manager or by an administrator -- and never by themselves.');
-  end if;
-  if a.state = 'WITHDRAWN' then
-    return jsonb_build_object('ok', true, 'withdrawn', true, 'changed', false,
-      'note','That measure has already been taken back.');
-  end if;
-  select * into c from perf_cycle where id = a.cycle_id;
-  if current_date > c.assign_closes
-     and not exists (select 1 from person where id = p_actor and app_role='ADMIN') then
-    return jsonb_build_object('error','window_closed',
-      'reason','Measures for ' || c.period_start || ' had to be settled by ' || c.assign_closes
-            || '. HR or an administrator can reopen the month on the Performance screen, and the reopening is recorded.');
-  end if;
-  select count(*) into n_kids from perf_assignment x
-   where x.rolls_into_id = a.id and x.person_id <> a.person_id
-     and x.state is distinct from 'WITHDRAWN';
-  if n_kids > 0 then
-    return jsonb_build_object('error','feeds_this',
-      'reason', n_kids || ' measure(s) below this one climb into it. Move or take those back first, or their numbers have nowhere to add up to.');
-  end if;
-  select count(*) into n_filed from perf_entry e
-   where e.assignment_id = a.id
-      or e.assignment_id in (select x.id from perf_assignment x where x.part_of_id = a.id);
-  select count(*) into n_split from perf_assignment where part_of_id = a.id;
-  update perf_assignment set state='WITHDRAWN' where id = a.id or part_of_id = a.id;
-  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
-  values (p_actor,'PERF_KPI_WITHDRAWN','perf_assignment', a.id::text,
-          jsonb_build_object('name',a.name,'unit',a.unit,'target',a.target_value,
-                             'person',a.person_id,'state',a.state,'splits',n_split),
-          jsonb_build_object('state','WITHDRAWN','filings',n_filed));
-  return jsonb_build_object('ok',true,'withdrawn',true,'changed',true,
-    'filings',n_filed,'splits',n_split,
-    'note','Taken back. It stops being asked for and stops counting'
-         || case when n_split>0 then ', and its ' || n_split || ' client share(s) went with it' else '' end
-         || case when n_filed>0 then '. The ' || n_filed || ' figure(s) already filed against it still read back, because they are a record of what happened'
-                 else '. Nothing had been filed against it' end || '.');
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_assignment_edges()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-declare p perf_assignment;
-begin
-  if new.part_of_id is not null then
-    select * into p from perf_assignment where id = new.part_of_id;
-    if p.person_id <> new.person_id then
-      raise exception 'a split belongs to the same person as the measure it splits';
-    end if;
-    if p.cycle_id <> new.cycle_id then
-      raise exception 'a split belongs to the same cycle as the measure it splits';
-    end if;
-    if p.part_of_id is not null then
-      raise exception 'a split cannot itself be split; one level is the whole idea';
-    end if;
-  end if;
-
-  if new.rolls_into_id is not null then
-    select * into p from perf_assignment where id = new.rolls_into_id;
-    if p.person_id = new.person_id then
-      raise exception 'a measure climbs into somebody else''s; use part_of_id for your own splits';
-    end if;
-  end if;
-  return new;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.perf_carry_forward(p_actor uuid, p_cycle uuid, p_person uuid, p_keep_targets boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3938,6 +3858,278 @@ AS $function$
     order by d.raised_at), '[]'::jsonb)
   from plb_dispute d left join kpi_definition k on k.id = d.kpi_id
   where d.sheet_id = p_sheet;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_kpi_months(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  s plb_goal_sheet;
+  v_rows jsonb := '[]'::jsonb;
+  v_off int := 0;
+  r record; m record;
+  v_months jsonb; v_share numeric; v_implied numeric; v_i int;
+  v_aid uuid; v_atgt numeric; v_asrc text; v_filed numeric; v_n int;
+  v_parts jsonb;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+  -- The same reading rule plb_target_agreement uses: anybody in the line may
+  -- look, only the one up may set.
+  if perf_rel(p_actor, s.person_id) is null then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That person is not in your line.');
+  end if;
+
+  for r in
+    select gk.id as goal_kpi_id, gk.kpi_id, k.name, k.unit,
+           gk.target_value as quarterly, gk.actual_value as actual,
+           gk.weight_pct as weight,
+           gk.m1_share, gk.m2_share, gk.m3_share,
+           perf_accrual_kind(k.id, k.unit) as kind
+      from plb_goal_kpi gk join kpi_definition k on k.id = gk.kpi_id
+     where gk.sheet_id = p_sheet
+     order by k.position, k.name
+  loop
+    v_months := '[]'::jsonb;
+    v_i := 0;
+    for m in
+      select (s.quarter + (g.n || ' months')::interval)::date as month, g.n
+        from generate_series(0, 2) g(n)
+      order by g.n
+    loop
+      v_i := v_i + 1;
+      v_share := case v_i when 1 then r.m1_share
+                          when 2 then r.m2_share
+                          else r.m3_share end;
+      -- No split means the quarter is spread evenly, which is what
+      -- plb_phase_targets does when nobody has said otherwise.
+      v_implied := case
+        when r.quarterly is null then null
+        when r.kind <> 'SUM' then r.quarterly
+        when v_share is not null then round(r.quarterly * v_share / 100.0, 2)
+        else round(r.quarterly / 3.0, 2) end;
+
+      -- Reset first: SELECT ... INTO leaves the variables alone when it finds
+      -- nothing, so a month with no assignment would otherwise show the
+      -- previous month's target.
+      v_aid := null; v_atgt := null; v_asrc := null;
+      select a2.id, a2.target_value, a2.target_source
+        into v_aid, v_atgt, v_asrc
+        from perf_assignment a2
+        join perf_cycle c2 on c2.id = a2.cycle_id
+       where a2.person_id = s.person_id
+         and a2.kpi_id = r.kpi_id
+         and a2.part_of_id is null
+         and a2.state is distinct from 'WITHDRAWN'
+         and c2.period_start = m.month
+       limit 1;
+
+      -- Added for a count and averaged for a percentage, the same way
+      -- plb_quarter_from_months already reads them. Adding percentages is the
+      -- commonest way a scorecard comes to say 280%.
+      v_filed := null; v_n := 0;
+      if v_aid is not null then
+        select case when r.kind = 'SUM' then sum(e.value) else avg(e.value) end,
+               count(*)::int
+          into v_filed, v_n
+          from perf_entry e where e.assignment_id = v_aid;
+      end if;
+
+      v_months := v_months || jsonb_build_object(
+        'month', m.month,
+        'share', v_share,
+        'implied', v_implied,
+        -- The real monthly target in PMS, and what was filed against it.
+        'target', v_atgt,
+        'targetSource', v_asrc,
+        'filed', v_filed,
+        'entries', coalesce(v_n, 0),
+        -- The one comparison the card is for: what the month is being asked
+        -- for, against what the quarter promises it should be.
+        'agrees', case when v_atgt is null or v_implied is null then null
+                       else round(v_atgt, 2) = round(v_implied, 2) end);
+    end loop;
+
+    if exists (select 1 from jsonb_array_elements(v_months) x
+                where (x->>'agrees') = 'false') then
+      v_off := v_off + 1;
+    end if;
+
+    select coalesce(jsonb_agg(jsonb_build_object(
+             'id', p.id, 'label', p.label, 'target', p.target_value,
+             'actual', p.actual_value, 'note', p.note) order by p.position),
+           '[]'::jsonb)
+      into v_parts
+      from plb_goal_kpi_part p
+     where p.goal_kpi_id = r.goal_kpi_id and p.removed_at is null;
+
+    v_rows := v_rows || jsonb_build_object(
+      'goalKpiId', r.goal_kpi_id, 'kpiId', r.kpi_id,
+      'name', r.name, 'unit', r.unit, 'kind', r.kind,
+      'weight', r.weight, 'quarterly', r.quarterly, 'actual', r.actual,
+      'months', v_months,
+      'parts', v_parts,
+      'partsTotal', (select sum(p.target_value) from plb_goal_kpi_part p
+                      where p.goal_kpi_id = r.goal_kpi_id
+                        and p.removed_at is null),
+      'partsAddUp', case
+        when not exists (select 1 from plb_goal_kpi_part p
+                          where p.goal_kpi_id = r.goal_kpi_id
+                            and p.removed_at is null
+                            and p.target_value is not null) then null
+        when r.quarterly is null then null
+        else round((select sum(p.target_value) from plb_goal_kpi_part p
+                     where p.goal_kpi_id = r.goal_kpi_id
+                       and p.removed_at is null), 2)
+             = round(r.quarterly, 2) end);
+  end loop;
+
+  return jsonb_build_object(
+    'sheetId', p_sheet, 'quarter', s.quarter, 'personId', s.person_id,
+    'measures', v_rows,
+    'disagree', v_off,
+    'maySet', perf_may_set(p_actor, s.person_id) or plb_runs_scheme(p_actor),
+    'mayPhase', perf_may_set(p_actor, s.person_id),
+    'note', case when v_off = 0
+      then 'Every month is being asked for what the quarter promises.'
+      else v_off || ' measure(s) ask for one thing in a month and promise '
+           'another for the quarter. Phasing the quarter down fixes it and '
+           'leaves alone anything somebody agreed by hand.' end);
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_kpi_part_set(p_actor uuid, p_goal_kpi uuid, p_parts jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  gk plb_goal_kpi; s plb_goal_sheet; k kpi_definition;
+  v_frozen timestamptz;
+  v_sum numeric := 0; n int := 0; i int := 0;
+  x jsonb; v_label text;
+begin
+  select * into gk from plb_goal_kpi where id = p_goal_kpi;
+  if gk.id is null then
+    return jsonb_build_object('error','no_such_measure');
+  end if;
+  select * into s from plb_goal_sheet where id = gk.sheet_id;
+  select * into k from kpi_definition where id = gk.kpi_id;
+
+  -- The same gate 247 put on plb_sheet_issue, plb_actual_set and
+  -- plb_score_month, in the same words.
+  if not (perf_may_set(p_actor, s.person_id) or plb_runs_scheme(p_actor)) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Breaking a measure into parts is the manager that person '
+            || 'reports to, and the people who run the scheme.');
+  end if;
+
+  if s.locked_at is not null then
+    return jsonb_build_object('error','sheet_locked',
+      'reason','That goal sheet is locked. Parts of a measure change what '
+            || 'the sheet says it is asking for.');
+  end if;
+  select data_frozen_at into v_frozen from plb_result where sheet_id = s.id;
+  if v_frozen is not null then
+    return jsonb_build_object('error','data_frozen',
+      'reason','The quarter''s data was frozen on ' || v_frozen::date ||
+               '. Nothing behind a computed result changes.');
+  end if;
+
+  if p_parts is null or jsonb_typeof(p_parts) <> 'array' then
+    return jsonb_build_object('error','missing_parts',
+      'reason','Send the parts. An empty list removes the breakdown.');
+  end if;
+  if jsonb_array_length(p_parts) > 20 then
+    return jsonb_build_object('error','too_many',
+      'reason','Twenty parts to a measure. Past that it is a measure of its own.');
+  end if;
+
+  -- Validate the whole list before writing any of it: a form that
+  -- half-saves is worse than one that refuses.
+  for x in select jsonb_array_elements(p_parts) loop
+    i := i + 1;
+    v_label := btrim(coalesce(x->>'label',''));
+    if v_label = '' then
+      return jsonb_build_object('error','invalid',
+        'reason','Part ' || i || ' has no name. A part nobody can name is not '
+              || 'a part of anything.');
+    end if;
+    if length(v_label) > 120 then
+      return jsonb_build_object('error','invalid',
+        'reason','Part ' || i || '''s name is longer than a name.');
+    end if;
+    if (x->>'target') is not null and (x->>'target') <> '' then
+      v_sum := v_sum + (x->>'target')::numeric;
+      n := n + 1;
+    end if;
+  end loop;
+
+  -- The list is replaced whole: everything is withdrawn first, and then
+  -- whatever is in the new list is written back over its own row. A part that
+  -- stayed on the list never notices; a part taken off stays withdrawn; a
+  -- part put back after a month away comes back as itself. Migration 246
+  -- settled this for the monthly side -- removal is withdrawal, never an
+  -- erasure -- and the reason is the same: "the breakdown used to say Bank C"
+  -- is a question somebody asks in a dispute three months later.
+  update plb_goal_kpi_part
+     set removed_at = now(), removed_by = p_actor
+   where goal_kpi_id = p_goal_kpi and removed_at is null;
+
+  i := 0;
+  for x in select jsonb_array_elements(p_parts) loop
+    i := i + 1;
+    insert into plb_goal_kpi_part (goal_kpi_id, label, target_value,
+                                   actual_value, position, note, set_by)
+    values (p_goal_kpi, btrim(x->>'label'),
+            nullif(btrim(coalesce(x->>'target','')),'')::numeric,
+            nullif(btrim(coalesce(x->>'actual','')),'')::numeric,
+            i, nullif(btrim(coalesce(x->>'note','')),''), p_actor)
+    on conflict (goal_kpi_id, lower(btrim(label))) do update
+       set target_value = excluded.target_value,
+           actual_value = excluded.actual_value,
+           position     = excluded.position,
+           note         = excluded.note,
+           set_by       = excluded.set_by,
+           set_at       = now(),
+           removed_at   = null,
+           removed_by   = null;
+  end loop;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'PLB_PARTS_SET', 'plb_goal_kpi', p_goal_kpi::text,
+          null, jsonb_build_object('parts', p_parts));
+
+  return jsonb_build_object('ok', true,
+    'goalKpiId', p_goal_kpi,
+    'parts', jsonb_array_length(p_parts),
+    'partsTotal', case when n = 0 then null else v_sum end,
+    'measureTarget', gk.target_value,
+    -- Said, never enforced. A breakdown that does not yet add up is a normal
+    -- state halfway through writing one, and refusing it would make the
+    -- manager do the arithmetic before the tool will take the first line.
+    'addsUp', case when n = 0 or gk.target_value is null then null
+                   else round(v_sum, 2) = round(gk.target_value, 2) end,
+    'note', case
+      when jsonb_array_length(p_parts) = 0 then 'The breakdown was removed.'
+      when n = 0 or gk.target_value is null then
+        jsonb_array_length(p_parts) || ' part(s) saved.'
+      when round(v_sum, 2) = round(gk.target_value, 2) then
+        jsonb_array_length(p_parts) || ' part(s) saved, adding to ' ||
+        gk.target_value || ' - the measure''s own target.'
+      else jsonb_array_length(p_parts) || ' part(s) saved. They add to ' ||
+        v_sum || ' and ' || coalesce(k.name,'the measure') || ' asks for ' ||
+        gk.target_value || '. Nothing is refused; the card says so.'
+      end);
+end
 $function$
 ;
 
