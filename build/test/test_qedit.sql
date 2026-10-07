@@ -190,6 +190,47 @@ begin
   end if;
   raise notice 'PASS  the list says what may go on, and what is already on';
 
+  -- ------------------------- a withdrawn measure is invisible BY CONSTRUCTION
+  --
+  -- Not "every reader remembers to filter it out" -- fourteen functions read
+  -- plb_goal_kpi and not one of them knows a measure can be withdrawn. They
+  -- are right not to know: plb_goal_kpi is a view over the live rows. This
+  -- asserts the property they are all relying on.
+  o := plb_sheet_measures_set(p_boss, v_sheet, jsonb_build_array(
+         jsonb_build_object('kpiId', v_k1, 'weight', 100, 'target', 7)));
+  if o->>'error' is not null then
+    raise exception 'FAIL  the sheet would not reduce to one measure: %', o;
+  end if;
+  select count(*) into n from plb_goal_kpi where sheet_id = v_sheet;
+  if n <> 1 then
+    raise exception 'FAIL  % measures are visible through the view after '
+                    'reducing the sheet to one. Every scoring function reads '
+                    'that view.', n;
+  end if;
+  select count(*) into n from plb_goal_kpi_all where sheet_id = v_sheet;
+  if n < 2 then
+    raise exception 'FAIL  a measure taken off the sheet was erased. "What was '
+                    'this sheet asking for in October" is a question somebody '
+                    'asks about a payout months later.';
+  end if;
+  raise notice 'PASS  a measure taken off is invisible to every reader and '
+               'still on the record';
+
+  -- And putting it back is the same row again, not a second one.
+  o := plb_sheet_measures_set(p_boss, v_sheet, jsonb_build_array(
+         jsonb_build_object('kpiId', v_k1, 'weight', 50, 'target', 7),
+         jsonb_build_object('kpiId', v_k3, 'weight', 50, 'target', 2)));
+  if o->>'error' is not null then
+    raise exception 'FAIL  a withdrawn measure could not be put back: %', o;
+  end if;
+  select count(*) into n from plb_goal_kpi_all
+   where sheet_id = v_sheet and kpi_id = v_k3;
+  if n <> 1 then
+    raise exception 'FAIL  putting a measure back made a second row (% rows). '
+                    'Two rows for one measure is two scores for one promise.', n;
+  end if;
+  raise notice 'PASS  a measure taken off and put back is one row, revived';
+
   raise notice '--- the quarterly sheet is editable: every assertion passed ---';
 end $t$;
 

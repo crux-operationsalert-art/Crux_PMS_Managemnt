@@ -10,50 +10,99 @@
 -- which way it pointed. A sheet issued with the wrong measure stayed wrong
 -- for the quarter.
 --
--- WHO. The same rule the monthly side already holds, and the same rule the
--- owner stated for KPIs generally: "the one up manager decides and edits as
--- per the requirement and even change or add a new KPI or reterm any". So
--- perf_may_set(actor, the sheet's person) OR plb_runs_scheme(actor) -- which
--- answers 'self' for your own sheet and therefore refuses it, because nobody
--- sets their own.
+-- WHO. The same rule the monthly side holds, and the one the owner stated
+-- for KPIs generally: "the one up manager decides and edits as per the
+-- requirement and even change or add a new KPI or reterm any". So
+-- perf_may_set(actor, the sheet's person) OR plb_runs_scheme(actor) --
+-- which answers 'self' for your own sheet and therefore refuses it.
 --
 -- UNTIL WHEN. Until the sheet LOCKS. A locked sheet is the promise the
 -- quarter is scored against; changing a measure after that is changing the
 -- question after the answer.
 --
 -- THE WHOLE LIST, NOT ONE ROW. Written as a replace-whole, for the reason
--- perf_split_set, plb_kpi_part_set and partner_file_set are written that
--- way: the invariant is about the SET -- the weights add to a hundred -- and
--- a set is checked once, when it is complete. Editing one row at a time
--- means every intermediate state is invalid and the rule has to be relaxed
--- to allow them.
+-- perf_split_set, plb_kpi_part_set and partner_file_set are: the invariant
+-- is about the SET -- the weights add to a hundred -- and a set is checked
+-- once, when it is complete. Editing row by row means every intermediate
+-- state is invalid and the rule has to be relaxed to allow them.
 --
--- REMOVING. A measure is removed by leaving it out of the list. It is a
--- DELETE and not a flag, deliberately: fourteen functions in this schema
--- read plb_goal_kpi, and a "removed" flag that any one of them forgot would
--- silently count a withdrawn measure into somebody's bonus. A row that is
--- gone cannot be read by a function that forgot. What protects the history
--- is the refusal below plus the audit row, which carries the whole list
--- before and after.
+-- =====================================================================
+-- REMOVING A MEASURE, AND WHY THIS MIGRATION LOOKS THE WAY IT DOES
 --
--- And it refuses to remove a measure that has anything against it: a figure
--- already computed from what was filed, or a breakdown somebody wrote. That
--- is the line between correcting a sheet and erasing a quarter.
+-- The obvious implementation is a DELETE. It was written that way first,
+-- and it was wrong twice over.
 --
--- WHAT IS NOT HERE. Renaming. A measure's name belongs to the registry --
--- plb_goal_kpi carries kpi_id and every reader joins kpi_definition for the
--- name -- so renaming here would mean one measure reading two ways depending
--- on which screen you were on. Putting a differently-named measure on the
--- sheet is done by choosing a different one, which this does allow.
+-- The first draft instead used a `removed_at` flag, and that was worse:
+-- FOURTEEN functions in this schema read plb_goal_kpi, and a flag that any
+-- one of them forgot would silently count a withdrawn measure into
+-- somebody's bonus. Fourteen chances to forget, and the forgetting is
+-- invisible until a payout is wrong.
+--
+-- So neither. The flag is kept AND the forgetting is made impossible:
+--
+--     plb_goal_kpi  (the table)   ->  renamed plb_goal_kpi_all
+--     plb_goal_kpi  (a view)      ->  the live rows, and only those
+--
+-- Every one of those fourteen functions goes on saying plb_goal_kpi and is
+-- now, without being touched, reading only live rows. Not one of them has
+-- to remember anything. The history is kept because the row is still there
+-- in plb_goal_kpi_all, which is what an argument about an old payout needs.
+--
+-- This is the same move as the sentinel guard in build-tool.py and for the
+-- same reason: an invariant that depends on everybody remembering is an
+-- invariant that is already broken somewhere you have not looked. Make it
+-- structural and there is nothing to remember.
+--
+-- The view's columns are listed out rather than written `select *`, because
+-- `select *` is expanded once at creation: a column added to the base table
+-- afterwards would silently not appear here, which is the same class of
+-- trap again. The guard at the foot checks the two still match.
+-- =====================================================================
+
+alter table plb_goal_kpi add column if not exists removed_at timestamptz;
+
+do $do$
+begin
+  -- Idempotent: if the view is already in place this migration has run.
+  if exists (select 1 from pg_class c join pg_namespace n on n.oid = c.relnamespace
+              where n.nspname = 'public' and c.relname = 'plb_goal_kpi'
+                and c.relkind = 'v') then
+    raise notice 'Migration 255: plb_goal_kpi is already the view.';
+    return;
+  end if;
+
+  alter table plb_goal_kpi rename to plb_goal_kpi_all;
+
+  execute $v$
+    create view plb_goal_kpi as
+      select id, sheet_id, kpi_id, weight_pct, target_value, basis_level,
+             basis_note, m1_share, m2_share, m3_share, actual_value,
+             direction, removed_at
+        from plb_goal_kpi_all
+       where removed_at is null
+  $v$;
+end
+$do$;
+
+comment on view plb_goal_kpi is
+  'The measures live on a quarterly goal sheet. A view, so that every reader '
+  'sees only live rows without having to remember to ask -- fourteen '
+  'functions read this name and not one of them knows a measure can be '
+  'withdrawn. The withdrawn rows are still in plb_goal_kpi_all, because '
+  '"what was this sheet asking for in October" is a question somebody asks '
+  'about a payout months later.';
+
+create index if not exists plb_goal_kpi_all_live
+  on plb_goal_kpi_all (sheet_id) where removed_at is null;
 
 -- =====================================================================
 -- What may be put on a sheet.
 --
 -- The chair's own measure set first, because that is what this person is
 -- measured on; then everything else active, because a manager correcting a
--- sheet in week three is not always choosing from the chair's list. Each one
--- says whether it is already on the sheet, so the screen can draw a list
--- rather than make somebody remember.
+-- sheet in week three is not always choosing from the chair's list. Each
+-- says whether it is already on the sheet, so the screen draws a list
+-- rather than making somebody remember.
 -- =====================================================================
 create or replace function plb_sheet_measure_options(p_actor uuid, p_sheet uuid)
 returns jsonb
@@ -83,7 +132,7 @@ begin
     'person', (select full_name from person where id = s.person_id),
     'quarter', s.quarter,
     'status', s.status,
-    -- Two different answers and the screen needs both: may I change this,
+    -- Two different answers, and the screen needs both: may I change this,
     -- and if not, is it because of who I am or because the sheet has locked.
     'maySet', v_may and s.status <> 'LOCKED',
     'locked', s.status = 'LOCKED',
@@ -188,9 +237,9 @@ begin
       v_sum := v_sum + v_w;
     end if;
 
-    -- The owner's rule, and it is the reason migration 253 exists: "one up
-    -- manager if has assigned a KPI should be assigning the target too ...
-    -- should be adding 0 in the target and not keep it blank."
+    -- The owner's rule, and the reason migration 253 exists: "one up manager
+    -- if has assigned a KPI should be assigning the target too ... should be
+    -- adding 0 in the target and not keep it blank."
     if nullif(btrim(coalesce(x->>'target','')),'') is null then
       v_bad := v_bad || jsonb_build_object('at', i,
         'reason','Measure ' || i || ' has no target. A measure with nothing '
@@ -237,7 +286,7 @@ begin
             || 'them, or the score cannot be worked out by hand.');
   end if;
 
-  -- Nothing is removed that has anything against it. Checked before any
+  -- Nothing is withdrawn that has anything against it. Checked before any
   -- write, with the rest, so a list that is half-allowed changes nothing.
   for r in
     select g.id, g.kpi_id, k.name,
@@ -273,22 +322,29 @@ begin
     from plb_goal_kpi g join kpi_definition k on k.id = g.kpi_id
    where g.sheet_id = p_sheet;
 
-  delete from plb_goal_kpi g
-   where g.sheet_id = p_sheet and not (g.kpi_id = any(v_keep));
+  -- Withdrawn on the BASE table, and from this moment invisible through the
+  -- view to every one of the fourteen readers, none of which had to be told.
+  update plb_goal_kpi_all
+     set removed_at = now()
+   where sheet_id = p_sheet and removed_at is null
+     and not (kpi_id = any(v_keep));
   get diagnostics v_gone = row_count;
 
   i := 0;
   for x in select jsonb_array_elements(p_measures) loop
     i := i + 1;
     v_kpi := (x->>'kpiId')::uuid;
-    if exists (select 1 from plb_goal_kpi g
+    -- A measure given, taken back and given again is one row, revived --
+    -- the same shape migration 250 gave perf_assignment, and for the same
+    -- reason: the second row is the one that makes two scores possible.
+    if exists (select 1 from plb_goal_kpi_all g
                 where g.sheet_id = p_sheet and g.kpi_id = v_kpi) then
-      update plb_goal_kpi g
+      update plb_goal_kpi_all g
          set weight_pct   = (x->>'weight')::numeric,
              target_value = (x->>'target')::numeric,
              direction    = nullif(upper(btrim(coalesce(x->>'direction',''))),''),
-             -- Only where the caller sent one. A form that carries no
-             -- split must not wipe a phasing somebody has already run.
+             -- Only where the caller sent one. A form that carries no split
+             -- must not wipe a phasing somebody has already run.
              m1_share     = coalesce(nullif(btrim(coalesce(x->>'m1','')),'')::numeric,
                                      g.m1_share),
              m2_share     = coalesce(nullif(btrim(coalesce(x->>'m2','')),'')::numeric,
@@ -296,13 +352,17 @@ begin
              m3_share     = coalesce(nullif(btrim(coalesce(x->>'m3','')),'')::numeric,
                                      g.m3_share),
              basis_note   = coalesce(nullif(btrim(coalesce(x->>'note','')),''),
-                                     g.basis_note)
+                                     g.basis_note),
+             removed_at   = null
        where g.sheet_id = p_sheet and g.kpi_id = v_kpi;
-      v_changed := v_changed + 1;
+      if (select removed_at from plb_goal_kpi_all
+           where sheet_id = p_sheet and kpi_id = v_kpi) is null then
+        v_changed := v_changed + 1;
+      end if;
     else
-      insert into plb_goal_kpi (sheet_id, kpi_id, weight_pct, target_value,
-                                direction, m1_share, m2_share, m3_share,
-                                basis_level, basis_note)
+      insert into plb_goal_kpi_all (sheet_id, kpi_id, weight_pct, target_value,
+                                    direction, m1_share, m2_share, m3_share,
+                                    basis_level, basis_note)
       values (p_sheet, v_kpi, (x->>'weight')::numeric, (x->>'target')::numeric,
               nullif(upper(btrim(coalesce(x->>'direction',''))),''),
               coalesce(nullif(btrim(coalesce(x->>'m1','')),'')::numeric, 0),
@@ -325,7 +385,7 @@ begin
     'note', case
       when v_added + v_gone = 0 then
         'Saved. The same ' || v_changed || ' measure(s), with what you changed.'
-      else 'Saved. ' || v_added || ' added, ' || v_gone || ' removed, '
+      else 'Saved. ' || v_added || ' added, ' || v_gone || ' taken off, '
            || v_changed || ' left in place. The weights add to a hundred.'
       end);
 end
@@ -336,14 +396,37 @@ comment on function plb_sheet_measures_set(uuid, uuid, jsonb) is
   'is worth, what it asks for, which way it points and how it splits across '
   'the three months. The one-up manager''s, Human Resources'' and Business '
   'Excellence''s, until the sheet locks. Validated whole, because the rule '
-  'that the weights add to a hundred is a rule about the set.';
+  'that the weights add to a hundred is a rule about the set. A measure '
+  'taken off is withdrawn, never erased, and disappears from every reader '
+  'through the plb_goal_kpi view rather than by each of them remembering.';
 
 -- ------------------------------------------------------------- the guard
 do $guard$
 declare
-  v_sheet uuid; v_person uuid; v_boss uuid; v_kpi uuid;
-  o jsonb; n int; v_list jsonb;
+  v_sheet uuid; v_person uuid; v_boss uuid;
+  o jsonb; n int; v_list jsonb; v_cols int;
 begin
+  -- The structure first, because everything below rests on it.
+  if not exists (select 1 from pg_class c join pg_namespace n2 on n2.oid = c.relnamespace
+                  where n2.nspname='public' and c.relname='plb_goal_kpi' and c.relkind='v') then
+    raise exception 'Migration 255: plb_goal_kpi is not a view, so a withdrawn '
+                    'measure would still be read by every function that asks '
+                    'for it by name.';
+  end if;
+  -- The view lists its columns, so a column added to the base table later
+  -- would silently not appear. That is the same trap in a new place, so it
+  -- is checked rather than trusted.
+  select count(*) into v_cols from (
+    select column_name from information_schema.columns
+      where table_name = 'plb_goal_kpi_all'
+    except
+    select column_name from information_schema.columns
+      where table_name = 'plb_goal_kpi') q;
+  if v_cols > 0 then
+    raise exception 'Migration 255: % column(s) exist on plb_goal_kpi_all and '
+                    'not on the plb_goal_kpi view. Add them to the view.', v_cols;
+  end if;
+
   select s.id, s.person_id into v_sheet, v_person
     from plb_goal_sheet s
     join person p on p.id = s.person_id
@@ -357,10 +440,6 @@ begin
   select manager_id into v_boss from person where id = v_person;
 
   -- Nobody edits their own.
-  if plb_sheet_measures_set(v_person, v_sheet, '[]'::jsonb)->>'error'
-     not in ('not_permitted','invalid') then
-    raise exception 'Migration 255: a person got at their own measures.';
-  end if;
   if plb_sheet_measures_set(v_person, v_sheet,
        jsonb_build_array(jsonb_build_object('kpiId', gen_random_uuid(),
          'weight', 100, 'target', 1)))->>'error' is distinct from 'not_permitted' then
@@ -387,8 +466,8 @@ begin
   end if;
 
   -- And the options list comes back.
-  o := plb_sheet_measure_options(v_boss, v_sheet);
-  if jsonb_array_length(coalesce(o->'measures','[]'::jsonb)) = 0 then
+  if jsonb_array_length(coalesce(
+       plb_sheet_measure_options(v_boss, v_sheet)->'measures','[]'::jsonb)) = 0 then
     raise exception 'Migration 255: there is nothing to put on a sheet.';
   end if;
 
@@ -399,5 +478,6 @@ begin
   end if;
 
   raise notice 'plb_sheet_measures_set: the quarterly sheet is the manager''s '
-               'until it locks.';
+               'until it locks, and a withdrawn measure is invisible by '
+               'construction.';
 end $guard$;

@@ -261,6 +261,33 @@ else
   missing="$missing forget"
 fi
 
+# Can somebody actually GET to it?
+#
+# Three changes in one week passed the build, passed every test, were
+# published, and reached no screen: the quarterly rebuild written into the
+# dead part of a mirror file, patch 18 skipped on every build by a sentinel
+# that reported somebody else's work, and the monthly-shaped quarterly card
+# built on a tab the owner was never told to open. No test could catch any of
+# them, because a test proves a FUNCTION is correct and says nothing about
+# whether a person can get to it.
+#
+# reach_check asks the only question those three had in common: starting from
+# the screen the owner is told to open, is there a path of calls that reaches
+# this? It runs over the published index.html, which is the artefact a person
+# actually loads.
+echo
+echo "== every feature is reachable from the screen it belongs on"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/reach_check.mjs"; then
+    pass=$((pass + 9))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing reach"
+fi
+
 # The navigation and the database are two readers of one access policy. They
 # are meant to agree, and nothing but this makes them.
 echo
