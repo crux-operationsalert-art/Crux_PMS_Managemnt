@@ -1536,7 +1536,15 @@ function pfNode(m, depth, isTeam){
 function pfPersonPanel(){
   var t = PF.whoTree;
   if (!t) return '<p class="mute">Loading…</p>';
-  if (t.error) return msg("bad", t.reason || t.error);
+  /* A reason, and a way out of it. This panel used to sit on "Loading…" for
+     ever when the call failed, because call() rejected and the render that
+     was going to follow never ran. call() no longer rejects, so the reason
+     arrives here -- and a reason somebody cannot act on is only half the
+     repair, hence the button. */
+  if (t.error) {
+    return msg("bad", t.reason || t.error) +
+      '<p><button class="btn" id="pfwhoretry">Try again</button></p>';
+  }
   var ms = t.measures || [];
   return '<div class="pfpanel">' +
     (ms.length
@@ -1833,6 +1841,14 @@ function pfQWire(){
 /* ---------------------------------------------------------------- wiring */
 function pfWire(){
   pfQWire();
+
+  if (el("pfwhoretry")) el("pfwhoretry").onclick = async function(){
+    if (!PF.who || !PF.cycle) return;
+    PF.whoTree = null; pfRender();
+    PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id +
+                           "&person=" + encodeURIComponent(PF.who));
+    pfRender();
+  };
   if (el("pfperiod")) el("pfperiod").onchange = async function(){
     PF.period = el("pfperiod").value; PF.tree = null; PF.who = null;
     PF.whoTree = null; PF.says = ""; PF.measures = null; PF.measuresFor = null;
