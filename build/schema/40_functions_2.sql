@@ -3854,7 +3854,7 @@ begin
 
   if p_fields is null or jsonb_typeof(p_fields) <> 'object' then
     return jsonb_build_object('error','nothing_to_set',
-      'reason','Send the fields to change.');
+      'reason','Send the fields to change. This call carried ' || coalesce(jsonb_typeof(p_fields),'nothing') || '.');
   end if;
 
   -- Validate everything first. A form with three bad boxes must not save the
