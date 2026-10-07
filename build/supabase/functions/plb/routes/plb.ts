@@ -265,6 +265,43 @@ r.post("/kpi/parts", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// =====================================================================
+// The measures ON a quarterly sheet (migration 255).
+//
+// "still not able to edit/update KPIs of quaterly scorecard" -- and there
+// was no way to: plb_goal_kpi rows were written once, by /issue, and after
+// that nothing could change which measures were on a sheet, what each was
+// worth, or what it asked for.
+//
+// Thin, like the rest. plb_sheet_measures_set decides who may write (the
+// one-up manager, HR, Business Excellence; never your own) and until when
+// (not once the sheet locks), and validates the whole list before touching
+// a row, because "the weights add to a hundred" is a rule about the set.
+// =====================================================================
+r.get("/sheet/measures", async (req: any, res: any) => {
+  const sheet = req.query.get("sheet");
+  if (!sheet) return res.status(400).json({ error: "missing_sheet" });
+  const o = await one(`select plb_sheet_measure_options($1,$2::uuid) as o`,
+    [req.person.id, sheet]);
+  return out(res, o.o);
+});
+
+r.post("/sheet/measures", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.sheetId) return res.status(400).json({ error: "missing_sheet" });
+  if (!Array.isArray(b.measures)) {
+    return res.status(400).json({ error: "missing_measures",
+      reason: "Send the measures as a list. The whole list, because the "
+            + "weights have to add to a hundred together." });
+  }
+  const o = await one(
+    `select plb_sheet_measures_set($1,$2::uuid,coalesce($3::text,'[]')::jsonb) as o`,
+    [req.person.id, b.sheetId, JSON.stringify(b.measures)]);
+  // A locked sheet is a state, not a malformed request.
+  if (o.o?.error === "sheet_locked") return res.status(409).json(o.o);
+  return out(res, o.o);
+});
+
 r.post("/certify", async (req: any, res: any) => {
   if (!maySetUp(req)) return res.status(403).json({ error: "not_permitted" });
   const o = await one(`select plb_certify($1,$2) as o`,
