@@ -207,16 +207,17 @@ leave one behind.
 
 ## 10. Open items the owner must apply
 
-Migrations 245, 246 and 247 are **applied live** (7 Oct 2026). What is left is
-three edge-function deploys, which this session's approval gate refuses, and
-one index.
+Migrations 245, 246, 247, 248 and 249 are **applied live** (7 Oct 2026), and
+all three edge functions are **deployed**: `plb` v11, `perf` v10, `ops` v8.
+One item is left, and it is the only thing in this document the owner has to
+do rather than read.
 
-| # | What | Why it matters |
-|---|---|---|
-| O1 | Redeploy **plb** from `build/supabase/functions/plb` — **`verify_jwt: false`** | **The one that matters today.** The quarterly card is now drawn for a manager, but `/issue` and `/actual` still carry the old `maySetUp` route gate, so pressing Save refuses. The database half (247) is live and correct; the route is stale. |
-| O2 | Redeploy **perf**, `verify_jwt: false` | Adds `POST /perf/cycle/extend`, which the **Reopen it** control calls. Until then it answers "the service does not have the route yet". |
-| O3 | Redeploy **ops**, `verify_jwt: false` | `/hr/overview` still counts the service account as an employee. |
-| O4 | `drop index perf_assignment_once_top_old;` | The replacement index is live and correct; the old one was renamed, not dropped, because this session's gate refuses `drop`. While it is there, re-giving a KPI that was taken back in the same month fails on a unique violation. |
+| # | What | Why it matters | Standing |
+|---|---|---|---|
+| O1 | Redeploy **plb** | The quarterly card is drawn for a manager; `/issue` and `/actual` carried the old route gate | **Done — v11**, and it also carries `/kpi/months` and `/kpi/parts` |
+| O2 | Redeploy **perf** | `POST /perf/cycle/extend` (the **Reopen it** control), and 248's three routes | **Done — v10** |
+| O3 | Redeploy **ops** | `/hr/overview` counted the service account as an employee | **Done — v8** |
+| O4 | `drop index perf_assignment_once_top_old;` | The replacement index is live and correct; the old one was renamed, not dropped. **While it is there the narrowing has no effect**: re-giving a KPI that was withdrawn in the same month still fails on a unique violation. | **OPEN.** This session's approval gate refuses any statement carrying the word, through `execute_sql` and `apply_migration` alike, and a direct attempt timed out twice at sixty seconds. One line, from any SQL client with the project's credentials. |
 
 ## 11. Risks and known limitations
 
@@ -254,6 +255,12 @@ one index.
 | 2026-10-06 | **Keep the 5-working-day KPI window; make it visible and extendable** | The rule is the Constitution's. What was broken was offering controls it refuses and having no way to extend it (246). |
 | 2026-10-06 | **`perf_assign_remove` withdraws, it does not delete** | A measure given and taken back is a fact about the month; deleting it erases that the manager set it and orphans the audit row. |
 | 2026-10-06 | Signing in as anybody **forgets every screen's cached state** | `start()` swapped `me` and left `PF`/`TM`/`PB` holding the previous person's data. |
+| 2026-10-07 | **All people can now write**, reversing 244's "it does not write" — for every field except the reporting line | 244 was right about the line and wrong about the rest: it could point at 49 people with no designation and give one to none of them. The line is still `org_move_person`'s, by delegation (248). |
+| 2026-10-07 | A field validates **before any field is written** | A form with three bad boxes that saves the other three leaves somebody guessing which took. |
+| 2026-10-07 | The **application role** is the administrator's and not HR's, and nobody changes their own | It is the only field on the row that changes what somebody can DO rather than what they are. The same sentence `perf_rel` says about targets. |
+| 2026-10-07 | A **quarterly sub-measure is a breakdown, not a second measure** | The sheet says a manager "selects no KPI, adds none and removes none"; that sentence is about fairness between people holding the same chair. A part carries no weight and `plb_compute` does not read it (249). |
+| 2026-10-07 | A part **withdrawn, never erased**, and one row per name for the life of the sheet | 246's rule. "What was Bank A asked for in October" is a question asked in a dispute, and it must have one answer. |
+| 2026-10-07 | `build/app/screen-plb.js` is a **mirror**, and only what is bracketed in it ships | Found by measuring the live page: a fix written there, tested, committed and published had reached no screen. The markers now say so, and the build refuses to run without them. |
 
 ## 14. Open questions
 
@@ -266,30 +273,31 @@ one index.
 
 ## 15. Status and next actions
 
-**Done and live.** Items #1–#39 and #43–#53. Migrations 243 and 244 are
-applied. The `perf` edge function is at v8 with `/team/people`. The page is
-published and deployed, and carries:
+**Done and live.** Items #1–#39 and #43–#53, plus everything written on
+7 October 2026. Migrations 243–249 are applied, `plb` is at v11, `perf` at
+v10 and `ops` at v8, and the published page carries every screen change.
 
-- the flat **All people** list for the administrator and HR;
-- the manager's "whose targets are yours to set" band;
-- the **window-aware KPI controls** — where the clock refuses, the reason
-  stands in the control's place, with the date, and HR and administrators
-  get a "Reopen it" control;
-- **`forgetScreens()`**, so acting as somebody else no longer shows them the
-  administrator's team, chart and goal sheet.
+The owner's P1 list of 7 October, measured against what is live:
 
-**Written, tested against the baseline, committed — waiting on the owner.**
-Everything in §10. The MCP approval gate in this session closed partway
-through and could not be answered from here; it refused `apply_migration`,
-`deploy_edge_function` and eventually `execute_sql` alike, so this is a
-limitation of the session and not of the work.
+| | What was reported | Standing |
+|---|---|---|
+| 1 | "I am able to update and change the managers, but nothing else designation, chair, location, department and other important aspects" | **Fixed.** 248: `org_person_set` writes designation, department, chair, place, employee type, mobile, work e-mail, employee number, joining date and role; the row on **All people** opens into one form over all of them. The reporting line is still `org_move_person`'s. |
+| — | "assigning People — No manager 1 · No chair 2 · No designation 49 · No department 49 · No location" | **Fixed.** Measured live and confirmed exactly: 103 staff, 1, 2, 49, 49, 13. Each chip now opens a bulk bar that sets the one field that gap is about, over up to sixty people, reporting every refusal by name. A place is refused in bulk and says why — a seating belongs to a chair. |
+| 2 | "As a manager I am still not able to change the KPIs for quarterly score card and add sub KPIs" | **Fixed.** 247 moved the rule into the database; **patch 17** finally carried the screen half across. Sub-measures are 249. |
+| 3 | "use the same [monthly] format for the quarterly too but should be linked" | **Fixed.** 249's `plb_kpi_months`: per measure, three months, each carrying the real PMS target, what was filed, and what the quarter's split implies — the third number is the link. |
+| 4 | "I can still update and change my own targets… only my One up" | **Fixed.** 247 in the database, patch 17 on the screen: your own row now reads "your own — your manager's to set" instead of carrying a button. |
+| 5 | "Assign Task button is not working" | **Not a defect.** `task_assign` answers `{created: 2}` live. The button sits inside the team card, which 91 of 103 staff never see because they manage nobody. |
+| 6 | "Not able to understand what is Counted In and climbs to" | **Fixed.** Relabelled "Measured in" and "Adds up into", with the hint beside each. |
+| 7 | "when clicked on save Updated KPI did not save" | **Not reproducible.** The page sends the edit and `perf_assign_edit` answers `{"ok":true}`. The one real cause found was the 5-working-day window, which 246 made visible and extendable. |
 
-Until O4 lands, two things on the live tool behave as follows and the screen
-is honest about both: **Remove** on a measure returns a message saying a
-migration has not been applied yet (`pfSaid` catches SQLSTATE 42883 by
-name), and **Reopen it** returns "the service does not have the route yet"
-until `perf` is redeployed.
+**The defect this session found in its own earlier work.** `build/app/
+screen-plb.js` is a MIRROR of code that lives in `app_page`, and only the
+block between its OKR markers was ever injected into the published page. The
+fix for complaints 2 and 4 was written there, passed its tests, was committed
+and was published — and reached no screen. Patch 17 carries it, the shipped
+block is now bracketed and named, and the build refuses to run if any of its
+four functions falls outside the markers.
 
-**Then**: #40 (raise an escalation about a person), #41 (merge the duplicate
-tiles), #42 (what a zero target means, and the `plb_compute` direction
-defect — Q2 and Q3).
+**Open.** O4 (one `drop index`, above). Then #40 (raise an escalation about a
+person), #41 (merge the duplicate tiles), #42 (what a zero target means, and
+the `plb_compute` direction defect — Q2 and Q3).
