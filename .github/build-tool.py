@@ -1021,6 +1021,44 @@ PATCHES.append((
       # / off track -- and every use of it carries the word beside the
       # colour, so the card reads the same in greyscale and to somebody who
       # does not see red and green apart.
+      # ---------------- the quarter on the Performance page (patch 19)
+      # The same shape as the monthly card above it, because it is the same
+      # question asked of three months at once. Drawn on THIS screen, which
+      # is the whole point: the monthly-shaped quarterly card existed for a
+      # fortnight on a tab called "Running the scheme" and nobody found it.
+      ".pfqtop{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;\n"
+      "  margin:0 0 14px}\n"
+      ".pfqtop>div:first-child{flex:1 1 320px;min-width:0}\n"
+      ".pfqmeas{border:1px solid var(--line2);border-radius:3px;margin:0 0 12px;\n"
+      "  padding:12px 13px;background:var(--panel2)}\n"
+      ".pfqhead{margin:0 0 10px;padding-bottom:9px;\n"
+      "  border-bottom:1px solid var(--line2)}\n"
+      ".pfqmonths{display:grid;gap:10px;\n"
+      "  grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}\n"
+      ".pfqm{border:1px solid var(--line2);border-radius:3px;padding:9px 10px;\n"
+      "  background:var(--panel)}\n"
+      ".pfqmh{font-weight:600;margin:0 0 6px}\n"
+      ".pfqmn{display:flex;justify-content:space-between;gap:10px;\n"
+      "  font-size:12px;line-height:1.7}\n"
+      ".pfqmn>span{color:var(--ink3)}\n"
+      ".pfqsay{margin-top:6px;font-size:12px}\n"
+      ".pfqbad{color:var(--red-ink)}\n"
+      ".pfqok{color:var(--green-ink)}\n"
+      # The breakdown of one measure, and the editor for the whole list.
+      ".pfqpsum{margin-top:10px;padding-top:9px;font-size:12px;\n"
+      "  border-top:1px solid var(--line2);color:var(--ink2)}\n"
+      ".pfqparts{margin-top:10px;padding-top:10px;\n"
+      "  border-top:1px solid var(--line2)}\n"
+      ".pfqpt,.pfqet{width:100%;border-collapse:collapse;margin:8px 0}\n"
+      ".pfqpt th,.pfqet th{text-align:left;font-size:11px;letter-spacing:.04em;\n"
+      "  text-transform:uppercase;color:var(--ink3);padding:4px 6px;\n"
+      "  border-bottom:1px solid var(--line2)}\n"
+      ".pfqpt td,.pfqet td{padding:4px 6px;vertical-align:top;\n"
+      "  border-bottom:1px solid var(--line2)}\n"
+      ".pfqpt input,.pfqet input,.pfqet select{width:100%;box-sizing:border-box}\n"
+      ".pfqet tfoot td{font-weight:600;border-bottom:none}\n"
+      ".pfqedit{border:1px solid var(--line2);border-radius:3px;\n"
+      "  padding:12px 13px;margin:0 0 14px;background:var(--panel2)}\n"
       # ------------------------- the quarter drawn in the monthly card's shape
       # One block per measure instead of one row, because the thing being
       # read is three months of a promise rather than a single line of a
@@ -1707,6 +1745,22 @@ PATCHES.append((
 ))
 
 
+PATCHES.append((
+    "the quarterly scorecard is on the page that is about it",
+    # A string this patch writes, never one the application already carries.
+    # Patch 18 is the record of what the other kind costs.
+    "Issue \u0026 certify sheets",
+    [("[\"perf\",    [[\"perf\",\"Performance & appraisal\"], [\"plb\",\"Running the scheme\"]]]",
+      "[\"perf\",    [[\"perf\",\"Performance & appraisal\"],\n"
+      "               /* Was \"Running the scheme\", which is who it is for and\n"
+      "                  not what is on it. The quarterly scorecard was over\n"
+      "                  here the whole time and the owner went looking for it\n"
+      "                  on Performance, which is where it now is. What is\n"
+      "                  left here really is only running the scheme. */\n"
+      "               [\"plb\",\"Issue & certify sheets\"]]]", 1)],
+))
+
+
 # A sentinel asks one question -- "has this patch already been folded into
 # app_page?" -- and the only string that can answer it honestly is one THIS
 # patch writes. A sentinel the application carries for some other reason is
@@ -1722,7 +1776,6 @@ for name, sentinel, rules in PATCHES:
                  "patch's own rules, so it can only ever report somebody "
                  "else's work and skip this patch for ever. Use a string this "
                  "patch inserts." % (name, sentinel[:60]))
-
 for name, sentinel, rules in PATCHES:
     if sentinel in app:
         print("%-32s already in app_page; skipped." % name)
