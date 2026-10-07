@@ -962,9 +962,44 @@ PATCHES.append((
       ".tmrep{display:flex;flex-direction:column;gap:6px;min-width:230px}\n"
       ".tmrep select{max-width:300px}\n"
       ".tmrepb{display:flex;gap:6px}\n"
+      # ------------------------------------------ the row, opened as a form
+      # A row turns into ONE form rather than six editable cells, because
+      # six cells is six saves and six chances to half-finish. It is laid
+      # out as a grid that folds to one column, so the same markup is the
+      # phone layout without a second set of rules.
+      ".tmedrow td{background:var(--panel2);padding:14px 12px}\n"
+      ".tmedit{max-width:980px}\n"
+      ".tmedh{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;\n"
+      "  margin:0 0 12px;padding-bottom:9px;border-bottom:1px solid var(--line2)}\n"
+      ".tmedh b{font-family:var(--serif,Georgia,serif);font-size:16px}\n"
+      ".tmedh span{font-size:12px}\n"
+      ".tmedg{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));\n"
+      "  gap:10px 14px}\n"
+      ".tmf{display:flex;flex-direction:column;gap:4px;min-width:0}\n"
+      ".tmf>span{font-size:11px;letter-spacing:.06em;text-transform:uppercase;\n"
+      "  color:var(--mute)}\n"
+      ".tmf .pfin{width:100%}\n"
+      ".tmedb{display:flex;gap:8px;margin-top:14px}\n"
+      # The refusal sits with the boxes it is about, not above them in a
+      # banner: the database names the field, so the screen can too.
+      ".tmedbad{margin-top:12px;padding:9px 11px;border:1px solid var(--terra);\n"
+      "  background:var(--terra-bg);border-radius:3px;font-size:12px;\n"
+      "  color:var(--terra-ink)}\n"
+      ".tmedbad b{text-transform:capitalize}\n"
+      # ---------------------------------------------- the same change to many
+      ".tmck{width:28px;text-align:center}\n"
+      ".tmbulk{display:flex;gap:8px;align-items:center;flex-wrap:wrap;\n"
+      "  margin:0 0 12px;padding:9px 11px;border:1px solid var(--gold);\n"
+      "  background:var(--gold-bg);border-radius:3px}\n"
+      ".tmbulk .pfin{min-width:180px}\n"
+      ".tmbn{font-size:12px;color:var(--gold-ink);font-variant-numeric:tabular-nums}\n"
+      ".tmbf{font-size:11px;letter-spacing:.06em;text-transform:uppercase;\n"
+      "  color:var(--mute);margin-left:6px}\n"
       "@media (max-width:720px){\n"
       "  .tmfind{min-width:0}\n"
       "  .tmcount{text-align:left}\n"
+      "  .tmedg{grid-template-columns:1fr}\n"
+      "  .tmbulk{align-items:stretch;flex-direction:column}\n"
       "}\n"
       # ============================ the quarterly scorecard, in OKR shape
       # One band vocabulary for the whole card -- met / on track / at risk

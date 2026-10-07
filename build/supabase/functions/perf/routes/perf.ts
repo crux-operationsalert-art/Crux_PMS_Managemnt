@@ -356,6 +356,45 @@ r.get("/team/people", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// The dropdowns behind that list (migration 248). Designations, the
+// departments already in use, chairs, the seatings of each chair, employee
+// types and roles -- so the screen offers a pick rather than a text box, and
+// the same job does not end up recorded three different ways.
+r.get("/team/options", async (req: any, res: any) => {
+  const o = await one(`select org_assign_options($1) as o`, [req.person.id]);
+  return out(res, o.o);
+});
+
+// And the write behind it. 244 built the list that FINDS the gaps -- 49 people
+// with no designation, 49 with no department -- and deliberately did not write.
+// This is the write, and it keeps 244's rule: the reporting line is still
+// org_move_person's, because org_person_set delegates to it rather than
+// touching manager_id itself.
+//
+// Every field validates before any field is written, so a form with three bad
+// boxes refuses rather than saving the other three.
+r.post("/team/set", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.personId) return res.status(400).json({ error: "missing_person" });
+  const o = await one(`select org_person_set($1,$2::uuid,$3::jsonb) as o`,
+    [req.person.id, b.personId, JSON.stringify(b.fields || {})]);
+  if (o.o?.error === "would_loop") return res.status(409).json(o.o);
+  return out(res, o.o);
+});
+
+// The same thing to everybody behind one chip. "49 with no department" is not
+// 49 decisions; it is usually one decision applied to a group.
+r.post("/team/set-many", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!Array.isArray(b.people)) {
+    return res.status(400).json({ error: "nobody_chosen",
+      reason: "Tick the people this applies to." });
+  }
+  const o = await one(`select org_person_set_many($1,$2::jsonb,$3::jsonb) as o`,
+    [req.person.id, JSON.stringify(b.people), JSON.stringify(b.fields || {})]);
+  return out(res, o.o);
+});
+
 // A drag that landed. personId moves under managerId.
 //
 // managerId may legitimately be null -- that is "out of the line

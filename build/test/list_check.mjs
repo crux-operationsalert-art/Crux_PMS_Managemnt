@@ -51,7 +51,8 @@ const fakeEl = (id) => {
 
 const harness = `
 ${src}
-return { TM, TM_GAPS, tmGapTest, tmBelow, tmRows, tmTable, tmRepForm,
+return { TM, TM_GAPS, TM_BULK, tmGapTest, tmBelow, tmRows, tmTable,
+         tmRepOpts, tmEditForm, tmSeatOpts, tmBulkBar,
          tmListRow, tmRender, tmTabs, tmMayList, tmRoot, tmKids };
 `;
 const mod = new Function("el", "esc", "msg", "perfApi", "pfUnit", "pfNum",
@@ -59,7 +60,8 @@ const mod = new Function("el", "esc", "msg", "perfApi", "pfUnit", "pfNum",
   fakeEl, esc, (k, t) => String(t ?? ""), async () => ({}),
   (u) => String(u), (n) => String(n), () => "", () => {}, null, null);
 
-const { TM, TM_GAPS, tmGapTest, tmBelow, tmRows, tmRepForm, tmRender,
+const { TM, TM_GAPS, TM_BULK, tmGapTest, tmBelow, tmRows, tmRepOpts,
+        tmEditForm, tmSeatOpts, tmBulkBar, tmListRow, tmRender,
         tmTabs, tmMayList } = mod;
 
 // A small company with every gap in it once.
@@ -71,31 +73,31 @@ const PEOPLE = [
   { personId:"a", name:"Anita Rao",  employeeNo:"EMP-1", workEmail:"anita@x.invalid",
     designation:"Managing Director", chair:"MD", location:"Pune",
     locationFrom:"chair", department:"Operations",
-    managerId:null, reportsTo:null, reports:2, mayMove:false },
+    managerId:null, reportsTo:null, reports:2, mayMove:false, mayEdit:true },
   { personId:"b", name:"Bharat Shah", employeeNo:"EMP-2", workEmail:"bharat@x.invalid",
     designation:"Zonal Manager", chair:"Zonal Manager", location:"Mumbai",
     locationFrom:"chair", department:"Operations",
-    managerId:"a", reportsTo:"Anita Rao", reports:1, mayMove:true },
+    managerId:"a", reportsTo:"Anita Rao", reports:1, mayMove:true, mayEdit:true },
   { personId:"c", name:"Chetan Iyer", employeeNo:"EMP-3", workEmail:"chetan@x.invalid",
     designation:"Branch Manager", chair:"Branch Manager", location:"Nagpur",
     locationFrom:"coverage", department:"Operations",
-    managerId:"b", reportsTo:"Bharat Shah", reports:1, mayMove:true },
+    managerId:"b", reportsTo:"Bharat Shah", reports:1, mayMove:true, mayEdit:true },
   { personId:"d", name:"Deepa Nair", employeeNo:"EMP-4", workEmail:"deepa@x.invalid",
     designation:"Executive", chair:"Executive", location:"Nagpur",
     locationFrom:"chair", department:"Operations",
-    managerId:"c", reportsTo:"Chetan Iyer", reports:0, mayMove:true },
+    managerId:"c", reportsTo:"Chetan Iyer", reports:0, mayMove:true, mayEdit:true },
   { personId:"e", name:"Esha Kulkarni", employeeNo:"EMP-5", workEmail:"esha@x.invalid",
     designation:"Executive", chair:"Executive", location:"Pune",
     locationFrom:"chair", department:null,
-    managerId:"a", reportsTo:"Anita Rao", reports:0, mayMove:true },
+    managerId:"a", reportsTo:"Anita Rao", reports:0, mayMove:true, mayEdit:true },
   { personId:"f", name:"Farhan Qureshi", employeeNo:"EMP-6", workEmail:"farhan@x.invalid",
     designation:"Executive", chair:"Executive", location:"Pune",
     locationFrom:"chair", department:"Operations",
-    managerId:null, reportsTo:null, reports:0, mayMove:true },
+    managerId:null, reportsTo:null, reports:0, mayMove:true, mayEdit:true },
   { personId:"g", name:"Gita Menon", employeeNo:null, workEmail:null,
     designation:null, chair:null, location:null, locationFrom:null,
     department:null, managerId:"b", reportsTo:"Bharat Shah",
-    reports:0, mayMove:true },
+    reports:0, mayMove:true, mayEdit:true },
 ];
 
 const SUMMARY = { people:7, noManager:2, noChair:1, noDesignation:1,
@@ -108,6 +110,22 @@ function load(over) {
   }, over || {});
   TM.tq = ""; TM.tonly = ""; TM.tsort = "name"; TM.tedit = null;
   TM.view = "table"; TM.says = ""; TM.shut = {}; TM.sel = null;
+  TM.tpick = {}; TM.tsays = ""; TM.tfail = null;
+  /* What org_assign_options hands back. Two chairs, and a place on each,
+     so "a place belongs to a chair" can be checked rather than assumed. */
+  TM.opts = {
+    mayUse: true, maySetRole: true,
+    designations: [{ id:"d1", title:"Branch Manager", seniority:30 },
+                   { id:"d2", title:"Executive", seniority:60 }],
+    departments: ["Operations", "Human Resources"],
+    chairs: [{ id:"c1", code:"BM", title:"Branch Manager", level:"BRANCH" },
+             { id:"c2", code:"ZM", title:"Zonal Manager", level:"ZONE" }],
+    seatings: [{ id:"s1", chairId:"c1", label:"Mumbai" },
+               { id:"s2", chairId:"c1", label:"Pune" },
+               { id:"s3", chairId:"c2", label:"West" }],
+    employeeTypes: ["EMPLOYEE","PARTNER","INTERN","CONTRACT"],
+    appRoles: ["VIEWER","MANAGER","ADMIN"],
+  };
 }
 load();
 
@@ -123,8 +141,8 @@ ok("somebody outside the line is not below anybody",
 
 // Data can be wrong. A ring in manager_id must not hang the browser.
 TM.tbl.people = [
-  { personId:"x", name:"X", managerId:"y", reports:1, mayMove:true },
-  { personId:"y", name:"Y", managerId:"x", reports:1, mayMove:true },
+  { personId:"x", name:"X", managerId:"y", reports:1, mayMove:true, mayEdit:true },
+  { personId:"y", name:"Y", managerId:"x", reports:1, mayMove:true, mayEdit:true },
 ];
 let rang = false;
 try {
@@ -141,7 +159,7 @@ load();
 // The one refusal org_move_person makes that the screen can predict
 // exactly. Offering it and having it refused is the defect migration 242
 // was written for.
-const forB = tmRepForm(PEOPLE[1]);
+const forB = tmRepOpts(PEOPLE[1]);
 ok("the picker never offers somebody themselves",
    !/value="b"/.test(forB));
 ok("nor anybody below them, at any depth",
@@ -151,10 +169,11 @@ ok("and does offer everybody it safely can",
    /value="a"/.test(forB) && /value="e"/.test(forB) && /value="f"/.test(forB));
 ok("the manager they already have is the one selected",
    /value="a" selected/.test(forB));
+const editB = tmEditForm(PEOPLE[1]);
 ok("nobody-at-all is an option, and it is the empty one",
-   /<option value="">/.test(forB) && /top of the company/.test(forB));
+   /<option value="">/.test(editB) && /top of the company/.test(editB));
 
-const forA = tmRepForm(PEOPLE[0]);
+const forA = tmRepOpts(PEOPLE[0]);
 ok("somebody at the top is offered nobody from their own line",
    !/value="b"/.test(forA) && !/value="e"/.test(forA),
    (forA.match(/value="[a-z]"/g) || []).join(" "));
@@ -256,6 +275,88 @@ ok("a coverage area is labelled as one rather than passed off as a posting",
 ok("the chart and the list read the same move",
    (src.match(/perfApi\("\/perf\/team\/move"/g) || []).length === 1,
    String((src.match(/perfApi\("\/perf\/team\/move"/g) || []).length));
+
+// ===================================================================
+// The editor (migration 248). 244 built the list that finds the gaps and
+// did not write one; this is the half that closes them, and the owner's
+// sentence is the specification: "I am able to update and change the
+// managers, but nothing else designation, chair, location, department
+// and other important aspects."
+// ===================================================================
+load();
+const ed = tmEditForm(PEOPLE[6]);          // Gita: no chair, no designation
+for (const [what, id] of [["designation","tmedesig"], ["department","tmedept"],
+                          ["chair","tmechair"], ["location","tmeseat"],
+                          ["employee type","tmetype"], ["employee number","tmeno"],
+                          ["work e-mail","tmemail"], ["mobile","tmemob"],
+                          ["joining date","tmejoin"]]) {
+  ok(`the row opens onto a box for ${what}`, ed.includes(`id="${id}"`));
+}
+ok("and the reporting line is one control inside it, not the whole of it",
+   /id="tmrepsel"/.test(ed) && /data-tmsave="g"/.test(ed));
+
+// The one field HR may not set. A box that is always refused is worse than
+// no box -- that is migration 242, said about a form instead of a chart.
+ok("the role box is drawn only where the row says it may be",
+   !/id="tmerole"/.test(ed));
+const edRole = tmEditForm(Object.assign({}, PEOPLE[6], { maySetRole:true }));
+ok("and is drawn where it says it may",
+   /id="tmerole"/.test(edRole));
+
+// A place belongs to a chair. Offering Pune under a chair that has no Pune
+// seat is an offer org_person_set refuses.
+ok("the places offered are the ones on the chair that is picked",
+   /value="s1"/.test(tmSeatOpts("c1")) && /value="s2"/.test(tmSeatOpts("c1")) &&
+   !/value="s3"/.test(tmSeatOpts("c1")));
+ok("a chair with no places says so rather than offering none in silence",
+   /no places on it/.test(tmSeatOpts("c9")));
+ok("and no chair at all offers no place",
+   !/value="s/.test(tmSeatOpts("")));
+
+// What the person already has is what the form opens on. A form that
+// opens blank reads as "this is empty" and saves away whatever was there.
+const edB = tmEditForm(Object.assign({}, PEOPLE[1],
+  { designationId:"d1", chairId:"c1", seatingId:"s2", department:"Operations" }));
+ok("the form opens on what the person already has",
+   /value="d1" selected/.test(edB) && /value="c1" selected/.test(edB) &&
+   /value="s2" selected/.test(edB) && /value="Operations"/.test(edB));
+
+// ------------------------------------------------------- the bulk bar
+load();
+ok("there is no bulk bar until a gap is being worked through",
+   tmBulkBar(tmRows()) === "");
+load(); TM.tonly = "noDesignation";
+let bar = tmBulkBar(tmRows());
+ok("a gap chip brings up the one field that gap is about",
+   /id="tmbval"/.test(bar) && /value="d1"/.test(bar) && /Designation/.test(bar));
+ok("and nothing can be set until somebody is ticked",
+   /id="tmbgo"[^>]*disabled/.test(bar), bar.match(/id="tmbgo"[^>]*>/)[0]);
+TM.tpick = { g:true };
+bar = tmBulkBar(tmRows());
+ok("ticking somebody arms it, and it says how many",
+   !/id="tmbgo"[^>]*disabled/.test(bar) && /Set for 1/.test(bar));
+load(); TM.tonly = "noDepartment";
+ok("a department can be picked from the ones in use or typed new",
+   /list="tmdepts2"/.test(tmBulkBar(tmRows())));
+load(); TM.tonly = "noLocation";
+ok("a place is refused in bulk, because a place belongs to a chair",
+   /one person at a time/.test(tmBulkBar(tmRows())) &&
+   !/id="tmbval"/.test(tmBulkBar(tmRows())));
+
+// The tick column appears with the chip and not before it: "the same change
+// to all of these" is only a question once a gap is on screen.
+load();
+ok("there is no tick box until a gap is being worked through",
+   !/data-tmpick/.test(tmListRow(PEOPLE[6])));
+TM.tonly = "noChair";
+ok("and one for every row once there is",
+   /data-tmpick="g"/.test(tmListRow(PEOPLE[6])));
+
+// One write, one set of rules. The screen must not have grown a second way
+// to change a reporting line beside org_move_person.
+ok("every change goes through org_person_set, and the line through nothing new",
+   (src.match(/perfApi\("\/perf\/team\/set"/g) || []).length === 1 &&
+   (src.match(/perfApi\("\/perf\/team\/set-many"/g) || []).length === 1);
 
 console.log("");
 if (fails.length) {

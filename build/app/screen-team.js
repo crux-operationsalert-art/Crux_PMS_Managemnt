@@ -25,7 +25,11 @@ var TM = { tree:null, cycle:null, shut:{}, sel:null, drag:null, over:null,
               screen, the payload, the search box, which gap is being
               filtered for, how it is sorted, and the one row whose
               reporting line is being changed. */
-           view:"chart", tbl:null, tq:"", tonly:"", tsort:"name", tedit:null };
+           view:"chart", tbl:null, tq:"", tonly:"", tsort:"name", tedit:null,
+           /* the dropdowns the row and the bulk bar are drawn from, who is
+              ticked for a change to all of them at once, and what the last
+              save said about each person it refused. */
+           opts:null, tpick:{}, tsays:"", tfail:null };
 
 async function vPeople(){
   el("view").innerHTML = '<p class="mute">Loading&hellip;</p>';
@@ -35,10 +39,15 @@ async function vPeople(){
      to ask, and the answer decides whether the tab is drawn at all. */
   var got = await Promise.all([
     perfApi("/perf/team/tree"),
-    perfApi("/perf/team/people")
+    perfApi("/perf/team/people"),
+    /* The lists the row's dropdowns are drawn from. Asked for at the same
+       time and refused under the same rule, so a row can never offer a
+       designation the write would not accept. */
+    perfApi("/perf/team/options")
   ]);
   TM.tree = got[0];
   TM.tbl  = got[1];
+  TM.opts = got[2] && !got[2].error && got[2].mayUse ? got[2] : null;
   /* Somebody who manages nobody -- the administrator, and HR -- gets an
      empty chart and used to get nothing else. For them the list IS the
      screen, so it opens on it. */
@@ -245,7 +254,7 @@ function tmTable(){
   var cols = [["name","Name"], ["designation","Designation"],
               ["location","Location"], ["reportsTo","Reporting to"],
               ["reports","Reports"]];
-  var head = '<tr>' + cols.map(function(c){
+  var head = '<tr><th class="tmck"></th>' + cols.map(function(c){
     return '<th><button class="tmsort' + (TM.tsort === c[0] ? ' on' : '') + '" ' +
       'data-tmsort="' + c[0] + '">' + esc(c[1]) +
       (TM.tsort === c[0] ? ' <span class="tmar">&darr;</span>' : '') +
@@ -255,7 +264,7 @@ function tmTable(){
   var rows = tmRows();
   var body = rows.length
     ? rows.map(tmListRow).join("")
-    : '<tr><td colspan="6" class="mute">Nobody matches that.</td></tr>';
+    : '<tr><td colspan="7" class="mute">Nobody matches that.</td></tr>';
 
   return '<div class="tmbarrow">' +
       '<input id="tmfind" class="pfin tmfind" placeholder="Find a name, a number, a place&hellip;" ' +
@@ -264,12 +273,27 @@ function tmTable(){
         esc(s.people || 0) + ' shown</span>' +
     '</div>' +
     '<div class="tmchips">' + chips + '</div>' +
+    tmBulkBar(rows) +
+    (TM.tsays || "") +
     '<div class="card tmlist"><div class="scroll"><table class="tbl">' +
       '<thead>' + head + '</thead><tbody>' + body + '</tbody></table></div></div>';
 }
 
 function tmListRow(p){
-  var editing = TM.tedit === p.personId;
+  /* The whole row turns into one form rather than six editable cells. Six
+     cells means six separate saves and six chances to half-finish; one
+     form is one decision, and org_person_set refuses or accepts it whole. */
+  if (TM.tedit === p.personId) {
+    return '<tr class="tmedrow"><td colspan="7">' + tmEditForm(p) + '</td></tr>';
+  }
+
+  /* The tick box appears only while a gap is being worked through, because
+     that is the only time "the same change to all of these" is the thing
+     being asked for. */
+  var tick = '<td class="tmck">' + (TM.tonly
+    ? '<input type="checkbox" data-tmpick="' + esc(p.personId) + '"' +
+      (TM.tpick[p.personId] ? ' checked' : '') + '>'
+    : '') + '</td>';
 
   var who = '<td><b>' + esc(p.name) + '</b>' +
     (p.employeeNo ? ' <span class="tmtg">' + esc(p.employeeNo) + '</span>' : '') +
@@ -292,44 +316,220 @@ function tmListRow(p){
           ? '<div class="mute">from what they cover</div>' : '')
       : '<span class="tmgap">not set</span>') + '</td>';
 
-  var rep = '<td>' + (editing ? tmRepForm(p)
-    : (p.reportsTo
-        ? esc(p.reportsTo)
-        : '<span class="tmgap">nobody</span>')) + '</td>';
+  var rep = '<td>' + (p.reportsTo
+      ? esc(p.reportsTo)
+      : '<span class="tmgap">nobody</span>') + '</td>';
 
   var n = '<td class="tmn">' + (p.reports ? esc(p.reports) : '') + '</td>';
 
+  /* One button, not two. "Assign" and "Change" were the same action said
+     two ways; what differs is whether the row has anything in it yet. */
   var act = '<td class="plact">' +
-    (p.mayMove && !editing
+    (p.mayEdit
       ? '<button class="btn" data-tmrep="' + esc(p.personId) + '">' +
-        (p.reportsTo ? 'Change' : 'Assign') + '</button>'
+        (p.designation && p.chair && p.reportsTo ? 'Edit' : 'Assign') + '</button>'
       : '') + '</td>';
 
   return '<tr' + (p.managerId ? '' : ' class="tmwarnrow"') + '>' +
-    who + what + place + rep + n + act + '</tr>';
+    tick + who + what + place + rep + n + act + '</tr>';
 }
 
-/* The picker. Everybody the move would not refuse: not themselves, and
-   nobody already below them. The order is alphabetical because that is how
-   somebody looks for a name they already have in mind. */
-function tmRepForm(p){
+/* ---------------------------------------------------------- the bulk bar
+
+   "No designation 49" is not forty-nine decisions. It is usually one
+   decision -- these twenty are Field Officers -- applied to a group. The
+   bar appears only under a gap chip, offers exactly the field that gap is
+   about, and sends org_person_set_many, which carries on past a refusal
+   and reports every one of it made.                                      */
+var TM_BULK = {
+  noManager:     { field:"managerId",     label:"Report to" },
+  noChair:       { field:"chairId",       label:"Chair" },
+  noDesignation: { field:"designationId", label:"Designation" },
+  noDepartment:  { field:"department",    label:"Department" },
+  noLocation:    { field:"seatingId",     label:"Location" }
+};
+
+function tmBulkBar(rows){
+  var spec = TM_BULK[TM.tonly];
+  if (!spec || !TM.opts) return "";
+  var o = TM.opts;
+  var ids = Object.keys(TM.tpick).filter(function(k){ return TM.tpick[k]; });
+
+  var control;
+  if (spec.field === "designationId") {
+    control = '<select id="tmbval" class="pfin">' +
+      tmPickOpts(o.designations, "id", "title", "", "— pick one —") +
+      '</select>';
+  } else if (spec.field === "department") {
+    control = '<input id="tmbval" class="pfin" list="tmdepts2" placeholder="Operations">' +
+      '<datalist id="tmdepts2">' +
+        (o.departments || []).map(function(d){
+          return '<option value="' + esc(d) + '">';
+        }).join("") + '</datalist>';
+  } else if (spec.field === "chairId") {
+    control = '<select id="tmbval" class="pfin">' +
+      tmPickOpts((o.chairs || []).map(function(c){
+        return { id:c.id, title:c.title + (c.code ? " · " + c.code : "") };
+      }), "id", "title", "", "— pick one —") + '</select>';
+  } else if (spec.field === "seatingId") {
+    /* A place belongs to a chair, and the people under this chip hold
+       different chairs or none. Sending one seating to all of them would
+       be refused for most, so the bar says so instead of offering it. */
+    return '<div class="tmbulk"><span class="mute">A place belongs to a ' +
+      'chair, so it is set one person at a time &mdash; press Assign on a ' +
+      'row. Give somebody a chair first and its places appear.</span></div>';
+  } else {
+    control = '<select id="tmbval" class="pfin">' +
+      '<option value="">&mdash; pick a manager &mdash;</option>' +
+      ((TM.tbl && TM.tbl.people) || []).map(function(q){
+        return '<option value="' + esc(q.personId) + '">' + esc(q.name) +
+          (q.chair ? ' &middot; ' + esc(q.chair) : '') + '</option>';
+      }).join("") + '</select>';
+  }
+
+  return '<div class="tmbulk">' +
+    '<button class="btn" id="tmballs">Tick all ' + esc(rows.length) + ' shown</button> ' +
+    '<button class="btn" id="tmbnone">Clear</button>' +
+    '<span class="tmbn">' + esc(ids.length) + ' ticked</span>' +
+    '<span class="tmbf">' + esc(spec.label) + '</span>' + control +
+    '<button class="btn primary" id="tmbgo"' + (ids.length ? '' : ' disabled') +
+      '>Set for ' + esc(ids.length) + '</button>' +
+    '</div>';
+}
+
+/* ------------------------------------------------------------- the editor
+
+   244 built the list that FINDS the gaps and deliberately did not write
+   one. That was right about the reporting line -- org_move_person owns it
+   -- and wrong about everything else, which is the owner's report: "I am
+   able to update and change the managers, but nothing else designation,
+   chair, location, department and other important aspects."
+
+   So the row opens into a form over every field org_person_set accepts,
+   and the reporting picker that used to be the whole of it is one control
+   inside it. Nothing here decides anything: the lists come from
+   org_assign_options under the same rule as the write, every refusal comes
+   back from the database with the box it belongs to, and the role box is
+   drawn only where the row says maySetRole.                              */
+
+/* The manager picker. Everybody the move would not refuse: not themselves,
+   and nobody already below them. The order is alphabetical because that is
+   how somebody looks for a name they already have in mind. */
+function tmRepOpts(p){
   var all = (TM.tbl && TM.tbl.people) || [];
   var below = tmBelow(p.personId);
-  var opts = all.filter(function(q){
+  return all.filter(function(q){
     return q.personId !== p.personId && !below[q.personId];
   }).map(function(q){
     return '<option value="' + esc(q.personId) + '"' +
       (q.personId === p.managerId ? ' selected' : '') + '>' +
       esc(q.name) + (q.chair ? ' &middot; ' + esc(q.chair) : '') + '</option>';
   }).join("");
+}
 
-  return '<div class="tmrep">' +
-    '<select id="tmrepsel" class="pfin">' +
-      '<option value="">&mdash; nobody: top of the company &mdash;</option>' +
-      opts +
-    '</select>' +
-    '<div class="tmrepb">' +
-      '<button class="btn primary" data-tmrepgo="' + esc(p.personId) + '">Save</button> ' +
+/* A place is a seating OF a chair, so the list depends on which chair is
+   picked and is rebuilt when that changes. Offering Mumbai under a chair
+   that has no Mumbai seat is an offer the database refuses. */
+function tmSeatOpts(chairId, selected){
+  var seats = ((TM.opts || {}).seatings || []).filter(function(s){
+    return s.chairId === chairId;
+  });
+  var out = '<option value="">&mdash; not set &mdash;</option>';
+  if (!chairId) return out;
+  if (!seats.length) {
+    return '<option value="">&mdash; this chair has no places on it &mdash;</option>';
+  }
+  return out + seats.map(function(s){
+    return '<option value="' + esc(s.id) + '"' +
+      (s.id === selected ? ' selected' : '') + '>' + esc(s.label) + '</option>';
+  }).join("");
+}
+
+function tmPickOpts(list, valueKey, labelKey, selected, blank){
+  return '<option value="">' + esc(blank) + '</option>' +
+    (list || []).map(function(x){
+      var v = valueKey ? x[valueKey] : x;
+      var l = labelKey ? x[labelKey] : x;
+      return '<option value="' + esc(v) + '"' +
+        (String(v) === String(selected || "") ? ' selected' : '') + '>' +
+        esc(l) + '</option>';
+    }).join("");
+}
+
+function tmField(label, hint, control){
+  return '<label class="tmf"><span>' + esc(label) +
+    (hint ? ' <i class="hrahint">' + esc(hint) + '</i>' : '') + '</span>' +
+    control + '</label>';
+}
+
+function tmEditForm(p){
+  var o = TM.opts || {};
+  var chairs = (o.chairs || []).map(function(c){
+    return { id: c.id, title: c.title + (c.code ? " · " + c.code : "") };
+  });
+
+  return '<div class="tmedit">' +
+    '<div class="tmedh"><b>' + esc(p.name) + '</b>' +
+      '<span class="mute">Everything on this row is the administrator’s and ' +
+      'Human Resources’. Nothing is saved unless every box is accepted.</span>' +
+    '</div>' +
+    '<div class="tmedg">' +
+      tmField("Designation", "the job title on the letter",
+        '<select id="tmedesig" class="pfin">' +
+          tmPickOpts(o.designations, "id", "title", p.designationId,
+                     "— not set —") +
+        '</select>') +
+      tmField("Department", "pick one in use, or type a new one",
+        '<input id="tmedept" class="pfin" list="tmdepts" value="' +
+          esc(p.department || "") + '">' +
+        '<datalist id="tmdepts">' +
+          (o.departments || []).map(function(d){
+            return '<option value="' + esc(d) + '">';
+          }).join("") +
+        '</datalist>') +
+      tmField("Chair", "the seat they hold, not the title",
+        '<select id="tmechair" class="pfin">' +
+          tmPickOpts(chairs, "id", "title", p.chairId, "— not set —") +
+        '</select>') +
+      tmField("Location", "a place on that chair",
+        '<select id="tmeseat" class="pfin">' +
+          tmSeatOpts(p.chairId, p.seatingId) +
+        '</select>') +
+      tmField("Reporting to", "changes who can read their numbers",
+        p.mayMove
+          ? '<select id="tmrepsel" class="pfin">' +
+              '<option value="">&mdash; nobody: top of the company &mdash;</option>' +
+              tmRepOpts(p) +
+            '</select>'
+          : '<span class="mute">' + esc(p.reportsTo || "nobody") +
+            ' &mdash; you cannot move yourself</span>') +
+      tmField("Employee type", "",
+        '<select id="tmetype" class="pfin">' +
+          tmPickOpts(o.employeeTypes, null, null, p.employeeType, "— not set —") +
+        '</select>') +
+      tmField("Employee number", "",
+        '<input id="tmeno" class="pfin" value="' + esc(p.employeeNo || "") + '">') +
+      tmField("Work e-mail", "",
+        '<input id="tmemail" class="pfin" value="' + esc(p.workEmail || "") + '">') +
+      tmField("Mobile", "ten digits",
+        '<input id="tmemob" class="pfin" value="' + esc(p.mobile || "") + '">') +
+      tmField("Joined on", "",
+        '<input id="tmejoin" class="pfin" type="date" value="' +
+          esc((p.joinedOn || "").slice(0, 10)) + '">') +
+      (p.maySetRole
+        ? tmField("Can do", "what they are allowed to DO in the tool",
+            '<select id="tmerole" class="pfin">' +
+              tmPickOpts(o.appRoles, null, null, p.appRole, "— not set —") +
+            '</select>')
+        : '') +
+    '</div>' +
+    (TM.tfail
+      ? '<div class="tmedbad">' + TM.tfail.map(function(f){
+          return '<div><b>' + esc(f.field) + '</b> &mdash; ' + esc(f.reason) + '</div>';
+        }).join("") + '</div>'
+      : '') +
+    '<div class="tmedb">' +
+      '<button class="btn primary" data-tmsave="' + esc(p.personId) + '">Save</button> ' +
       '<button class="btn" id="tmrepno">Cancel</button>' +
     '</div></div>';
 }
@@ -781,29 +981,73 @@ function tmWire(){
     b.onclick = function(){
       TM.tonly = b.getAttribute("data-tmgap");
       TM.tedit = null;
+      /* Ticks belong to the gap they were made under. Carrying them across
+         to another chip would apply a change to people nobody looked at. */
+      TM.tpick = {};
+      TM.tsays = "";
       tmRender();
     };
   });
+
+  /* ------------------------------------------------------- the bulk bar */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmpick]"), function(c){
+    c.onclick = function(){
+      var id = c.getAttribute("data-tmpick");
+      if (c.checked) TM.tpick[id] = true; else delete TM.tpick[id];
+      tmRender();
+    };
+  });
+  if (el("tmballs")) el("tmballs").onclick = function(){
+    /* The database takes sixty at a time and says so; the screen must not
+       tick ninety and discover that at the end. */
+    tmRows().slice(0, 60).forEach(function(p){ TM.tpick[p.personId] = true; });
+    TM.tsays = tmRows().length > 60
+      ? msg("info", "Sixty at a time. The rest stay for the next pass.") : "";
+    tmRender();
+  };
+  if (el("tmbnone")) el("tmbnone").onclick = function(){
+    TM.tpick = {}; TM.tsays = ""; tmRender();
+  };
+  if (el("tmbgo")) el("tmbgo").onclick = function(){
+    var spec = TM_BULK[TM.tonly];
+    var box = el("tmbval");
+    if (!spec || !box) return;
+    if (!box.value) {
+      TM.tsays = msg("warn", "Pick what to set them to first.");
+      tmRender();
+      return;
+    }
+    var f = {};
+    f[spec.field] = box.value;
+    tmSetMany(Object.keys(TM.tpick).filter(function(k){ return TM.tpick[k]; }), f);
+  };
 
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmsort]"), function(b){
     b.onclick = function(){ TM.tsort = b.getAttribute("data-tmsort"); tmRender(); };
   });
 
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmrep]"), function(b){
-    b.onclick = function(){ TM.tedit = b.getAttribute("data-tmrep"); tmRender(); };
-  });
-  if (el("tmrepno")) el("tmrepno").onclick = function(){ TM.tedit = null; tmRender(); };
-
-  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmrepgo]"), function(b){
-    b.onclick = async function(){
-      var id = b.getAttribute("data-tmrepgo");
-      var to = el("tmrepsel") ? el("tmrepsel").value : "";
-      TM.tedit = null;
-      /* An empty value is "nobody", which is a real answer and not a
-         missing one -- org_move_person takes a null manager and allows it
-         for exactly the two people who can see this list. */
-      await tmMove(id, to || null);
+    b.onclick = function(){
+      TM.tedit = b.getAttribute("data-tmrep");
+      TM.tfail = null;
+      TM.tsays = "";
+      tmRender();
     };
+  });
+  if (el("tmrepno")) el("tmrepno").onclick = function(){
+    TM.tedit = null; TM.tfail = null; tmRender();
+  };
+
+  /* The places on offer follow the chair, because a seating belongs to one.
+     Only this one select is rebuilt: redrawing the form would throw away
+     whatever else had been typed into it. */
+  if (el("tmechair")) el("tmechair").onchange = function(){
+    var seat = el("tmeseat");
+    if (seat) seat.innerHTML = tmSeatOpts(el("tmechair").value, "");
+  };
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmsave]"), function(b){
+    b.onclick = function(){ tmSetOne(b.getAttribute("data-tmsave")); };
   });
 
   if (el("tmexp")) el("tmexp").onclick = function(){ TM.shut = {}; tmRender(); };
@@ -1068,6 +1312,101 @@ function tmWire(){
   });
 }
 
+/* ------------------------------------------------------------ the writes
+
+   Both go to org_person_set, which validates every field before writing
+   any of them. That is why neither of these tries to work out what
+   changed: sending a field that is already right is a no-op in the
+   database, and guessing here would be a second copy of the rule.        */
+
+function tmValueOf(id){ var e = el(id); return e ? e.value : null; }
+
+async function tmSetOne(personId){
+  if (TM.busy) return;
+  var all = (TM.tbl && TM.tbl.people) || [];
+  var p = null;
+  all.forEach(function(q){ if (q.personId === personId) p = q; });
+  if (!p) return;
+
+  var f = {
+    designationId: tmValueOf("tmedesig"),
+    department:    tmValueOf("tmedept"),
+    chairId:       tmValueOf("tmechair"),
+    seatingId:     tmValueOf("tmeseat"),
+    employeeType:  tmValueOf("tmetype"),
+    employeeNo:    tmValueOf("tmeno"),
+    workEmail:     tmValueOf("tmemail"),
+    mobile:        tmValueOf("tmemob"),
+    joinedOn:      tmValueOf("tmejoin")
+  };
+  /* Two fields are sent only where the row says they may be. Sending a role
+     HR is not allowed to set would come back refused, and an offer that is
+     always refused is the defect migration 242 was written for. */
+  if (p.mayMove && el("tmrepsel")) f.managerId = el("tmrepsel").value;
+  if (p.maySetRole && el("tmerole")) f.appRole = el("tmerole").value;
+
+  TM.busy = true;
+  TM.tsays = msg("info", "Saving&hellip;");
+  tmRender();
+  var o = await perfApi("/perf/team/set",
+    { method:"POST", body:{ personId: personId, fields: f } });
+  TM.busy = false;
+
+  if (o && o.error) {
+    /* The database names the box. The form stays open with the names on it,
+       because a refusal that closes the form takes the answer with it. */
+    TM.tfail = (o.fields && o.fields.length) ? o.fields : null;
+    TM.tsays = msg(o.error === "would_loop" ? "warn" : "bad",
+      o.reason || o.error);
+    tmRender();
+    return;
+  }
+
+  TM.tfail = null;
+  TM.tedit = null;
+  TM.tsays = msg("good", (o && o.note) || "Saved.");
+  await tmReload();
+}
+
+async function tmSetMany(ids, fields){
+  if (TM.busy || !ids.length) return;
+  TM.busy = true;
+  TM.tsays = msg("info", "Setting " + ids.length + "&hellip;");
+  tmRender();
+  var o = await perfApi("/perf/team/set-many",
+    { method:"POST", body:{ people: ids, fields: fields } });
+  TM.busy = false;
+
+  if (o && o.error) {
+    TM.tsays = msg("bad", o.reason || o.error);
+    tmRender();
+    return;
+  }
+  /* A batch that half-worked says so by name. Reporting "48 updated" and
+     staying quiet about the one that was refused is how somebody comes to
+     believe a list is clean when it is not. */
+  var bad = (o && o.failed) || [];
+  TM.tsays = msg(bad.length ? "warn" : "good",
+    (o && o.note ? o.note : "Done.") +
+    (bad.length
+      ? " " + bad.map(function(f){
+          return (f.name || "somebody") + ": " + (f.reason || f.error);
+        }).join(" ")
+      : ""));
+  TM.tpick = {};
+  await tmReload();
+}
+
+/* Both drawings and both counts are now wrong, and only one of them is on
+   screen. They are read again anyway: the commonest use of this list is
+   several changes in a row, and a chip that silently kept yesterday's
+   number is how somebody comes to believe a change did not take. */
+async function tmReload(){
+  TM.tree = await perfApi("/perf/team/tree");
+  if (tmMayList()) TM.tbl = await perfApi("/perf/team/people");
+  tmRender();
+}
+
 async function tmMove(personId, managerId){
   if (TM.busy) return;
   TM.busy = true;
@@ -1089,11 +1428,5 @@ async function tmMove(personId, managerId){
   }
 
   TM.says = msg("good", (o && o.note) || "Moved.");
-  /* Both drawings are now wrong, and only one of them is on screen. They
-     are both re-read anyway: the commonest use of the list is several
-     moves in a row, and a chart that silently kept the old line until the
-     next visit is how somebody comes to believe a move did not take. */
-  TM.tree = await perfApi("/perf/team/tree");
-  if (tmMayList()) TM.tbl = await perfApi("/perf/team/people");
-  tmRender();
+  await tmReload();
 }
