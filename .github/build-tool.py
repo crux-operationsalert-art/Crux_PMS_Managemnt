@@ -1006,6 +1006,40 @@ PATCHES.append((
       # / off track -- and every use of it carries the word beside the
       # colour, so the card reads the same in greyscale and to somebody who
       # does not see red and green apart.
+      # ------------------------- the quarter drawn in the monthly card's shape
+      # One block per measure instead of one row, because the thing being
+      # read is three months of a promise rather than a single line of a
+      # table. The head carries the three numbers somebody wants without
+      # reading anything else: the weight, what the quarter asks for, and
+      # where they have got to.
+      ".pbqm{border:1px solid var(--line2);border-radius:3px;margin:0 0 12px;\n"
+      "  padding:12px 13px;background:var(--panel2)}\n"
+      ".pbqmh{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;\n"
+      "  margin:0 0 10px;padding-bottom:9px;border-bottom:1px solid var(--line2)}\n"
+      ".pbqmh>div:first-child{flex:1 1 220px;min-width:0}\n"
+      ".pbqmh b{font-family:var(--serif,Georgia,serif);font-size:15px}\n"
+      ".pbqmn{text-align:right;min-width:92px}\n"
+      ".pbqmn span{display:block;font-size:10px;letter-spacing:.07em;\n"
+      "  text-transform:uppercase;color:var(--mute)}\n"
+      ".pbqmn b{font-variant-numeric:tabular-nums;font-size:15px}\n"
+      ".pbqm table{width:100%}\n"
+      # The parts of a measure. Indented under it, and the total is a row of
+      # the same table rather than a sentence beside it, so "do they add up"
+      # is answered where the eye already is.
+      ".pbparts{width:100%}\n"
+      ".pbpsum td{border-top:2px solid var(--line);background:var(--panel)}\n"
+      ".pbpart{border:1px solid var(--line2);border-radius:3px;margin:0 0 8px;\n"
+      "  padding:9px 11px}\n"
+      ".pbparth{display:flex;gap:10px;align-items:center;flex-wrap:wrap}\n"
+      ".pbparth b{flex:0 1 auto}\n"
+      ".pbparth .btn{margin-left:auto}\n"
+      ".pbpart input{width:100%}\n"
+      ".pbpartlist{margin:0 0 12px}\n"
+      "@media (max-width:720px){\n"
+      "  .pbqmh{gap:10px}\n"
+      "  .pbqmn{text-align:left;min-width:0}\n"
+      "  .pbparth .btn{margin-left:0}\n"
+      "}\n"
       ".pbokr{padding-bottom:14px}\n"
       ".pbokrh{display:flex;gap:18px;align-items:flex-start;\n"
       "  justify-content:space-between;flex-wrap:wrap}\n"

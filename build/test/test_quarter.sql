@@ -55,7 +55,7 @@ end $seed$;
 do $t$
 declare
   p_above uuid; p_boss uuid; p_rep uuid; p_hr uuid; p_other uuid; p_adm uuid;
-  v_kpi uuid; v_sheet uuid; o jsonb; q date;
+  v_kpi uuid; v_sheet uuid; v_gk uuid; o jsonb; q date; n int;
 begin
   select v into p_above from _qt where _qt.k='above';
   select v into p_boss  from _qt where _qt.k='boss';
@@ -171,6 +171,166 @@ begin
     raise exception 'FAIL  the quarter tells a person their own sheet is theirs to set';
   end if;
   raise notice 'PASS  and the screen is told exactly what the writes will allow';
+
+  -- ============================================================ 249
+  -- The quarter said in months, and split into its parts.
+  --
+  --   "add sub KPIs in both monthly and the quaterly score card"
+  --   "use the same [format] for [the quarterly] too but should be linked
+  --    with the quaterly"
+  -- ------------------------------------------------------------------
+  select gk.id into v_gk from plb_goal_kpi gk
+   where gk.sheet_id = v_sheet and gk.kpi_id = v_kpi;
+  if v_gk is null then
+    raise exception 'FAIL  the sheet carries no row for its own measure';
+  end if;
+
+  -- Breaking a measure into parts follows the same rule as everything else
+  -- on the sheet: the one up, and the people who run the scheme.
+  if plb_kpi_part_set(p_other, v_gk, '[]'::jsonb)->>'error'
+     is distinct from 'not_permitted' then
+    raise exception 'FAIL  a stranger broke up somebody''s measure';
+  end if;
+  if plb_kpi_part_set(p_above, v_gk, '[]'::jsonb)->>'error'
+     is distinct from 'not_permitted' then
+    raise exception 'FAIL  the manager''s manager broke up a measure';
+  end if;
+  if plb_kpi_part_set(p_rep, v_gk, '[]'::jsonb)->>'error' is null then
+    raise exception 'FAIL  a person broke up their own measure';
+  end if;
+  raise notice 'PASS  a sub-measure is the one up''s, exactly like the target';
+
+  o := plb_kpi_part_set(p_boss, v_gk, jsonb_build_array(
+         jsonb_build_object('label','Bank A','target',40),
+         jsonb_build_object('label','Bank B','target',20)));
+  if o->>'error' is not null then
+    raise exception 'FAIL  the reporting manager could not add sub-measures: %', o;
+  end if;
+  select count(*) into n from plb_goal_kpi_part
+   where goal_kpi_id = v_gk and removed_at is null;
+  if n <> 2 then
+    raise exception 'FAIL  % parts were written, not two', n;
+  end if;
+  raise notice 'PASS  and the reporting manager can add them';
+
+  -- A part carries no weight and enters no arithmetic. The measure set a
+  -- chair publishes has to stay identical for every seat of that chair, and
+  -- the sheet says so on screen.
+  select count(*) into n from plb_goal_kpi where sheet_id = v_sheet;
+  if n <> 1 then
+    raise exception 'FAIL  adding sub-measures changed the measure set: % rows', n;
+  end if;
+  raise notice 'PASS  the measure set is untouched: a part is a breakdown, '
+               'not a second measure';
+
+  -- A measure with no target of its own cannot be agreed or disagreed with,
+  -- and the reply says so rather than guessing. The sheet here was issued
+  -- without targets, which is the ordinary state before a manager sets them.
+  if o->>'addsUp' is not null then
+    raise exception 'FAIL  parts were compared against a target that is not '
+                    'there: %', o;
+  end if;
+
+  -- Whether the parts add up is reported, never enforced. Refusing a
+  -- breakdown halfway through writing one would make somebody do the
+  -- arithmetic before the tool would take the first line.
+  update plb_goal_kpi set target_value = 60 where id = v_gk;
+  o := plb_kpi_part_set(p_boss, v_gk, jsonb_build_array(
+         jsonb_build_object('label','Bank A','target',40),
+         jsonb_build_object('label','Bank B','target',20)));
+  if (o->>'addsUp')::boolean is not true then
+    raise exception 'FAIL  40 and 20 against a target of 60 was not called '
+                    'agreement: %', o;
+  end if;
+  o := plb_kpi_part_set(p_boss, v_gk, jsonb_build_array(
+         jsonb_build_object('label','Bank A','target',40)));
+  if (o->>'addsUp')::boolean is not false then
+    raise exception 'FAIL  40 against a target of 60 was called agreement: %', o;
+  end if;
+  if o->>'error' is not null then
+    raise exception 'FAIL  a breakdown that does not add up was REFUSED. It is '
+                    'a normal state halfway through writing one: %', o;
+  end if;
+  raise notice 'PASS  a breakdown that does not add up is said, never refused';
+
+  select count(*) into n from plb_goal_kpi_part
+   where goal_kpi_id = v_gk and removed_at is null;
+  if n <> 1 then
+    raise exception 'FAIL  replacing the list left % rows', n;
+  end if;
+  o := plb_kpi_part_set(p_boss, v_gk, '[]'::jsonb);
+  select count(*) into n from plb_goal_kpi_part
+   where goal_kpi_id = v_gk and removed_at is null;
+  if n <> 0 then
+    raise exception 'FAIL  an empty list did not remove the breakdown';
+  end if;
+  raise notice 'PASS  the list is replaced whole, and an empty one removes it';
+
+  -- Removed means withdrawn, not erased -- 246's rule, applied here. And a
+  -- part put back comes back as ITSELF: one row per name for the life of the
+  -- sheet, so "what was Bank A asked for in October" has one answer.
+  select count(*) into n from plb_goal_kpi_part where goal_kpi_id = v_gk;
+  if n = 0 then
+    raise exception 'FAIL  the parts were erased. Three months later, in a '
+                    'dispute, nothing can say what the breakdown used to be.';
+  end if;
+  o := plb_kpi_part_set(p_boss, v_gk, jsonb_build_array(
+         jsonb_build_object('label','bank a ','target',55)));
+  select count(*) into n from plb_goal_kpi_part where goal_kpi_id = v_gk;
+  if n <> 2 then
+    raise exception 'FAIL  putting Bank A back made a second row for it: % rows', n;
+  end if;
+  select count(*) into n from plb_goal_kpi_part
+   where goal_kpi_id = v_gk and removed_at is null;
+  if n <> 1 then
+    raise exception 'FAIL  % parts are live after putting one back, not one', n;
+  end if;
+  raise notice 'PASS  a part taken off is withdrawn, and put back it is itself '
+               'again';
+
+  if plb_kpi_part_set(p_boss, v_gk, jsonb_build_array(
+       jsonb_build_object('label','   ','target',10)))->>'error'
+     is distinct from 'invalid' then
+    raise exception 'FAIL  a part with no name was accepted';
+  end if;
+  raise notice 'PASS  and a part nobody can name is not a part of anything';
+
+  -- ---------------------------------------- the monthly shape, and the link
+  o := plb_kpi_months(p_boss, v_sheet);
+  if o->>'error' is not null then
+    raise exception 'FAIL  the quarter could not be read in months: %', o;
+  end if;
+  if jsonb_array_length(o->'measures') = 0 then
+    raise exception 'FAIL  the quarter in months carries no measures';
+  end if;
+  select count(*) into n from jsonb_array_elements(o->'measures') x
+   where jsonb_array_length(x->'months') <> 3;
+  if n > 0 then
+    raise exception 'FAIL  % measure(s) do not carry three months. A quarter '
+                    'is three months whether or not any of them was filed.', n;
+  end if;
+  -- Each month says what the quarter's split implies it should be. That is
+  -- the link: the two cards stop being two unrelated numbers.
+  select count(*) into n from jsonb_array_elements(o->'measures') x,
+                                jsonb_array_elements(x->'months') m
+   where not (m ? 'implied') or not (m ? 'target') or not (m ? 'filed');
+  if n > 0 then
+    raise exception 'FAIL  % month(s) carry no implied target, real target or '
+                    'filed figure. Without all three there is nothing to '
+                    'compare.', n;
+  end if;
+  if not coalesce((o->>'maySet')::boolean, false) then
+    raise exception 'FAIL  the reporting manager is told the quarter is not '
+                    'theirs to set';
+  end if;
+  if coalesce((plb_kpi_months(p_rep, v_sheet)->>'maySet')::boolean, false) then
+    raise exception 'FAIL  a person is told their own quarter is theirs to set';
+  end if;
+  if plb_kpi_months(p_other, v_sheet)->>'error' is distinct from 'not_permitted' then
+    raise exception 'FAIL  a stranger read somebody''s quarter';
+  end if;
+  raise notice 'PASS  the quarter reads in the monthly card''s shape, under '
+               'the same rule as everything else on it';
 
   raise notice '--- the quarter: every assertion passed ---';
 end $t$;

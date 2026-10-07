@@ -15,7 +15,10 @@
    been given a published result. plb_sheet() returns all twelve in one
    object so this screen cannot accidentally show eleven, and the checklist
    at the foot of the result says which are present.                     */
-var PB = { q:null, data:null, quarter:null, tab:"mine", busy:false, open:null, reg:null };
+var PB = { q:null, data:null, quarter:null, tab:"mine", busy:false, open:null, reg:null,
+           /* the quarter said month by month (249), and which measure is
+              being broken into parts while it is being done. */
+           months:null, openMonths:null, partsFor:null, partsDraft:null };
 
 function pbSay(box, kind, text){ var e = el(box); if (e) e.innerHTML = msg(kind, text); }
 function pbNum(v, dp){ return v === null || v === undefined || v === "" ? "—"
@@ -68,6 +71,15 @@ async function vPlb(){
      have, the screen simply never asked for it. */
   if (!PB.q) PB.q = await plb("/plb/quarter?quarter=" + PB.quarter);
 
+  /* The same sheet read in the monthly card's shape (249). Three months per
+     measure, each carrying the real monthly target in PMS, what was filed
+     against it, and what the quarter's split says it should have been. The
+     third number is the LINK the owner asked for: without it the two
+     scorecards are two unrelated numbers for the same promise. */
+  PB.months = (d.sheet && d.sheet.sheetId)
+    ? await plb("/plb/kpi/months?sheet=" + encodeURIComponent(d.sheet.sheetId))
+    : null;
+
   /* #plb/<personId> -- somebody arrived here from that person's tile under
      My team, meaning to score THEM. Open their sheet rather than leaving
      them on their own, which is what made this screen look as though it
@@ -85,7 +97,7 @@ async function vPlb(){
       /* PB.open is the sheet itself, as the Open button sets it -- not a
          wrapper around it. The panel reads PB.open.sheetId straight off. */
       var o = await plb("/plb/sheet/" + row.sheetId);
-      if (!o.error && o.sheet) PB.open = o.sheet;
+      if (!o.error && o.sheet) { PB.open = o.sheet; await pbOpenMonths(); }
     }
   }
   pbRender();
@@ -330,9 +342,99 @@ function pbOkr(s){
 }
 /* OKR-SCORECARD-END */
 
+/* ------------------------------------- the quarter, in the monthly shape
+
+   "FOrmat/UI/UX of monthly score card is good and easy to understand, so
+    use the same for [the quarterly] too but should be linked with the
+    quaterly."
+
+   The old quarterly table showed a measure's phasing as three percentages
+   -- "50 · 30 · 20". That is the RULE for splitting a quarter, not a
+   scorecard: nobody reads it and knows what October was asking for. The
+   monthly card's shape is a target, what was filed against it, and how
+   that reads, so that is what this draws, three times, one per month.
+
+   And it is the link as well, because the numbers are not invented for the
+   drawing. `target` is the real monthly target sitting in PMS; `filed` is
+   what was actually entered against it; `implied` is what this quarterly
+   target and its split SAY that month should have been. Where the first
+   and the third disagree, the two halves of the tool are asking for two
+   different things and the card says so instead of leaving somebody to
+   discover it at the end of the quarter.                                 */
+function pbQMonth(m){
+  var says = m.agrees === false
+    ? '<div class="pbgap">PMS asks ' + pbNum(m.target) + ' &middot; the quarter implies ' +
+      pbNum(m.implied) + '</div>'
+    : "";
+  return '<tr><td><b>' + esc(pbMonthName(String(m.month).slice(0, 10))) + '</b>' +
+      (m.share !== null && m.share !== undefined
+        ? '<div class="mute">' + pbNum(m.share, 0) + '% of the quarter</div>' : '') +
+    '</td>' +
+    '<td class="num">' + pbNum(m.target) +
+      (m.targetSource === "MANUAL" ? '<div class="mute">set by hand</div>' : '') + '</td>' +
+    '<td class="num">' + pbNum(m.implied) + '</td>' +
+    '<td class="num">' + pbNum(m.filed) +
+      (m.entries ? '<div class="mute">' + esc(m.entries) + ' filed</div>'
+                 : '<div class="mute">nothing filed</div>') + '</td>' +
+    '<td>' + (m.target === null || m.target === undefined
+      ? '<span class="mute">no monthly target</span>'
+      : (m.filed === null || m.filed === undefined
+          ? '<span class="mute">not filed yet</span>'
+          : pbNum(Number(m.target) ? (Number(m.filed) / Number(m.target)) * 100 : null, 1) + '%')) +
+      says + '</td></tr>';
+}
+
+function pbQMeasure(x, i){
+  var months = (x.months || []).map(pbQMonth).join("");
+  var parts = x.parts || [];
+
+  var ptable = parts.length
+    ? '<h5 class="plh">Broken down into</h5>' +
+      '<div class="scroll"><table class="pbparts">' +
+        '<tr><th>Part</th><th>Target</th><th>Actual</th><th></th></tr>' +
+        parts.map(function(p){
+          return '<tr><td><b>' + esc(p.label) + '</b>' +
+            (p.note ? '<div class="mute">' + esc(p.note) + '</div>' : '') + '</td>' +
+            '<td class="num">' + pbNum(p.target) + '</td>' +
+            '<td class="num">' + pbNum(p.actual) + '</td><td></td></tr>';
+        }).join("") +
+        '<tr class="pbpsum"><td><b>The parts together</b></td>' +
+          '<td class="num"><b>' + pbNum(x.partsTotal) + '</b></td>' +
+          '<td class="num"></td>' +
+          '<td>' + (x.partsAddUp === true
+            ? '<span class="pill ok">adds up to the measure</span>'
+            : (x.partsAddUp === false
+                ? '<span class="pill warn">' + pbNum(x.partsTotal) + ' against ' +
+                  pbNum(x.quarterly) + '</span>'
+                : '<span class="mute">nothing to compare it with yet</span>')) +
+          '</td></tr>' +
+      '</table></div>'
+    : "";
+
+  return '<div class="pbqm"><div class="pbqmh">' +
+      '<div><span class="pbn">' + (i + 1) + '</span> <b>' + esc(x.name) + '</b>' +
+        '<div class="mute">' + esc(x.unit || "") + '</div></div>' +
+      '<div class="pbqmn"><span>Weight</span><b>' + pbNum(x.weight, 2) + '%</b></div>' +
+      '<div class="pbqmn"><span>The quarter asks</span><b>' + pbNum(x.quarterly) + '</b></div>' +
+      '<div class="pbqmn"><span>So far</span><b>' + pbNum(x.actual) + '</b></div>' +
+    '</div>' +
+    '<div class="scroll"><table>' +
+      '<tr><th>Month</th><th>PMS target</th><th>The quarter implies</th>' +
+      '<th>Filed</th><th>Reads</th></tr>' + months + '</table></div>' +
+    ptable + '</div>';
+}
+
 function pbGoalSheet(s){
   var kpis = s.kpis || [], attrs = s.attributes || [];
-  var rows = kpis.map(function(k, i){
+  var mm = PB.months && !PB.months.error ? PB.months : null;
+
+  /* The monthly shape where the months are known, and the old one-line
+     table where they are not -- a sheet read before 249's call answered, or
+     a quarter the reader is not in the line for. An empty card would read
+     as "you have no measures", which is a different and false sentence. */
+  var rows = mm
+    ? (mm.measures || []).map(pbQMeasure).join("")
+    : kpis.map(function(k, i){
     var split = (k.split || []).map(function(x){ return pbNum(x, 0) + "%"; }).join(" · ");
     return '<tr><td class="pbn">' + (i + 1) + '</td>' +
       '<td><b>' + esc(k.name) + '</b><div class="mute">' + esc(k.unit || "") + '</div></td>' +
@@ -375,9 +477,13 @@ function pbGoalSheet(s){
     (s.isDefault ? msg("warn", "No goal sheet reached you in time, so your chair's " +
       "standard sheet applies. You cannot be scored below what it produces.") : "") +
     '<h4 class="plh">KPIs — what you deliver · 75% of the monthly score, all of Achievement</h4>' +
-    '<div class="scroll"><table>' +
-      '<tr><th></th><th>Measure</th><th>Weight</th><th>Target</th>' +
-      '<th>Monthly split</th><th>Actual</th><th>Ratio</th></tr>' + rows + '</table></div>' +
+    (mm
+      ? (mm.disagree
+          ? msg("warn", esc(mm.note))
+          : '<p class="mute">' + esc(mm.note) + '</p>') + rows
+      : '<div class="scroll"><table>' +
+        '<tr><th></th><th>Measure</th><th>Weight</th><th>Target</th>' +
+        '<th>Monthly split</th><th>Actual</th><th>Ratio</th></tr>' + rows + '</table></div>') +
     '<h4 class="plh">Attributes — how you work · 25% of the monthly score, none of Achievement</h4>' +
     '<div class="scroll"><table><tr><th>Attribute</th><th>What it is</th>' +
       '<th>Where it stands</th><th></th></tr>' + arows + '</table></div>' +
@@ -742,6 +848,86 @@ function pbWaiting(s){
    so what is editable here is exactly what is theirs: the Target PLB, each
    measure's target, the basis level it was set from, and the monthly split.
    The actual is the quarter-end fact, beside the target it is read against. */
+/* -------------------------------------- sub-measures, the manager's side
+
+   "add sub KPIs in both monthly and the quaterly score card"
+
+   The monthly side has had these since migration 230 -- a target split
+   across clients, written by perf_split_set. This is the quarterly twin,
+   and it is deliberately the same KIND of thing rather than a new measure:
+   the sheet says, in the tool's own words, that a manager "selects no KPI,
+   adds none and removes none -- they come from your chair's published
+   measure set, identical for every seat of the chair". That sentence is
+   about fairness between people holding the same chair, so a part carries
+   no weight and enters no arithmetic. What it does is let "sixty cases"
+   be written down as "Bank A forty, Bank B twenty".
+
+   Whether the parts add up is said and never enforced: refusing a
+   breakdown halfway through writing one would make the manager do the
+   arithmetic before the tool would take the first line.                  */
+function pbPartsRow(p, i){
+  var v = function(x){ return x === null || x === undefined ? "" : esc(x); };
+  return '<tr>' +
+    '<td><input class="pbpl" data-i="' + i + '" value="' + v(p && p.label) +
+      '" placeholder="Bank A"></td>' +
+    '<td><input class="pbpt" data-i="' + i + '" type="number" step="0.01" value="' +
+      v(p && p.target) + '"></td>' +
+    '<td><input class="pbpa" data-i="' + i + '" type="number" step="0.01" value="' +
+      v(p && p.actual) + '"></td>' +
+    '<td><input class="pbpn" data-i="' + i + '" value="' + v(p && p.note) +
+      '" placeholder="a note, if one helps"></td>' +
+    '</tr>';
+}
+
+function pbPartsPanel(){
+  var mm = PB.openMonths && !PB.openMonths.error ? PB.openMonths : null;
+  if (!mm) return "";
+  if (!mm.maySet) {
+    return '<h4 class="plh">Sub-measures</h4>' +
+      '<p class="mute">Breaking a measure into parts is the manager that ' +
+      'person reports to, and the people who run the scheme.</p>';
+  }
+
+  var list = (mm.measures || []).map(function(x){
+    var open = PB.partsFor === x.goalKpiId;
+    var parts = x.parts || [];
+    return '<div class="pbpart">' +
+      '<div class="pbparth"><b>' + esc(x.name) + '</b>' +
+        '<span class="mute">' + pbNum(x.quarterly) + ' ' + esc(x.unit || "") + '</span>' +
+        (parts.length
+          ? '<span class="pill' + (x.partsAddUp === false ? ' warn' : ' ok') + '">' +
+            esc(parts.length) + ' part' + (parts.length === 1 ? '' : 's') +
+            (x.partsAddUp === false ? ', ' + pbNum(x.partsTotal) + ' of ' +
+              pbNum(x.quarterly) : '') + '</span>'
+          : '<span class="mute">not broken down</span>') +
+        '<button class="btn" data-pbparts="' + esc(x.goalKpiId) + '">' +
+          (open ? 'Close' : (parts.length ? 'Change' : 'Break it down')) + '</button>' +
+      '</div>' +
+      (open
+        ? '<div class="scroll"><table class="pbparts">' +
+            '<tr><th>Part</th><th>Target</th><th>Actual</th><th>Note</th></tr>' +
+            /* Whatever is there, plus three empty lines. A form that makes
+               somebody press Add before they can type the first part is a
+               form that asks permission to be used. */
+            parts.concat([null, null, null]).map(pbPartsRow).join("") +
+          '</table></div>' +
+          '<div class="plbar">' +
+            '<button class="btn primary" data-pbpsave="' + esc(x.goalKpiId) + '">' +
+              'Save the breakdown</button>' +
+            '<span class="mute">Leave every line blank to remove it. A part ' +
+            'carries no weight of its own &mdash; the measure keeps all of it.</span>' +
+          '</div>'
+        : "") +
+    '</div>';
+  }).join("");
+
+  return '<h4 class="plh">Sub-measures &mdash; one measure written out in its parts</h4>' +
+    '<p class="mute">The chair’s measure set does not change: a part is a ' +
+    'breakdown of a measure, not a measure of its own, so every seat of this ' +
+    'chair is still being asked for the same things.</p>' +
+    '<div class="pbpartlist">' + list + '</div><div id="pbpartmsg"></div>';
+}
+
 function pbOpenSheet(){
   var s = PB.open;
   if (!s) return "";
@@ -774,6 +960,7 @@ function pbOpenSheet(){
     '<div class="scroll"><table>' +
       '<tr><th>Measure</th><th>Weight</th><th>Target</th><th>Basis</th>' +
       '<th>Split M1 / M2 / M3</th><th>Actual</th><th>Ratio</th></tr>' + arows + '</table></div>' +
+    pbPartsPanel() +
     '<div class="plbar">' +
       '<button class="btn primary" id="pbsavegoal">Save the goal sheet</button>' +
       '<button class="btn" id="pbsaveact">Save actuals only</button>' +
@@ -928,11 +1115,23 @@ async function pbDo(btn, path, body, box){
   pbSay(box || "pbmsg", "ok", out.note || "Done.");
   return out;
 }
+/* The open sheet read in the monthly shape as well, because the manager
+   panel is where the parts of a measure are written and a part hangs off
+   the GOAL-SHEET row, not off the measure definition. PB.months is the
+   signed-in person's own sheet; this is whoever they have opened. */
+async function pbOpenMonths(){
+  PB.openMonths = PB.open && PB.open.sheetId
+    ? await plb("/plb/kpi/months?sheet=" + encodeURIComponent(PB.open.sheetId))
+    : null;
+  PB.partsFor = null;
+}
+
 async function pbReload(){
   PB.q = null;
   if (PB.open) {
     var o = await plb("/plb/sheet/" + PB.open.sheetId);
     PB.open = o && o.sheet ? o.sheet : null;
+    await pbOpenMonths();
   }
   await vPlb();
 }
@@ -961,11 +1160,55 @@ function pbWire(){
     b.onclick = async function(){
       var o = await plb("/plb/sheet/" + b.getAttribute("data-pbopen"));
       if (o.error) { pbSay("pbmgrmsg", "bad", o.reason || o.error); return; }
-      PB.open = o.sheet; pbRender();
+      PB.open = o.sheet; await pbOpenMonths(); pbRender();
     };
   });
 
-  if (el("pbclose")) el("pbclose").onclick = function(){ PB.open = null; pbRender(); };
+  if (el("pbclose")) el("pbclose").onclick = function(){
+    PB.open = null; PB.openMonths = null; PB.partsFor = null; pbRender();
+  };
+
+  /* ------------------------------------------------------ sub-measures */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbparts]"), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute("data-pbparts");
+      PB.partsFor = PB.partsFor === id ? null : id;
+      pbRender();
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbpsave]"), function(b){
+    b.onclick = async function(){
+      var parts = [];
+      var bad = null;
+      Array.prototype.forEach.call(el("view").querySelectorAll(".pbpl"), function(t){
+        var i = t.getAttribute("data-i");
+        var pick = function(cls){
+          var e = el("view").querySelector("." + cls + '[data-i="' + i + '"]');
+          return e && e.value !== "" ? e.value : null;
+        };
+        var label = (t.value || "").trim();
+        if (!label) {
+          /* A line with a number and no name is a mistake, not an empty
+             line. Dropping it silently would lose what somebody typed. */
+          if (pick("pbpt") !== null || pick("pbpa") !== null) {
+            bad = bad || "A part with a number but no name. Name it, or clear the number.";
+          }
+          return;
+        }
+        parts.push({ label: label, target: pick("pbpt"), actual: pick("pbpa"),
+                     note: pick("pbpn") });
+      });
+      if (bad) { pbSay("pbpartmsg", "bad", bad); return; }
+      var o = await pbDo(b, "/plb/kpi/parts",
+        { goalKpiId: b.getAttribute("data-pbpsave"), parts: parts }, "pbpartmsg");
+      if (!o) return;
+      /* The card the employee reads and the panel the manager is in are now
+         both wrong. Both are re-read; a breakdown that looked saved and was
+         not is the thing this must never do. */
+      await pbOpenMonths();
+      pbRender();
+    };
+  });
 
   /* ---- attributes: the employee proposes, the manager decides ---- */
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pbattr]"), function(b){

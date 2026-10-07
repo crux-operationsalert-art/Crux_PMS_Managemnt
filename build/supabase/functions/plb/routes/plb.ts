@@ -219,6 +219,50 @@ r.post("/actual", async (req: any, res: any) => {
   return out(res, o.o);
 });
 
+// =====================================================================
+// The quarter in the monthly card's shape, and the breakdown of a measure
+// (migration 249).
+//
+// "FOrmat/UI/UX of monthly score card is good and easy to understand, so
+//  use the same for [the quarterly] too but should be linked with the
+//  quaterly." -- and "add sub KPIs in both monthly and the quaterly".
+//
+// Both are thin, like everything else here: plb_kpi_months asks perf_rel
+// who is looking and plb_kpi_part_set asks the same question 247 put on
+// issuing a sheet, so neither rule is restated in TypeScript.
+// =====================================================================
+
+// Per measure: three months, each carrying its real PMS target, what was
+// filed against it, and what the quarter's split says it should have been.
+// The third number is what links the two scorecards.
+r.get("/kpi/months", async (req: any, res: any) => {
+  const sheet = req.query.get("sheet");
+  if (!sheet) return res.status(400).json({ error: "missing_sheet" });
+  const o = await one(`select plb_kpi_months($1,$2::uuid) as o`,
+    [req.person.id, sheet]);
+  return out(res, o.o);
+});
+
+// A breakdown of ONE measure -- "sixty cases" as "Bank A forty, Bank B
+// twenty". It carries no weight and enters no arithmetic, so the measure
+// set a chair publishes stays identical for every seat of that chair.
+// Sending an empty list removes the breakdown.
+r.post("/kpi/parts", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.goalKpiId) return res.status(400).json({ error: "missing_measure" });
+  if (!Array.isArray(b.parts)) {
+    return res.status(400).json({ error: "missing_parts",
+      reason: "Send the parts. An empty list removes the breakdown." });
+  }
+  const o = await one(`select plb_kpi_part_set($1,$2::uuid,$3::jsonb) as o`,
+    [req.person.id, b.goalKpiId, JSON.stringify(b.parts)]);
+  // A locked sheet and a frozen quarter are states, not malformed requests.
+  if (o.o?.error === "sheet_locked" || o.o?.error === "data_frozen") {
+    return res.status(409).json(o.o);
+  }
+  return out(res, o.o);
+});
+
 r.post("/certify", async (req: any, res: any) => {
   if (!maySetUp(req)) return res.status(403).json({ error: "not_permitted" });
   const o = await one(`select plb_certify($1,$2) as o`,
