@@ -417,3 +417,53 @@ dressed as one.
 patch 18's sentinel and now this were all the same failure: the work passed
 the build, passed the tests, and reached no screen. Tests prove a function
 is correct. Only measuring the published page proves anybody can get to it.
+
+## The deeper problems, and what now stops them
+
+Measuring by hand is not a fix; it only works on the day somebody remembers
+to do it. Both fixes below replace a thing that had to be remembered with a
+thing that cannot be forgotten.
+
+**A patch whose sentinel reports somebody else's work.** The build now
+refuses any patch whose sentinel appears in none of its own rules, checked
+before a line of the page is touched. All nineteen pass.
+
+**A feature that is published and unreachable.** `build/test/reach_check.mjs`
+walks the call graph of the published `index.html` from each named screen and
+asserts that nine features are reachable **from the screen the owner is told
+to open** — not merely present in the bundle — that each asks for the endpoint
+it needs, that no route opens a screen that is not there, and that `#pms` no
+longer opens the screen the rebuild replaced. Run against the page as it stood
+on the morning of 7 October it reports six failures, patch 18's among them: a
+check that cannot fail on a page that was broken is not a check.
+
+**A rule fourteen functions each had to remember.** Taking a measure off a
+quarterly sheet needed the row gone from every reader. A `DELETE` loses the
+history an argument about an old payout needs; a `removed_at` flag keeps it
+and gives fourteen functions fourteen chances to forget, invisible until a
+payout is wrong. So `plb_goal_kpi` is now a **view** over the live rows of
+`plb_goal_kpi_all`. All fourteen go on saying `plb_goal_kpi` and now read only
+live rows with not one of them touched. There is nothing left to remember, and
+the withdrawn row is still on the record.
+
+## The owner's two operations of 7 October
+
+* **The October assign window runs to the 15th**, through `perf_cycle_extend`
+  so that who reopened it and why is recorded, not through an UPDATE behind
+  its back.
+* **The daily morning mailers are paused** — `crux-perf-reminders` (`PERF_DUE`,
+  606 rows since 30 September) and `crux-matrix-nudge`. `crux-mail` is
+  deliberately left running: it is the sender, not a mailer, and stopping it
+  would also stop activation codes and everything else somebody is waiting on.
+  Both are written into migration **256**, because an operational change that
+  exists only in somebody's memory is one the next rebuild quietly undoes.
+
+## Live as of 7 October
+
+| | |
+|---|---|
+| Migrations | everything through **256**. `plb_goal_kpi` is a view; `plb_goal_kpi_all` holds the rows |
+| Functions | `plb` **v13**, `perf` **v12**, `ops` v8 — all `verify_jwt: false` |
+| Published page | the quarterly card, sub-KPIs and the measure editor, all on Performance & appraisal |
+| Suite | 577 SQL assertions over 26 files, **9** JS checks including `reach_check` |
+| Still open | **254** (`perf_assignment_once_top_old`), tidiness only — the gate refuses any statement carrying the word it needs |
