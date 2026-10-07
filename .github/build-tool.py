@@ -1757,7 +1757,12 @@ PATCHES.append((
       "                  here the whole time and the owner went looking for it\n"
       "                  on Performance, which is where it now is. What is\n"
       "                  left here really is only running the scheme. */\n"
-      "               [\"plb\",\"Issue & certify sheets\"]]]", 1)],
+      "               [\"plb\",\"Issue & certify sheets\"]]]", 1),
+     # The help panel titles the same screen, and a help panel that calls a
+     # screen something the navigation does not is a help panel that makes
+     # somebody doubt they are on the right page.
+     ('plb: { t:"Running the scheme",',
+      'plb: { t:"Issue & certify sheets",', 1)],
 ))
 
 
