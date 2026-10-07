@@ -949,6 +949,8 @@ button.exp:hover{border-color:var(--blue);color:var(--blue);background:var(--whi
 .tmn{text-align:right;font-variant-numeric:tabular-nums;color:var(--mute)}
 .tmgap{color:var(--terra-ink);font-size:12px}
 .tmwarnrow td{background:var(--terra-bg)}
+.tmescout{margin-top:6px;padding:7px 9px;border-left:2px solid var(--green);
+  background:var(--green-bg);border-radius:0 3px 3px 0;font-size:13px}
 .tmrep{display:flex;flex-direction:column;gap:6px;min-width:230px}
 .tmrep select{max-width:300px}
 .tmrepb{display:flex;gap:6px}
@@ -5020,9 +5022,85 @@ function tmConduct(){
       '</div>';
   }
 
-  return '<h3 class="tmh3">Warnings</h3>' + warn +
+  return tmEscal(c) +
+         '<h3 class="tmh3">Warnings</h3>' + warn +
          '<h3 class="tmh3">Improvement plan</h3>' + plan +
          (TM.form ? tmForm() : '');
+}
+
+/* ------------------------------------------------- escalations (251)
+
+   The step the conduct panel was missing. It used to start at a warning,
+   which is a FINDING -- so somebody who hit a problem with a colleague had
+   two options: issue a warning they were not entitled to issue, or say
+   nothing.
+
+   An escalation is the question before the finding. It is drawn above the
+   warnings because it comes before them, and it is drawn for everybody
+   rather than only for the manager, because anybody may raise one.        */
+var TM_ESC_OUTCOME = [
+  ["UPHELD",        "Upheld"],
+  ["PARTLY_UPHELD", "Partly upheld"],
+  ["NOT_UPHELD",    "Not upheld"],
+  ["RESOLVED",      "Resolved between us"],
+  ["NO_ACTION",     "No action needed"]
+];
+
+function tmEscState(e){
+  if (e.state === "CLOSED") {
+    var lbl = e.outcome || "";
+    TM_ESC_OUTCOME.forEach(function(x){ if (x[0] === e.outcome) lbl = x[1]; });
+    return '<span class="pill ' +
+      (e.outcome === "UPHELD" || e.outcome === "PARTLY_UPHELD" ? 'warn' : 'ok') +
+      '">' + esc(lbl) + '</span>';
+  }
+  if (e.state === "WITHDRAWN") return '<span class="mute">withdrawn</span>';
+  if (e.overdue) return '<span class="pill bad">answer overdue</span>';
+  if (e.state === "SEEN") return '<span class="pill">read, not answered</span>';
+  return '<span class="pill warn">waiting</span>';
+}
+
+function tmEscal(c){
+  var es = c.escalations || [];
+  var rows = !es.length
+    ? '<p class="mute">Nothing has been raised.</p>'
+    : '<ul class="tmwarn">' + es.map(function(e){
+        return '<li>' + tmEscState(e) + ' <b>' + esc(e.subject) + '</b>' +
+          '<div class="mute">' +
+            esc((e.kind || "").toLowerCase()) + ' &middot; raised ' +
+            esc((e.raisedAt || "").slice(0, 10)) +
+            ' by ' + esc(e.mine ? "you" : (e.raisedBy || "")) +
+            (e.routedTo ? ' &middot; put to ' + esc(e.routedTo) : '') +
+            (e.state === "OPEN" || e.state === "SEEN"
+              ? ' &middot; answer by ' + esc(e.dueOn || "") : '') +
+          '</div>' +
+          (e.detail ? '<div>' + esc(e.detail) + '</div>' : '') +
+          (e.outcomeNote
+            ? '<div class="tmescout"><b>' +
+              esc(e.closedBy || "") + '</b> &mdash; ' + esc(e.outcomeNote) + '</div>'
+            : '') +
+          ((e.mayAct || e.mayWithdraw)
+            ? '<div class="tmrepb">' +
+                (e.mayAct
+                  ? '<button class="btn" data-tmescclose="' + esc(e.id) + '">Answer it</button>'
+                  : '') +
+                (e.mayWithdraw
+                  ? ' <button class="btn" data-tmescwd="' + esc(e.id) + '">Withdraw</button>'
+                  : '') +
+              '</div>'
+            : '') +
+          '</li>';
+      }).join("") + '</ul>';
+
+  return '<h3 class="tmh3">Escalations</h3>' +
+    '<p class="mute">A question put to the one person who can answer it, not a ' +
+    'finding. It carries no level and goes on nobody&rsquo;s record unless it is ' +
+    'answered with an outcome that says so. While it is open the person it is ' +
+    'about is not shown it.</p>' + rows +
+    (c.mayRaise
+      ? '<p><button class="btn" data-tmform="esc">Raise an escalation</button></p>'
+      : '') +
+    '<div id="tmescmsg"></div>';
 }
 
 /* One form, three shapes. Each field is what the database will refuse
@@ -5041,6 +5119,40 @@ function tmForm(){
       '<p><button class="btn primary" id="tmwsave">Issue it</button> ' +
       '<button class="btn" id="tmfcancel">Cancel</button> ' +
       '<span class="mute">A warning is never edited afterwards.</span></p></div>';
+  }
+  if (f === "esc") {
+    return '<div class="tmfm"><h4>Raise an escalation</h4>' +
+      '<p class="mute">It goes to the manager of the person it is about &mdash; ' +
+      'or a step higher if that is you, or to Human Resources if nobody is ' +
+      'above them. They have three working days.</p>' +
+      '<p><label>What kind <select id="tmekind">' +
+        '<option value="CONDUCT">Conduct &mdash; how somebody behaved</option>' +
+        '<option value="PERFORMANCE">Performance &mdash; the work itself</option>' +
+        '<option value="PROCESS" selected>Process &mdash; something was not followed</option>' +
+        '<option value="SAFETY">Safety</option>' +
+        '<option value="OTHER">Other</option></select></label></p>' +
+      '<p><label>In one line<br><input id="tmesub" class="pfin" style="width:100%" ' +
+        'placeholder="The handover file did not reach the branch"></label></p>' +
+      '<p><label>What happened<br><textarea id="tmedet" rows="3" style="width:100%" ' +
+        'placeholder="Dates, what was asked, what came back."></textarea></label></p>' +
+      '<p><button class="btn primary" id="tmesave">Raise it</button> ' +
+      '<button class="btn" id="tmfcancel">Cancel</button></p></div>';
+  }
+  if (f && f.indexOf("escclose:") === 0) {
+    return '<div class="tmfm"><h4>Answer the escalation</h4>' +
+      '<p class="mute">Both the person who raised it and the person it is about ' +
+      'will read this. Upholding it is not a warning &mdash; if one is warranted, ' +
+      'issue one underneath.</p>' +
+      '<p><label>Outcome <select id="tmeout">' +
+        TM_ESC_OUTCOME.map(function(x){
+          return '<option value="' + esc(x[0]) + '">' + esc(x[1]) + '</option>';
+        }).join("") +
+      '</select></label></p>' +
+      '<p><label>What was decided, and why<br><textarea id="tmenote" rows="3" ' +
+        'style="width:100%"></textarea></label></p>' +
+      '<p><button class="btn primary" data-tmescgo="' + esc(f.slice(9)) +
+        '">Close it</button> ' +
+      '<button class="btn" id="tmfcancel">Cancel</button></p></div>';
   }
   if (f === "pip") {
     return '<div class="tmfm"><h4>Open an improvement plan</h4>' +
@@ -5382,6 +5494,44 @@ function tmWire(){
     TM.tree = await perfApi("/perf/team/tree");
     tmRender();
   }
+
+  /* ------------------------------------------------- escalations (251) */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmescclose]"), function(b){
+    b.onclick = function(){ TM.form = "escclose:" + b.getAttribute("data-tmescclose"); tmRender(); };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmescwd]"), function(b){
+    b.onclick = function(){
+      tmSend("/perf/escalate/act",
+        { id: b.getAttribute("data-tmescwd"), action: "WITHDRAW" }, "Withdrawn.");
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-tmescgo]"), function(b){
+    b.onclick = function(){
+      var note = el("tmenote") ? el("tmenote").value.trim() : "";
+      if (!note) {
+        /* The database refuses it anyway. Saying so here costs nothing and
+           saves a round trip for the commonest mistake on this form. */
+        TM.says = msg("warn", "Say what was decided and why. Both the person who "
+          + "raised it and the person it was about will read this.");
+        tmRender();
+        return;
+      }
+      tmSend("/perf/escalate/act", {
+        id: b.getAttribute("data-tmescgo"),
+        action: "CLOSE",
+        outcome: el("tmeout") ? el("tmeout").value : "",
+        note: note
+      }, "Answered.");
+    };
+  });
+  if (el("tmesave")) el("tmesave").onclick = function(){
+    tmSend("/perf/escalate", {
+      personId: TM.sel,
+      kind: el("tmekind").value,
+      subject: el("tmesub").value,
+      detail: el("tmedet").value
+    }, "Raised.");
+  };
 
   if (el("tmwsave")) el("tmwsave").onclick = function(){
     tmSend("/perf/warn", { personId: TM.sel,
