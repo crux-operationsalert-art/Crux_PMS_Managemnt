@@ -8,31 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.plb_sheet_for(p_actor uuid, p_sheet uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_rel text; v_out jsonb;
-begin
-  v_rel := plb_sheet_rel(p_actor, p_sheet);
-  if v_rel is null then
-    if not exists (select 1 from plb_goal_sheet where id = p_sheet) then
-      return jsonb_build_object('error','no_such_sheet');
-    end if;
-    return jsonb_build_object('error','not_permitted',
-      'reason','A goal sheet is the employee''s and the line above them.');
-  end if;
-  v_out := plb_sheet(p_sheet);
-  if jsonb_typeof(v_out) = 'object' then
-    v_out := v_out || jsonb_build_object(
-      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin'));
-  end if;
-  return v_out;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.plb_sheet_from_perf(p_actor uuid, p_person uuid, p_quarter date, p_plb_inr numeric DEFAULT 0)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -184,6 +159,256 @@ begin
   return jsonb_build_object('ok', true,
     'note','Goal sheet locked. KPIs, weights and targets are frozen for the quarter.');
 end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_sheet_measure_options(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare s plb_goal_sheet; v_may boolean; v_chair uuid;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+
+  v_may := perf_may_set(p_actor, s.person_id) or plb_runs_scheme(p_actor);
+  if not v_may and p_actor <> s.person_id then
+    return jsonb_build_object('error','not_permitted',
+      'reason','That sheet is not in your line.');
+  end if;
+
+  select h.chair_id into v_chair from chair_holder h
+   where h.person_id = s.person_id and h.to_date is null
+   order by h.is_primary desc nulls last limit 1;
+
+  return jsonb_build_object(
+    'sheetId', p_sheet,
+    'personId', s.person_id,
+    'person', (select full_name from person where id = s.person_id),
+    'quarter', s.quarter,
+    'status', s.status,
+    'maySet', v_may and s.status <> 'LOCKED',
+    'locked', s.status = 'LOCKED',
+    'why', case
+      when s.status = 'LOCKED' then
+        'This sheet is locked. It is the promise the quarter is scored '
+        || 'against, so the measures on it do not change now.'
+      when not v_may then
+        'Changing somebody''s measures is their own manager''s, and Human '
+        || 'Resources'' and Business Excellence''s. It is never your own.'
+      else null end,
+    'measures', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'kpiId', k.id, 'name', k.name, 'unit', k.unit,
+               'ofTheChair', k.chair_id is not distinct from v_chair,
+               'kind', perf_accrual_kind(k.id, k.unit),
+               'suggests', k.direction,
+               'onTheSheet', exists (select 1 from plb_goal_kpi g
+                                      where g.sheet_id = p_sheet and g.kpi_id = k.id))
+             order by (k.chair_id is not distinct from v_chair) desc,
+                      k.position, k.name)
+        from kpi_definition k
+       where k.active and k.position < 100), '[]'::jsonb));
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_sheet_measures_set(p_actor uuid, p_sheet uuid, p_measures jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  s plb_goal_sheet; x jsonb; i int := 0;
+  v_bad jsonb := '[]'::jsonb;
+  v_before jsonb; v_keep uuid[] := '{}'; v_kpi uuid;
+  v_w numeric; v_sum numeric := 0;
+  v_m1 numeric; v_m2 numeric; v_m3 numeric; v_dir text;
+  v_gone int := 0; v_added int := 0; v_changed int := 0;
+  r record;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+
+  if not (perf_may_set(p_actor, s.person_id) or plb_runs_scheme(p_actor)) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Changing somebody''s measures is their own manager''s, and '
+            || 'Human Resources'' and Business Excellence''s. Nobody sets '
+            || 'their own.');
+  end if;
+  if s.status = 'LOCKED' then
+    return jsonb_build_object('error','sheet_locked',
+      'reason','This sheet is locked. It is the promise the quarter is '
+            || 'scored against, so the measures on it do not change now.');
+  end if;
+  if jsonb_typeof(coalesce(p_measures,'null'::jsonb)) <> 'array' then
+    return jsonb_build_object('error','invalid',
+      'reason','Send the measures as a list. This call carried '
+            || coalesce(jsonb_typeof(p_measures),'nothing') || '.');
+  end if;
+  if jsonb_array_length(p_measures) = 0 then
+    return jsonb_build_object('error','invalid',
+      'reason','A goal sheet with no measures on it is not a goal sheet. '
+            || 'Remove the sheet instead, or leave at least one.');
+  end if;
+
+  for x in select jsonb_array_elements(p_measures) loop
+    i := i + 1;
+    v_kpi := nullif(btrim(coalesce(x->>'kpiId','')),'')::uuid;
+    if v_kpi is null then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ': choose which measure this is.');
+    elsif not exists (select 1 from kpi_definition k where k.id = v_kpi and k.active) then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ' is not a measure anybody can be given.');
+    elsif v_kpi = any(v_keep) then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ' is on the list twice. One row each, or '
+              || 'the weights say one thing and the sheet shows another.');
+    else
+      v_keep := v_keep || v_kpi;
+    end if;
+
+    v_w := nullif(btrim(coalesce(x->>'weight','')),'')::numeric;
+    if v_w is null or v_w <= 0 or v_w > 100 then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ' needs a weight between nought and a '
+              || 'hundred.');
+    else
+      v_sum := v_sum + v_w;
+    end if;
+
+    if nullif(btrim(coalesce(x->>'target','')),'') is null then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ' has no target. A measure with nothing '
+              || 'to hit cannot be scored, and zero is a target you can type.');
+    end if;
+
+    v_dir := nullif(upper(btrim(coalesce(x->>'direction',''))),'');
+    if v_dir is not null and v_dir not in ('HIGHER','LOWER') then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ': a bigger number is better, or a '
+              || 'smaller one is.');
+    end if;
+
+    v_m1 := nullif(btrim(coalesce(x->>'m1','')),'')::numeric;
+    v_m2 := nullif(btrim(coalesce(x->>'m2','')),'')::numeric;
+    v_m3 := nullif(btrim(coalesce(x->>'m3','')),'')::numeric;
+    if (v_m1 is not null or v_m2 is not null or v_m3 is not null) then
+      if v_m1 is null or v_m2 is null or v_m3 is null then
+        v_bad := v_bad || jsonb_build_object('at', i,
+          'reason','Measure ' || i || ': give all three months of the split '
+                || 'or none of them.');
+      elsif coalesce(v_m1,0) + coalesce(v_m2,0) + coalesce(v_m3,0) <> 0
+            and round(v_m1 + v_m2 + v_m3, 2) <> 100 then
+        v_bad := v_bad || jsonb_build_object('at', i,
+          'reason','Measure ' || i || ': the three months come to '
+                || round(v_m1 + v_m2 + v_m3, 2) || ' and not a hundred. '
+                || 'Leave all three empty to let the phasing set them.');
+      end if;
+    end if;
+  end loop;
+
+  if jsonb_array_length(v_bad) = 0 and round(v_sum, 2) <> 100 then
+    v_bad := v_bad || jsonb_build_object('at', null,
+      'reason','The weights come to ' || round(v_sum,2) || ' and not a '
+            || 'hundred. A person''s measures have to account for all of '
+            || 'them, or the score cannot be worked out by hand.');
+  end if;
+
+  for r in
+    select g.id, g.kpi_id, k.name,
+           g.actual_value is not null as has_actual,
+           exists (select 1 from plb_goal_kpi_part p
+                    where p.goal_kpi_id = g.id and p.removed_at is null) as has_parts
+      from plb_goal_kpi g join kpi_definition k on k.id = g.kpi_id
+     where g.sheet_id = p_sheet and not (g.kpi_id = any(v_keep))
+  loop
+    if r.has_actual or r.has_parts then
+      v_bad := v_bad || jsonb_build_object('at', null,
+        'reason', r.name || ' cannot come off this sheet: '
+              || case when r.has_actual then 'a figure has already been '
+                      || 'worked out against it' else 'it has a breakdown '
+                      || 'written against it' end
+              || '. Set its weight low if it no longer matters, or lock the '
+              || 'quarter and leave it on the record.');
+    end if;
+  end loop;
+
+  if jsonb_array_length(v_bad) > 0 then
+    return jsonb_build_object('error','invalid', 'fields', v_bad,
+      'reason','Nothing was saved. Put these right and send it again.');
+  end if;
+
+  select jsonb_agg(jsonb_build_object('kpiId', g.kpi_id, 'name', k.name,
+           'weight', g.weight_pct, 'target', g.target_value,
+           'direction', g.direction,
+           'm1', g.m1_share, 'm2', g.m2_share, 'm3', g.m3_share)
+         order by k.position, k.name)
+    into v_before
+    from plb_goal_kpi g join kpi_definition k on k.id = g.kpi_id
+   where g.sheet_id = p_sheet;
+
+  update plb_goal_kpi_all
+     set removed_at = now()
+   where sheet_id = p_sheet and removed_at is null
+     and not (kpi_id = any(v_keep));
+  get diagnostics v_gone = row_count;
+
+  i := 0;
+  for x in select jsonb_array_elements(p_measures) loop
+    i := i + 1;
+    v_kpi := (x->>'kpiId')::uuid;
+    if exists (select 1 from plb_goal_kpi_all g
+                where g.sheet_id = p_sheet and g.kpi_id = v_kpi) then
+      update plb_goal_kpi_all g
+         set weight_pct   = (x->>'weight')::numeric,
+             target_value = (x->>'target')::numeric,
+             direction    = nullif(upper(btrim(coalesce(x->>'direction',''))),''),
+             m1_share     = coalesce(nullif(btrim(coalesce(x->>'m1','')),'')::numeric,
+                                     g.m1_share),
+             m2_share     = coalesce(nullif(btrim(coalesce(x->>'m2','')),'')::numeric,
+                                     g.m2_share),
+             m3_share     = coalesce(nullif(btrim(coalesce(x->>'m3','')),'')::numeric,
+                                     g.m3_share),
+             basis_note   = coalesce(nullif(btrim(coalesce(x->>'note','')),''),
+                                     g.basis_note),
+             removed_at   = null
+       where g.sheet_id = p_sheet and g.kpi_id = v_kpi;
+      v_changed := v_changed + 1;
+    else
+      insert into plb_goal_kpi_all (sheet_id, kpi_id, weight_pct, target_value,
+                                    direction, m1_share, m2_share, m3_share,
+                                    basis_level, basis_note)
+      values (p_sheet, v_kpi, (x->>'weight')::numeric, (x->>'target')::numeric,
+              nullif(upper(btrim(coalesce(x->>'direction',''))),''),
+              coalesce(nullif(btrim(coalesce(x->>'m1','')),'')::numeric, 0),
+              coalesce(nullif(btrim(coalesce(x->>'m2','')),'')::numeric, 0),
+              coalesce(nullif(btrim(coalesce(x->>'m3','')),'')::numeric, 0),
+              coalesce(nullif(btrim(coalesce(x->>'basisLevel','')),'')::int, 1),
+              nullif(btrim(coalesce(x->>'note','')),''));
+      v_added := v_added + 1;
+    end if;
+  end loop;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'PLB_SHEET_MEASURES_SET', 'plb_goal_sheet', p_sheet::text,
+          v_before, p_measures);
+
+  return jsonb_build_object('ok', true, 'sheetId', p_sheet,
+    'added', v_added, 'changed', v_changed, 'removed', v_gone,
+    'weights', round(v_sum, 2),
+    'note', case
+      when v_added + v_gone = 0 then
+        'Saved. The same ' || v_changed || ' measure(s), with what you changed.'
+      else 'Saved. ' || v_added || ' added, ' || v_gone || ' taken off, '
+           || v_changed || ' left in place. The weights add to a hundred.'
+      end);
+end
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.plb_sheet_rel(p_actor uuid, p_sheet uuid)

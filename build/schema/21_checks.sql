@@ -106,9 +106,9 @@ alter table public.plb_dispute add constraint plb_dispute_outcome CHECK (((outco
 alter table public.plb_dispute add constraint plb_dispute_points_at_something CHECK ((((element = ANY (ARRAY['TARGET'::text, 'ACTUAL'::text, 'WEIGHT'::text])) = (kpi_id IS NOT NULL)) AND ((element = 'MONTH_SCORE'::text) = (month IS NOT NULL))));
 alter table public.plb_dispute add constraint plb_dispute_stage CHECK ((stage = ANY (ARRAY['RAISED'::text, 'RESPONDED'::text, 'ESCALATED'::text, 'DECIDED'::text, 'WITHDRAWN'::text])));
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_state CHECK ((state = ANY (ARRAY['EMPTY'::text, 'PROPOSED'::text, 'APPROVED'::text, 'RETURNED'::text])));
-alter table public.plb_goal_kpi add constraint plb_goal_kpi_basis_level_check CHECK (((basis_level >= 1) AND (basis_level <= 4)));
-alter table public.plb_goal_kpi add constraint plb_goal_kpi_direction_check CHECK (((direction IS NULL) OR (direction = ANY (ARRAY['HIGHER'::text, 'LOWER'::text]))));
-alter table public.plb_goal_kpi add constraint plb_goal_kpi_weight_pct_check CHECK (((weight_pct > (0)::numeric) AND (weight_pct <= (100)::numeric)));
+alter table public.plb_goal_kpi_all add constraint plb_goal_kpi_basis_level_check CHECK (((basis_level >= 1) AND (basis_level <= 4)));
+alter table public.plb_goal_kpi_all add constraint plb_goal_kpi_direction_check CHECK (((direction IS NULL) OR (direction = ANY (ARRAY['HIGHER'::text, 'LOWER'::text]))));
+alter table public.plb_goal_kpi_all add constraint plb_goal_kpi_weight_pct_check CHECK (((weight_pct > (0)::numeric) AND (weight_pct <= (100)::numeric)));
 alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_label_said CHECK ((btrim(label) <> ''::text));
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_status_check CHECK ((status = ANY (ARRAY['DRAFT'::text, 'ISSUED'::text, 'ACKNOWLEDGED'::text, 'LOCKED'::text])));
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_target_plb_inr_check CHECK ((target_plb_inr >= (0)::numeric));

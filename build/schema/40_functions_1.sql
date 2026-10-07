@@ -3424,3 +3424,29 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ogl_attachments(p_assignment uuid, p_person uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare d jsonb;
+begin
+  -- borrow ogl_detail's scoping rather than write a second version of it
+  d := ogl_detail(p_assignment, p_person);
+  if d ? 'error' then return d; end if;
+
+  return jsonb_build_object('attachments', coalesce((
+    select jsonb_agg(jsonb_build_object('id', t.id, 'file_name', t.file_name,
+             'doc_kind', t.doc_kind, 'caption', t.caption, 'bytes', t.bytes,
+             'mime', t.mime, 'key', t.storage_key,
+             'bucket', case when t.storage_key like '%.pdf' then 'case-documents' else 'visit-photos' end,
+             'point', (select r.force1_point_id from case_verification_requirement r
+                        where r.id = t.requirement_id),
+             'by', (select full_name from person where id = t.uploaded_by),
+             'at', t.uploaded_at) order by t.uploaded_at desc)
+      from ogl_attachment t
+     where t.assignment_id = p_assignment and t.removed_at is null), '[]'::jsonb));
+end $function$
+;
+

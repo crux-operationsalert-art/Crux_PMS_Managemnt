@@ -235,9 +235,9 @@ alter table public.plb_dispute add constraint plb_dispute_sheet_id_fkey FOREIGN 
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES person(id);
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_kpi_id_fkey FOREIGN KEY (kpi_id) REFERENCES kpi_definition(id);
 alter table public.plb_goal_attribute add constraint plb_goal_attribute_sheet_id_fkey FOREIGN KEY (sheet_id) REFERENCES plb_goal_sheet(id) ON DELETE CASCADE;
-alter table public.plb_goal_kpi add constraint plb_goal_kpi_kpi_id_fkey FOREIGN KEY (kpi_id) REFERENCES kpi_definition(id);
-alter table public.plb_goal_kpi add constraint plb_goal_kpi_sheet_id_fkey FOREIGN KEY (sheet_id) REFERENCES plb_goal_sheet(id) ON DELETE CASCADE;
-alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_goal_kpi_id_fkey FOREIGN KEY (goal_kpi_id) REFERENCES plb_goal_kpi(id) ON DELETE CASCADE;
+alter table public.plb_goal_kpi_all add constraint plb_goal_kpi_kpi_id_fkey FOREIGN KEY (kpi_id) REFERENCES kpi_definition(id);
+alter table public.plb_goal_kpi_all add constraint plb_goal_kpi_sheet_id_fkey FOREIGN KEY (sheet_id) REFERENCES plb_goal_sheet(id) ON DELETE CASCADE;
+alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_goal_kpi_id_fkey FOREIGN KEY (goal_kpi_id) REFERENCES plb_goal_kpi_all(id) ON DELETE CASCADE;
 alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_removed_by_fkey FOREIGN KEY (removed_by) REFERENCES person(id);
 alter table public.plb_goal_kpi_part add constraint plb_goal_kpi_part_set_by_fkey FOREIGN KEY (set_by) REFERENCES person(id);
 alter table public.plb_goal_sheet add constraint plb_goal_sheet_chair_id_fkey FOREIGN KEY (chair_id) REFERENCES chair(id);

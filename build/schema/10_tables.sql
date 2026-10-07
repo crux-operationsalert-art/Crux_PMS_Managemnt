@@ -1442,7 +1442,7 @@ create table if not exists public.plb_goal_attribute (
   overlap_note text
 );
 
-create table if not exists public.plb_goal_kpi (
+create table if not exists public.plb_goal_kpi_all (
   id uuid default gen_random_uuid() not null,
   sheet_id uuid not null,
   kpi_id uuid not null,
@@ -1454,7 +1454,8 @@ create table if not exists public.plb_goal_kpi (
   m2_share numeric(6,3) default 0 not null,
   m3_share numeric(6,3) default 0 not null,
   actual_value numeric(16,4),
-  direction text
+  direction text,
+  removed_at timestamp with time zone
 );
 
 create table if not exists public.plb_goal_kpi_part (

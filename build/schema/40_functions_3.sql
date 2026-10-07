@@ -8,45 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.perf_cascade(p_assignment uuid, p_depth integer DEFAULT 0)
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  a perf_assignment; kind text; r record;
-  v_pinned numeric := 0; v_free int := 0; v_each numeric; v_n int := 0;
-begin
-  if p_depth > 12 then return 0; end if;
-  select * into a from perf_assignment where id = p_assignment;
-  if a.id is null or a.target_value is null then return 0; end if;
-  kind := perf_accrual_kind(a.kpi_id, a.unit);
-
-  select coalesce(sum(case when c.target_source = 'MANUAL'
-                           then coalesce(c.target_value,0) else 0 end), 0),
-         count(*) filter (where c.target_source <> 'MANUAL')
-    into v_pinned, v_free
-    from perf_assignment c where c.rolls_into_id = a.id;
-  if v_free = 0 then return 0; end if;
-
-  if kind = 'SUM' then
-    v_each := round((a.target_value - v_pinned) / v_free, 2);
-    if v_each < 0 then v_each := 0; end if;
-  else
-    v_each := a.target_value;
-  end if;
-
-  for r in select c.id from perf_assignment c
-            where c.rolls_into_id = a.id and c.target_source <> 'MANUAL'
-  loop
-    update perf_assignment set target_value = v_each, target_source = 'SHARED' where id = r.id;
-    v_n := v_n + 1 + perf_cascade(r.id, p_depth + 1);
-  end loop;
-  return v_n;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text, p_kind text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -5000,5 +4961,30 @@ AS $function$
       end)
   from s, c, fence, k, a, m left join r on true;
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_sheet_for(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_rel text; v_out jsonb;
+begin
+  v_rel := plb_sheet_rel(p_actor, p_sheet);
+  if v_rel is null then
+    if not exists (select 1 from plb_goal_sheet where id = p_sheet) then
+      return jsonb_build_object('error','no_such_sheet');
+    end if;
+    return jsonb_build_object('error','not_permitted',
+      'reason','A goal sheet is the employee''s and the line above them.');
+  end if;
+  v_out := plb_sheet(p_sheet);
+  if jsonb_typeof(v_out) = 'object' then
+    v_out := v_out || jsonb_build_object(
+      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin'));
+  end if;
+  return v_out;
+end $function$
 ;
 

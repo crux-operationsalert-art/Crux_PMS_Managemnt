@@ -8,32 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_attachments(p_assignment uuid, p_person uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare d jsonb;
-begin
-  -- borrow ogl_detail's scoping rather than write a second version of it
-  d := ogl_detail(p_assignment, p_person);
-  if d ? 'error' then return d; end if;
-
-  return jsonb_build_object('attachments', coalesce((
-    select jsonb_agg(jsonb_build_object('id', t.id, 'file_name', t.file_name,
-             'doc_kind', t.doc_kind, 'caption', t.caption, 'bytes', t.bytes,
-             'mime', t.mime, 'key', t.storage_key,
-             'bucket', case when t.storage_key like '%.pdf' then 'case-documents' else 'visit-photos' end,
-             'point', (select r.force1_point_id from case_verification_requirement r
-                        where r.id = t.requirement_id),
-             'by', (select full_name from person where id = t.uploaded_by),
-             'at', t.uploaded_at) order by t.uploaded_at desc)
-      from ogl_attachment t
-     where t.assignment_id = p_assignment and t.removed_at is null), '[]'::jsonb));
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_attribution_confirm(p_segment uuid, p_reason uuid, p_actor uuid, p_remarks text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -5331,6 +5305,45 @@ begin
     'note', n || ' measure(s) carried from ' || prev.period_start ||
       case when p_keep_targets then ' with last month''s targets.'
            else '. The targets are blank on purpose -- last month''s number is not this month''s promise.' end);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_cascade(p_assignment uuid, p_depth integer DEFAULT 0)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a perf_assignment; kind text; r record;
+  v_pinned numeric := 0; v_free int := 0; v_each numeric; v_n int := 0;
+begin
+  if p_depth > 12 then return 0; end if;
+  select * into a from perf_assignment where id = p_assignment;
+  if a.id is null or a.target_value is null then return 0; end if;
+  kind := perf_accrual_kind(a.kpi_id, a.unit);
+
+  select coalesce(sum(case when c.target_source = 'MANUAL'
+                           then coalesce(c.target_value,0) else 0 end), 0),
+         count(*) filter (where c.target_source <> 'MANUAL')
+    into v_pinned, v_free
+    from perf_assignment c where c.rolls_into_id = a.id;
+  if v_free = 0 then return 0; end if;
+
+  if kind = 'SUM' then
+    v_each := round((a.target_value - v_pinned) / v_free, 2);
+    if v_each < 0 then v_each := 0; end if;
+  else
+    v_each := a.target_value;
+  end if;
+
+  for r in select c.id from perf_assignment c
+            where c.rolls_into_id = a.id and c.target_source <> 'MANUAL'
+  loop
+    update perf_assignment set target_value = v_each, target_source = 'SHARED' where id = r.id;
+    v_n := v_n + 1 + perf_cascade(r.id, p_depth + 1);
+  end loop;
+  return v_n;
 end $function$
 ;
 

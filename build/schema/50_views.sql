@@ -300,6 +300,23 @@ UNION ALL
            FROM migration_review x
           WHERE x.entity_ref = ('ESCALATIONS!'::text || e.row_no)));
 
+create or replace view public.plb_goal_kpi as
+ SELECT id,
+    sheet_id,
+    kpi_id,
+    weight_pct,
+    target_value,
+    basis_level,
+    basis_note,
+    m1_share,
+    m2_share,
+    m3_share,
+    actual_value,
+    direction,
+    removed_at
+   FROM plb_goal_kpi_all
+  WHERE removed_at IS NULL;
+
 create or replace view seam.assignment as
  SELECT c.id::text AS id,
     c.geo_node_id::text AS zone_id,

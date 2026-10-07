@@ -102,6 +102,7 @@ CREATE UNIQUE INDEX person_work_email_uniq ON public.person USING btree (lower(w
 CREATE UNIQUE INDEX pip_plan_one_open ON public.pip_plan USING btree (person_id) WHERE (state = ANY (ARRAY['OPEN'::text, 'EXTENDED'::text]));
 CREATE INDEX pip_review_due ON public.pip_review USING btree (due_on) WHERE (held_at IS NULL);
 CREATE INDEX plb_dispute_sheet_idx ON public.plb_dispute USING btree (sheet_id, stage);
+CREATE INDEX plb_goal_kpi_all_live ON public.plb_goal_kpi_all USING btree (sheet_id) WHERE (removed_at IS NULL);
 CREATE INDEX plb_goal_kpi_part_by_kpi ON public.plb_goal_kpi_part USING btree (goal_kpi_id, "position");
 CREATE UNIQUE INDEX plb_goal_kpi_part_once ON public.plb_goal_kpi_part USING btree (goal_kpi_id, lower(btrim(label)));
 CREATE INDEX pms_adjustment_cycle_idx ON public.pms_adjustment USING btree (cycle_id, half);
