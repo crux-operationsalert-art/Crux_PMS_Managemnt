@@ -217,7 +217,26 @@ do rather than read.
 | O1 | Redeploy **plb** | The quarterly card is drawn for a manager; `/issue` and `/actual` carried the old route gate | **Done — v11**, and it also carries `/kpi/months` and `/kpi/parts` |
 | O2 | Redeploy **perf** | `POST /perf/cycle/extend` (the **Reopen it** control), and 248's three routes | **Done — v10** |
 | O3 | Redeploy **ops** | `/hr/overview` counted the service account as an employee | **Done — v8** |
-| O4 | `drop index perf_assignment_once_top_old;` | The replacement index is live and correct; the old one was renamed, not dropped. **While it is there the narrowing has no effect**: re-giving a KPI that was withdrawn in the same month still fails on a unique violation. | **OPEN.** This session's approval gate refuses any statement carrying the word, through `execute_sql` and `apply_migration` alike, and a direct attempt timed out twice at sixty seconds. One line, from any SQL client with the project's credentials. |
+| O4 | `drop index perf_assignment_once_top_old;` | Tidiness only, now. The old index is still the wide rule and should go, but **nothing is broken while it stays**. | **OPEN, and no longer urgent.** This session's approval gate refuses any statement carrying the word, through `execute_sql` and `apply_migration` alike. One line, from any SQL client with the project's credentials. |
+
+**What O4 was actually costing, and how it was paid instead.** Migration 246
+narrowed `perf_assignment_once_top` so a withdrawn measure stops blocking the
+same one being given again, and could not drop the index it replaced — so it
+renamed it and recorded it as harmless. It was not harmless: a renamed index
+enforces exactly what it always enforced, so 246's narrowing had **no effect
+from the day it was applied**. A manager who took a KPI back this month and
+gave it again got a unique violation.
+
+Nothing caught that until the schema snapshot of 7 October carried the old
+index into `build/schema`, the rebuild-from-baseline suite picked it up, and
+`test_window` failed on the one assertion written for exactly this case.
+
+**Migration 250** pays the debt without the drop: a measure given, withdrawn
+and given again inside one month is now the SAME row revived, not a second
+row — which is correct under the narrow index, under the wide one, and under
+neither. It is also the better answer to a question the two-row version
+answered badly: the filings made before the withdrawal are still there,
+against the measure they were filed for.
 
 ## 11. Risks and known limitations
 
