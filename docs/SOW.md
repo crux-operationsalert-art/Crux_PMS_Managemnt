@@ -292,31 +292,36 @@ against the measure they were filed for.
 
 ## 15. Status and next actions
 
-**Done and live.** Items #1–#39 and #43–#53, plus everything written on
-7 October 2026. Migrations 243–249 are applied, `plb` is at v11, `perf` at
-v10 and `ops` at v8, and the published page carries every screen change.
+**Live.** Everything up to and including migration 250. `plb` v11, `perf`
+v11, `ops` v8. The published page carries every screen change up to and
+including patch 17.
 
-The owner's P1 list of 7 October, measured against what is live:
+**Built, tested, committed — NOT yet live.** The Supabase approval gate in
+this session began refusing every call, including `select 1`, and has not
+reopened. Two migrations and one deploy are waiting:
 
-| | What was reported | Standing |
+| | What | One call each |
 |---|---|---|
-| 1 | "I am able to update and change the managers, but nothing else designation, chair, location, department and other important aspects" | **Fixed.** 248: `org_person_set` writes designation, department, chair, place, employee type, mobile, work e-mail, employee number, joining date and role; the row on **All people** opens into one form over all of them. The reporting line is still `org_move_person`'s. |
-| — | "assigning People — No manager 1 · No chair 2 · No designation 49 · No department 49 · No location" | **Fixed.** Measured live and confirmed exactly: 103 staff, 1, 2, 49, 49, 13. Each chip now opens a bulk bar that sets the one field that gap is about, over up to sixty people, reporting every refusal by name. A place is refused in bulk and says why — a seating belongs to a chair. |
-| 2 | "As a manager I am still not able to change the KPIs for quarterly score card and add sub KPIs" | **Fixed.** 247 moved the rule into the database; **patch 17** finally carried the screen half across. Sub-measures are 249. |
-| 3 | "use the same [monthly] format for the quarterly too but should be linked" | **Fixed.** 249's `plb_kpi_months`: per measure, three months, each carrying the real PMS target, what was filed, and what the quarter's split implies — the third number is the link. |
-| 4 | "I can still update and change my own targets… only my One up" | **Fixed.** 247 in the database, patch 17 on the screen: your own row now reads "your own — your manager's to set" instead of carrying a button. |
-| 5 | "Assign Task button is not working" | **Not a defect.** `task_assign` answers `{created: 2}` live. The button sits inside the team card, which 91 of 103 staff never see because they manage nobody. |
-| 6 | "Not able to understand what is Counted In and climbs to" | **Fixed.** Relabelled "Measured in" and "Adds up into", with the hint beside each. |
-| 7 | "when clicked on save Updated KPI did not save" | **Not reproducible.** The page sends the edit and `perf_assign_edit` answers `{"ok":true}`. The one real cause found was the 5-working-day window, which 246 made visible and extendable. |
+| 251 | an escalation about a person | apply the migration |
+| 252 | a partner is a Business Associate, and HR holds the file | apply the migration |
+| — | `perf`, carrying `/escalate`, `/escalate/act` and `/partner` | redeploy, `verify_jwt: false` |
+| O4 | `drop index perf_assignment_once_top_old;` | tidiness only since 250 |
 
-**The defect this session found in its own earlier work.** `build/app/
-screen-plb.js` is a MIRROR of code that lives in `app_page`, and only the
-block between its OKR markers was ever injected into the published page. The
-fix for complaints 2 and 4 was written there, passed its tests, was committed
-and was published — and reached no screen. Patch 17 carries it, the shipped
-block is now bracketed and named, and the build refuses to run if any of its
-four functions falls outside the markers.
+**The owner's P1 list of 7 October.** All seven items are answered; §10 and the
+commit log say how, and two of them were not defects.
 
-**Open.** O4 (one `drop index`, above). Then #40 (raise an escalation about a
-person), #41 (merge the duplicate tiles), #42 (what a zero target means, and
-the `plb_compute` direction defect — Q2 and Q3).
+**The pending list.**
+
+| | | Standing |
+|---|---|---|
+| #40 | raise an escalation about a person | **Done** (251). Anybody may raise one about anybody but themselves; it routes to their manager, a step higher when the raiser is that manager, or to HR. The subject does not see it while it is open. |
+| #41 | merge or remove the tiles that duplicate the rebuilt screens | **Done** (patch 18). Measured rather than guessed: every screen was listed with the endpoints it reads, and `vPms` was still reachable at `#pms` wearing the rebuilt Performance screen's sub-tabs. `#pms` now opens the rebuilt screen. |
+| #42 | what a zero target means for a bonus, and `plb_compute`'s direction | **Blocked on the owner.** Q2 and Q3 below. It is the only thing in the PMS that is waiting on a decision rather than on work. |
+
+**Business Associates** (252) is built and tested: the designation, the
+agreements with their expected dates, the security cheque, the rates Crux
+pays per document and per OGL case, and the partnership ratio. HR confirms
+it; the line sees the rates and not the terms.
+
+**Next**: apply 251 and 252, redeploy `perf`, then #42 once Q2 and Q3 are
+answered.
