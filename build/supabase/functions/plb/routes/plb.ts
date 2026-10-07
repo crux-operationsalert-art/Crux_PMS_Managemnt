@@ -254,7 +254,9 @@ r.post("/kpi/parts", async (req: any, res: any) => {
     return res.status(400).json({ error: "missing_parts",
       reason: "Send the parts. An empty list removes the breakdown." });
   }
-  const o = await one(`select plb_kpi_part_set($1,$2::uuid,$3::jsonb) as o`,
+  // $3::text, then cast -- the same reason /issue above pins its targets.
+  const o = await one(
+    `select plb_kpi_part_set($1,$2::uuid,coalesce($3::text,'[]')::jsonb) as o`,
     [req.person.id, b.goalKpiId, JSON.stringify(b.parts)]);
   // A locked sheet and a frozen quarter are states, not malformed requests.
   if (o.o?.error === "sheet_locked" || o.o?.error === "data_frozen") {

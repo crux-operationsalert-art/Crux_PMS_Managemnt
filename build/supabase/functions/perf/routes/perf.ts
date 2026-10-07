@@ -376,8 +376,18 @@ r.get("/team/options", async (req: any, res: any) => {
 r.post("/team/set", async (req: any, res: any) => {
   const b = req.body || {};
   if (!b.personId) return res.status(400).json({ error: "missing_person" });
-  const o = await one(`select org_person_set($1,$2::uuid,$3::jsonb) as o`,
-    [req.person.id, b.personId, JSON.stringify(b.fields || {})]);
+  // $3::text, then cast. postgres.js decides how to serialise by the JS type
+  // it is handed, and a value bound straight to a jsonb parameter is its guess
+  // to make -- which is how plb's /issue came to receive {} where it was sent
+  // []. Pinning it to text and casting on the server takes the guess out of it.
+  //
+  // The shape is checked here too, because `fields` arriving as an array or a
+  // string is a caller's mistake and "Send the fields to change" is a useless
+  // thing to say about it.
+  const fields = b.fields && typeof b.fields === "object" && !Array.isArray(b.fields)
+    ? b.fields : {};
+  const o = await one(`select org_person_set($1,$2::uuid,coalesce($3::text,'{}')::jsonb) as o`,
+    [req.person.id, b.personId, JSON.stringify(fields)]);
   if (o.o?.error === "would_loop") return res.status(409).json(o.o);
   return out(res, o.o);
 });
@@ -390,8 +400,12 @@ r.post("/team/set-many", async (req: any, res: any) => {
     return res.status(400).json({ error: "nobody_chosen",
       reason: "Tick the people this applies to." });
   }
-  const o = await one(`select org_person_set_many($1,$2::jsonb,$3::jsonb) as o`,
-    [req.person.id, JSON.stringify(b.people), JSON.stringify(b.fields || {})]);
+  const mfields = b.fields && typeof b.fields === "object" && !Array.isArray(b.fields)
+    ? b.fields : {};
+  const o = await one(
+    `select org_person_set_many($1,coalesce($2::text,'[]')::jsonb,
+                                   coalesce($3::text,'{}')::jsonb) as o`,
+    [req.person.id, JSON.stringify(b.people), JSON.stringify(mfields)]);
   return out(res, o.o);
 });
 
