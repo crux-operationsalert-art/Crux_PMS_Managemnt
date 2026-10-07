@@ -7346,6 +7346,13 @@ function pfEditForm(ms){
           return '<option value="' + c + '"' + (f.cadence === c ? ' selected' : '') + '>' +
             c.toLowerCase() + '</option>'; }).join("") +
       '</select></label>' +
+      '<label class="hrafield"><span>Which way is better <i class="hrahint">more is better, or fewer is</i></span><select data-pfe="direction">' +
+        '<option value="">&mdash; as the measure suggests &mdash;</option>' +
+        '<option value="HIGHER"' + (f.direction === "HIGHER" ? ' selected' : '') +
+          '>A bigger number is better</option>' +
+        '<option value="LOWER"' + (f.direction === "LOWER" ? ' selected' : '') +
+          '>A smaller number is better</option>' +
+      '</select></label>' +
       '<label class="hrafield"><span>Adds up into <i class="hrahint">which of YOUR measures this one feeds</i></span><select data-pfe="rollsInto">' +
         '<option value="">— nothing —</option>' +
         mine.map(function(m){
@@ -7409,6 +7416,13 @@ function pfForm(){
       '<label class="hrafield"><span>On which day</span>' +
         '<input data-pff="cadenceDay" type="number" min="1" max="28" ' +
         'placeholder="10 for the 10th, 5 for Friday" value="' + esc(f.cadenceDay || "") + '"></label>' +
+      '<label class="hrafield"><span>Which way is better <i class="hrahint">more is better, or fewer is</i></span><select data-pff="direction">' +
+        '<option value="">&mdash; as the measure suggests &mdash;</option>' +
+        '<option value="HIGHER"' + (f.direction === "HIGHER" ? ' selected' : '') +
+          '>A bigger number is better</option>' +
+        '<option value="LOWER"' + (f.direction === "LOWER" ? ' selected' : '') +
+          '>A smaller number is better</option>' +
+      '</select></label>' +
       '<label class="hrafield"><span>Adds up into <i class="hrahint">which of YOUR measures this one feeds</i></span><select data-pff="rollsInto">' +
         '<option value="">— nothing yet —</option>' +
         mine.map(function(m){
