@@ -366,5 +366,54 @@ the rates and not the terms. The ratio — "80-20", where the associate takes
 reads it to price or pay anything. It is a different number from
 `partner_rate`, and the comment in 252 says so.
 
-**Next**: nothing is waiting on the gate. The remaining items are O4 and
-whatever the owner raises next.
+## The owner's report of 7 October: "basically nothing I had asked is done"
+
+Measured against the published page rather than against my own notes, and
+the owner was right on three of four.
+
+| What they said | What was true |
+|---|---|
+| the quarterly scorecard in the monthly shape is "still pending or I am not able to find it" | **Built, and unreachable.** It rendered only inside `vPlb` — a sub-tab the navigation called *Running the scheme* — and only after opening a specific person's sheet. `pfAppraisal` on Performance & appraisal went on drawing the quarter with `pbGoalSheet`, the old three-percentages table. Anybody opening the page they were told to open never saw the rebuild. |
+| "not able to add Sub KPIs" | **Same cause, worse.** The panel sat two layers down on that hidden tab. The live database had **nought** sub-KPIs on it, which is what that costs. |
+| "still not able to edit/update KPIs of quaterly scorecard" | **Completely right — it did not exist.** `plb_goal_kpi` rows were written once, by `plb_sheet_issue`. Nothing could change which measures were on a sheet, what each was worth, what it asked for or which way it pointed. |
+| "not able to edit/update KPIs before assigning targets" | **Half true.** The edit form exists (name, unit, weight, cadence, direction, rolls-into) but the target moves through a separate control, so the order is backwards from how the work is actually done. |
+| "Performance and appraisal page is very confusing" | **Structural, and the root of the rest.** Half the scheme lived on a tab named after *who runs it* rather than *what is on it*. |
+
+What was done, on the owner's two decisions — one page for month and
+quarter, and the one-up manager editing everything until the sheet locks:
+
+* **The quarter is drawn on the Performance page**, in the monthly card's
+  shape: per measure, three months, each carrying its real PMS target, what
+  was filed against it, and what the quarter's split says it should have
+  been. Where the first two disagree with the third, the month says so.
+  `pbGoalSheet` remains only as the fallback for when `/kpi/months` cannot
+  be read, and says that is what it is.
+* **Sub-KPIs hang off each measure**, where somebody reading the measure
+  will find them, on the page they already had open.
+* **Migration 255** makes the measure list editable — `plb_sheet_measures_set`
+  replaces the whole list in one call, because the rule that validates it
+  (the weights add to a hundred) is a rule about the set. The one-up
+  manager's, HR's and Business Excellence's; never your own; refused once
+  the sheet locks. Removing a measure is a DELETE and not a flag, because
+  fourteen functions read `plb_goal_kpi` and a flag any one of them forgot
+  would count a withdrawn measure into somebody's bonus. A measure with a
+  figure or a breakdown against it cannot be removed at all.
+* **Patch 19** renames the other tab to *Issue & certify sheets* — in the
+  navigation and in the help panel — so nobody goes looking there for their
+  scorecard again.
+
+**Live now:** the quarterly card and the sub-KPIs, on Performance &
+appraisal. `/kpi/months` and `/kpi/parts` are both on the deployed `plb` v12.
+
+**Not live yet:** migration 255 and the `plb` redeploy that carries
+`/sheet/measures`. The gate closed again mid-apply. Until both land, the
+*Change the measures* button says in words that the editor is built but not
+published — a route that is not deployed is not a refusal, and must not be
+dressed as one.
+
+**Also still open:** 254 (`perf_assignment_once_top_old`), tidiness only.
+
+**The lesson, for the third time this session.** `screen-plb.js`'s mirror,
+patch 18's sentinel and now this were all the same failure: the work passed
+the build, passed the tests, and reached no screen. Tests prove a function
+is correct. Only measuring the published page proves anybody can get to it.
