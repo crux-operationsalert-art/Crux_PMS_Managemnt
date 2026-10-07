@@ -115,6 +115,54 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_cycle_extend(p_actor uuid, p_cycle uuid, p_until date, p_why text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a person%rowtype; c perf_cycle; v_was date;
+begin
+  select * into a from person where id=p_actor and employment_status='ACTIVE' and superseded_by is null;
+  if a.id is null or (a.app_role <> 'ADMIN'
+                      and coalesce(a.department,'') <> 'Human Resources'
+                      and coalesce(a.department,'') <> 'Business Excellence') then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Reopening a month for KPI setting is HR''s, Business Excellence''s or an administrator''s -- the same three who open it.');
+  end if;
+  select * into c from perf_cycle where id=p_cycle;
+  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  if p_why is null or btrim(p_why)='' then
+    return jsonb_build_object('error','reason_required',
+      'reason','Reopening a month changes what a team can still be asked for, so it carries the reason it was reopened.');
+  end if;
+  if p_until is null then
+    return jsonb_build_object('error','no_date','reason','Say the date KPI setting should close instead.');
+  end if;
+  if p_until < current_date then
+    return jsonb_build_object('error','already_past',
+      'reason', p_until || ' is in the past, so it would shut the month rather than reopen it.');
+  end if;
+  if p_until <= c.assign_closes then
+    return jsonb_build_object('error','not_later',
+      'reason','KPIs for ' || c.period_start || ' can already be set until ' || c.assign_closes || '. This only ever moves that date later.');
+  end if;
+  if p_until > c.entry_closes then
+    return jsonb_build_object('error','after_filing_closes',
+      'reason','Filing for ' || c.period_start || ' closes on ' || c.entry_closes || ', so a KPI set after that could never be filed against.');
+  end if;
+  v_was := c.assign_closes;
+  update perf_cycle set assign_closes = p_until where id = c.id;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor,'PERF_CYCLE_EXTENDED','perf_cycle', c.id::text,
+          jsonb_build_object('assignCloses', v_was),
+          jsonb_build_object('assignCloses', p_until, 'why', btrim(p_why), 'by', a.full_name));
+  return jsonb_build_object('ok',true,'cycleId',c.id,'period',c.period_start,
+    'was',v_was,'assignCloses',p_until,
+    'note','KPIs for ' || c.period_start || ' may now be set until ' || p_until || '. Who reopened it and why is recorded.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_cycle_open(p_actor uuid, p_period date, p_kind text DEFAULT 'MONTH'::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -332,6 +380,13 @@ AS $function$
     'run',         (select count(*) from mark m, gap
                      where m.ok and (gap.d is null or m.d > gap.d)));
 $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_gate_probe()
+ RETURNS integer
+ LANGUAGE sql
+ IMMUTABLE
+AS $function$ select 1 $function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_handover(p_actor uuid, p_cycle uuid, p_person uuid DEFAULT NULL::uuid)
@@ -4540,15 +4595,5 @@ begin
   return jsonb_build_object('ok', true,
     'note','Goal sheet locked. KPIs, weights and targets are frozen for the quarter.');
 end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_sheet_rel(p_actor uuid, p_sheet uuid)
- RETURNS text
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  select perf_rel(p_actor, s.person_id) from plb_goal_sheet s where s.id = p_sheet
-$function$
 ;
 

@@ -8,6 +8,16 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_sheet_rel(p_actor uuid, p_sheet uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select perf_rel(p_actor, s.person_id) from plb_goal_sheet s where s.id = p_sheet
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_target_agreement(p_actor uuid, p_sheet uuid)
  RETURNS jsonb
  LANGUAGE plpgsql

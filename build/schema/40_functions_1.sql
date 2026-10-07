@@ -8,6 +8,27 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public._probe()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare a uuid; m uuid; cy uuid; asg uuid; r jsonb := '{}'::jsonb;
+begin
+  select id into a from person where full_name ilike 'Arun Bodupali%' limit 1;
+  select id into m from person where full_name ilike 'Manish Shukla%' limit 1;
+  select id into cy from perf_cycle where period_start=date_trunc('month',current_date)::date and period_kind='MONTH';
+  select id into asg from perf_assignment where person_id=m and cycle_id=cy and part_of_id is null limit 1;
+  r := r || jsonb_build_object('subtreeOfArun',(select count(*) from kpi_subtree_people(a)),
+                               'assignmentFound', asg is not null);
+  r := r || jsonb_build_object('taskAssign', task_assign(a, jsonb_build_object('title','probe','allReports',true)));
+  if asg is not null then
+    r := r || jsonb_build_object('editKpi', perf_assign_edit(a, jsonb_build_object(
+      'assignmentId',asg,'name','probe rename','unit','cases','weight',50,'rollsInto','')));
+  end if;
+  return r;
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.access_level_of(p_person uuid)
  RETURNS text
  LANGUAGE sql
