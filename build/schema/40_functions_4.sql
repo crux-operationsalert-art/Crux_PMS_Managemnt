@@ -8,6 +8,109 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_sheet_issue(p_actor uuid, p_person uuid, p_quarter date, p_target numeric, p_targets jsonb DEFAULT '[]'::jsonb, p_default boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_chair uuid; v_sheet uuid; v_n int; v_w numeric; r record;
+begin
+  if not (perf_may_set(p_actor, p_person) or plb_runs_scheme(p_actor)) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A goal sheet is issued by the person''s own reporting manager, or by HR, Business Excellence or an administrator. Not by their manager''s manager, and never by themselves.');
+  end if;
+  if p_actor = p_person and not p_default then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Nobody issues their own goal sheet.');
+  end if;
+
+  select ch.chair_id into v_chair
+    from chair_holder ch where ch.person_id = p_person and ch.to_date is null
+    order by ch.is_primary desc nulls last limit 1;
+  if v_chair is null then
+    return jsonb_build_object('error','no_chair',
+      'reason','That person is not seated in a chair, so there is no measure set to build from.');
+  end if;
+
+  select count(*) into v_n from kpi_definition
+   where chair_id = v_chair and active and position < 100;
+  if v_n = 0 then
+    return jsonb_build_object('error','chair_not_in_scheme',
+      'reason','That chair has no KPIs in the registry, so it is not in the PLB scheme.');
+  end if;
+  v_w := round(100.0 / v_n, 3);
+
+  insert into plb_goal_sheet (person_id, chair_id, quarter, target_plb_inr,
+                              status, issued_by, issued_at, is_default)
+  values (p_person, v_chair, date_trunc('quarter', p_quarter)::date, p_target,
+          'ISSUED', p_actor, now(), p_default)
+  on conflict (person_id, quarter) do update
+     set target_plb_inr = excluded.target_plb_inr,
+         status = case when plb_goal_sheet.status = 'LOCKED'
+                       then plb_goal_sheet.status else 'ISSUED' end
+  returning id into v_sheet;
+
+  if (select status from plb_goal_sheet where id = v_sheet) = 'LOCKED' then
+    return jsonb_build_object('error','locked',
+      'reason','That goal sheet is locked. KPIs, weights and targets are frozen.');
+  end if;
+
+  -- the KPIs come from the registry, never from the caller
+  insert into plb_goal_kpi (sheet_id, kpi_id, weight_pct)
+  select v_sheet, k.id, v_w
+    from kpi_definition k
+   where k.chair_id = v_chair and k.active and k.position < 100
+  on conflict (sheet_id, kpi_id) do update set weight_pct = excluded.weight_pct;
+
+  -- the five attributes, same for everyone
+  insert into plb_goal_attribute (sheet_id, kpi_id)
+  select v_sheet, k.id from kpi_definition k where k.chair_id is null and k.active
+  on conflict do nothing;
+
+  -- the caller may set targets, the basis level and the monthly split
+  for r in select * from jsonb_to_recordset(coalesce(p_targets,'[]'::jsonb))
+             as x(kpi_id uuid, target numeric, basis int, basis_note text,
+                  m1 numeric, m2 numeric, m3 numeric)
+  loop
+    update plb_goal_kpi
+       set target_value = coalesce(r.target, target_value),
+           basis_level  = coalesce(r.basis, basis_level),
+           basis_note   = coalesce(r.basis_note, basis_note),
+           m1_share     = coalesce(r.m1, m1_share),
+           m2_share     = coalesce(r.m2, m2_share),
+           m3_share     = coalesce(r.m3, m3_share)
+     where sheet_id = v_sheet and kpi_id = r.kpi_id;
+  end loop;
+
+  return jsonb_build_object('ok', true, 'sheetId', v_sheet, 'kpis', v_n,
+    'weightEach', v_w,
+    'note', 'Goal sheet issued with ' || v_n || ' KPIs at ' || v_w || '% each.');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.plb_sheet_lock(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_missing int;
+begin
+  select count(*) into v_missing from plb_goal_kpi
+   where sheet_id = p_sheet and (target_value is null or basis_level is null);
+  if v_missing > 0 then
+    return jsonb_build_object('error','incomplete',
+      'reason', v_missing || ' KPI(s) have no target or no recorded basis level. '
+                || 'A target you cannot trace to a level is an opinion with a number on it.');
+  end if;
+  update plb_goal_sheet set status = 'LOCKED', locked_at = now() where id = p_sheet;
+  return jsonb_build_object('ok', true,
+    'note','Goal sheet locked. KPIs, weights and targets are frozen for the quarter.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_sheet_rel(p_actor uuid, p_sheet uuid)
  RETURNS text
  LANGUAGE sql

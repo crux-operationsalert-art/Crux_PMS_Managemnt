@@ -3369,6 +3369,69 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.org_assign_options(p_actor uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a person;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+
+  -- The same words org_people_table and org_move_person use. If this ever
+  -- diverges the screen will draw a dropdown nobody is allowed to use.
+  if not (a.app_role = 'ADMIN' or coalesce(a.department,'') = 'Human Resources') then
+    return jsonb_build_object('mayUse', false,
+      'reason','Assigning people is the administrator''s and Human Resources''.');
+  end if;
+
+  return jsonb_build_object(
+    'mayUse', true,
+    'maySetRole', a.app_role = 'ADMIN',
+    'designations', coalesce((
+      select jsonb_agg(jsonb_build_object('id', d.id, 'title', d.title,
+                                          'seniority', d.seniority)
+                       order by d.seniority, d.title)
+        from designation d), '[]'::jsonb),
+    -- Free text in the column, so the list is what is already in use. A
+    -- department nobody is in is a department that should not be offered.
+    'departments', coalesce((
+      select jsonb_agg(distinct btrim(p.department))
+        from person p
+       where p.employment_status = 'ACTIVE' and p.superseded_by is null
+         and coalesce(btrim(p.department),'') <> ''), '[]'::jsonb),
+    'chairs', coalesce((
+      select jsonb_agg(jsonb_build_object('id', c.id, 'code', c.code,
+                                          'title', c.title, 'level', c.level,
+                                          'seats', (select count(*) from chair_seating cs
+                                                     where cs.chair_id = c.id))
+                       order by c.title)
+        from chair c), '[]'::jsonb),
+    -- A place is a seating OF a chair, which is why it is not a free list:
+    -- picking Mumbai only means something once the chair is known.
+    'seatings', coalesce((
+      select jsonb_agg(jsonb_build_object('id', cs.id, 'chairId', cs.chair_id,
+                                          'label', cs.scope_label)
+                       order by cs.scope_label)
+        from chair_seating cs
+       where coalesce(btrim(cs.scope_label),'') <> ''), '[]'::jsonb),
+    -- CLIENT_CONTACT and SERVICE_ACCOUNT are deliberately not offered: a
+    -- dropdown that can put them back undoes migrations 238 and 245.
+    'employeeTypes', jsonb_build_array('EMPLOYEE','PARTNER','INTERN','CONTRACT'),
+    'appRoles', jsonb_build_array('VIEWER','MANAGER','ADMIN'),
+    'note','Pick from these. A designation or a chair that is not on the list '
+        || 'does not exist yet, and spelling one into being is how the same '
+        || 'job ends up recorded three different ways.');
+end
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.org_chair(p_code text)
  RETURNS jsonb
  LANGUAGE sql
@@ -3680,7 +3743,7 @@ begin
     -- The primary chair, and the seating that chair was placed in. One row
     -- per person: somebody can hold two chairs and the table has one line.
     select distinct on (h.person_id)
-           h.person_id, ch.title as chair, cs.scope_label
+           h.person_id, h.chair_id, h.seating_id, ch.title as chair, cs.scope_label
       from chair_holder h
       join chair ch on ch.id = h.chair_id
       left join chair_seating cs on cs.id = h.seating_id
@@ -3710,8 +3773,11 @@ begin
              'workEmail',   s.work_email,
              'mobile',      s.mobile,
              'designation', d.title,
+             'designationId', s.designation_id,
              'department',  s.department,
              'chair',       seat.chair,
+             'chairId',     seat.chair_id,
+             'seatingId',   seat.seating_id,
              'location',    coalesce(seat.scope_label, cov.place),
              -- Which of the two answered, so the screen can say so rather
              -- than let a coverage area pass for a posting.
@@ -3729,7 +3795,9 @@ begin
              -- move themselves at all. Every other refusal org_move_person
              -- makes is about a loop, which the screen works out from the
              -- managerId column it already has.
-             'mayMove',     s.id <> p_actor
+             'mayMove',     s.id <> p_actor,
+             'mayEdit',     true,
+             'maySetRole',  a.app_role = 'ADMIN' and s.id <> p_actor
            ) as line
       from staff s
       left join designation d on d.id = s.designation_id
@@ -3779,6 +3847,407 @@ begin
     'note',    'Everybody who works here, whether or not the chart can draw '
             || 'them. Changing who somebody reports to is recorded and '
             || 'changes who can read their numbers.');
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_person_set(p_actor uuid, p_person uuid, p_fields jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a person; s person;
+  v_admin boolean; v_hr boolean;
+  v_bad jsonb := '[]'::jsonb;
+  v_changed jsonb := '[]'::jsonb;
+  v_old jsonb := '{}'::jsonb;
+  v_new jsonb := '{}'::jsonb;
+  v_has_desig boolean; v_desig uuid;
+  v_has_dept  boolean; v_dept text;
+  v_has_chair boolean; v_chair uuid;
+  v_has_seat  boolean; v_seat uuid;
+  v_has_type  boolean; v_type text;
+  v_has_mob   boolean; v_mob text;
+  v_has_mail  boolean; v_mail text;
+  v_has_no    boolean; v_no text;
+  v_has_join  boolean; v_join date;
+  v_has_role  boolean; v_role text;
+  v_chair_now uuid; v_seat_now uuid;
+  v_target_chair uuid;
+  v_move jsonb;
+  t text;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null then
+    return jsonb_build_object('error','not_permitted','reason','Who is asking?');
+  end if;
+
+  select * into s from person
+   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null;
+  if s.id is null then
+    return jsonb_build_object('error','no_such_person');
+  end if;
+
+  v_admin := a.app_role = 'ADMIN';
+  v_hr    := coalesce(a.department,'') = 'Human Resources';
+
+  if not (v_admin or v_hr) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Changing somebody''s designation, chair, place or department '
+            || 'is the administrator''s and Human Resources''. Your own team '
+            || 'is the chart above.');
+  end if;
+
+  -- The service account is not a person. 245 put it outside the staff list;
+  -- this keeps it there.
+  if coalesce(s.employee_type,'EMPLOYEE') in ('SERVICE_ACCOUNT','CLIENT_CONTACT') then
+    return jsonb_build_object('error','not_staff',
+      'reason', s.full_name || ' is not a member of staff.');
+  end if;
+
+  if p_fields is null or jsonb_typeof(p_fields) <> 'object' then
+    return jsonb_build_object('error','nothing_to_set',
+      'reason','Send the fields to change.');
+  end if;
+
+  -- Validate everything first. A form with three bad boxes must not save the
+  -- other three and leave somebody guessing which took.
+  v_has_desig := p_fields ? 'designationId';
+  if v_has_desig then
+    v_desig := nullif(btrim(coalesce(p_fields->>'designationId','')),'')::uuid;
+    if v_desig is not null and not exists (select 1 from designation d where d.id = v_desig) then
+      v_bad := v_bad || jsonb_build_object('field','designation',
+        'reason','That designation does not exist. Pick one from the list.');
+    end if;
+  end if;
+
+  v_has_dept := p_fields ? 'department';
+  if v_has_dept then
+    v_dept := nullif(btrim(coalesce(p_fields->>'department','')),'');
+    if v_dept is not null and length(v_dept) > 80 then
+      v_bad := v_bad || jsonb_build_object('field','department',
+        'reason','A department name longer than eighty characters is a sentence.');
+    end if;
+  end if;
+
+  v_has_chair := p_fields ? 'chairId';
+  if v_has_chair then
+    v_chair := nullif(btrim(coalesce(p_fields->>'chairId','')),'')::uuid;
+    if v_chair is not null and not exists (select 1 from chair c where c.id = v_chair) then
+      v_bad := v_bad || jsonb_build_object('field','chair',
+        'reason','That chair does not exist.');
+    end if;
+  end if;
+
+  select h.chair_id, h.seating_id into v_chair_now, v_seat_now
+    from chair_holder h
+   where h.person_id = p_person and h.is_primary and h.to_date is null
+   limit 1;
+
+  v_has_seat := p_fields ? 'seatingId';
+  if v_has_seat then
+    v_seat := nullif(btrim(coalesce(p_fields->>'seatingId','')),'')::uuid;
+    v_target_chair := case when v_has_chair then v_chair else v_chair_now end;
+    if v_seat is not null then
+      if v_target_chair is null then
+        v_bad := v_bad || jsonb_build_object('field','location',
+          'reason','A place is a seating of a chair. Give them a chair first.');
+      elsif not exists (select 1 from chair_seating cs
+                         where cs.id = v_seat and cs.chair_id = v_target_chair) then
+        v_bad := v_bad || jsonb_build_object('field','location',
+          'reason','That place belongs to a different chair.');
+      end if;
+    end if;
+  end if;
+
+  v_has_type := p_fields ? 'employeeType';
+  if v_has_type then
+    v_type := nullif(btrim(coalesce(p_fields->>'employeeType','')),'');
+    if v_type is null or v_type not in ('EMPLOYEE','PARTNER','INTERN','CONTRACT') then
+      v_bad := v_bad || jsonb_build_object('field','employeeType',
+        'reason','Employee, Partner, Intern or Contract.');
+    end if;
+  end if;
+
+  v_has_mob := p_fields ? 'mobile';
+  if v_has_mob then
+    v_mob := nullif(btrim(coalesce(p_fields->>'mobile','')),'');
+    if v_mob is not null then
+      if person_mobile(v_mob) !~ '^[6-9][0-9]{9}$' then
+        v_bad := v_bad || jsonb_build_object('field','mobile',
+          'reason','An Indian mobile number: ten digits starting 6, 7, 8 or 9.');
+      elsif exists (select 1 from person p where p.id <> p_person
+                     and p.left_on is null
+                     and person_mobile(p.mobile) = person_mobile(v_mob)) then
+        v_bad := v_bad || jsonb_build_object('field','mobile',
+          'reason','Somebody else already has that number.');
+      end if;
+    end if;
+  end if;
+
+  v_has_mail := p_fields ? 'workEmail';
+  if v_has_mail then
+    v_mail := lower(nullif(btrim(coalesce(p_fields->>'workEmail','')),''));
+    if v_mail is not null then
+      if v_mail !~ '^[^@[:space:]]+@[^@[:space:]]+\.[a-zA-Z]{2,}$' then
+        v_bad := v_bad || jsonb_build_object('field','workEmail',
+          'reason','That is not an e-mail address.');
+      elsif exists (select 1 from person p where p.id <> p_person
+                     and p.superseded_by is null and p.left_on is null
+                     and lower(p.work_email) = v_mail) then
+        v_bad := v_bad || jsonb_build_object('field','workEmail',
+          'reason','Somebody else already has that address.');
+      end if;
+    end if;
+  end if;
+
+  v_has_no := p_fields ? 'employeeNo';
+  if v_has_no then
+    v_no := nullif(btrim(coalesce(p_fields->>'employeeNo','')),'');
+    if v_no is not null then
+      if v_no !~ '^[A-Za-z0-9][A-Za-z0-9/_-]{0,19}$' then
+        v_bad := v_bad || jsonb_build_object('field','employeeNo',
+          'reason','Letters, numbers, slash, dash or underscore. Twenty at most.');
+      elsif exists (select 1 from person p where p.id <> p_person
+                     and p.superseded_by is null
+                     and lower(btrim(p.employee_no)) = lower(v_no)) then
+        v_bad := v_bad || jsonb_build_object('field','employeeNo',
+          'reason','Somebody else already has that employee number.');
+      end if;
+    end if;
+  end if;
+
+  v_has_join := p_fields ? 'joinedOn';
+  if v_has_join then
+    begin
+      v_join := nullif(btrim(coalesce(p_fields->>'joinedOn','')),'')::date;
+    exception when others then
+      v_join := null;
+      v_bad := v_bad || jsonb_build_object('field','joinedOn',
+        'reason','A date, as 2026-10-07.');
+    end;
+    if v_join is not null and v_join > current_date then
+      v_bad := v_bad || jsonb_build_object('field','joinedOn',
+        'reason','That is in the future. A joining date that has not happened '
+              || 'yet belongs on an offer, not on a person.');
+    end if;
+  end if;
+
+  v_has_role := p_fields ? 'appRole';
+  if v_has_role then
+    v_role := upper(nullif(btrim(coalesce(p_fields->>'appRole','')),''));
+    if not v_admin then
+      v_bad := v_bad || jsonb_build_object('field','appRole',
+        'reason','What somebody is allowed to DO is the administrator''s. '
+              || 'Everything else on this row is yours.');
+    elsif v_role is null or v_role not in ('VIEWER','MANAGER','ADMIN') then
+      v_bad := v_bad || jsonb_build_object('field','appRole',
+        'reason','Viewer, Manager or Admin.');
+    elsif p_person = p_actor and v_role <> a.app_role::text then
+      v_bad := v_bad || jsonb_build_object('field','appRole',
+        'reason','You cannot change your own role. Ask another administrator.');
+    end if;
+  end if;
+
+  if jsonb_array_length(v_bad) > 0 then
+    return jsonb_build_object('error','invalid',
+      'fields', v_bad,
+      'reason','Nothing was saved. Put these right and send it again.');
+  end if;
+
+  -- The reporting line, first and by delegation. org_move_person owns every
+  -- rule about who may move whom, refuses a ring, writes the person_event and
+  -- writes the audit row. A second copy here is a second copy to keep in step.
+  if p_fields ? 'managerId' then
+    v_move := org_move_person(p_actor, p_person,
+                nullif(btrim(coalesce(p_fields->>'managerId','')),'')::uuid);
+    if v_move->>'error' is not null then
+      return v_move;
+    end if;
+    if coalesce((v_move->>'changed')::boolean, false) then
+      v_changed := v_changed || jsonb_build_object('field','manager',
+        'to', v_move->>'to', 'note', v_move->>'note');
+    end if;
+  end if;
+
+  if v_has_desig and s.designation_id is distinct from v_desig then
+    v_old := v_old || jsonb_build_object('designationId', s.designation_id);
+    v_new := v_new || jsonb_build_object('designationId', v_desig);
+    update person set designation_id = v_desig where id = p_person;
+    v_changed := v_changed || jsonb_build_object('field','designation',
+      'from', (select d.title from designation d where d.id = s.designation_id),
+      'to',   (select d.title from designation d where d.id = v_desig));
+  end if;
+
+  if v_has_dept and btrim(coalesce(s.department,'')) is distinct from coalesce(v_dept,'') then
+    v_old := v_old || jsonb_build_object('department', s.department);
+    v_new := v_new || jsonb_build_object('department', v_dept);
+    update person set department = v_dept where id = p_person;
+    v_changed := v_changed || jsonb_build_object('field','department',
+      'from', s.department, 'to', v_dept);
+  end if;
+
+  if v_has_type and coalesce(s.employee_type,'EMPLOYEE') is distinct from v_type then
+    v_old := v_old || jsonb_build_object('employeeType', s.employee_type);
+    v_new := v_new || jsonb_build_object('employeeType', v_type);
+    update person set employee_type = v_type where id = p_person;
+    v_changed := v_changed || jsonb_build_object('field','employeeType',
+      'from', s.employee_type, 'to', v_type);
+  end if;
+
+  if v_has_mob and s.mobile is distinct from v_mob then
+    v_old := v_old || jsonb_build_object('mobile', s.mobile);
+    v_new := v_new || jsonb_build_object('mobile', v_mob);
+    -- A new number has not been proved to be theirs, so the proof stays with
+    -- the old one rather than following them to the new one.
+    update person set mobile = v_mob, mobile_verified_at = null where id = p_person;
+    v_changed := v_changed || jsonb_build_object('field','mobile',
+      'from', s.mobile, 'to', v_mob);
+  end if;
+
+  if v_has_mail and lower(coalesce(s.work_email,'')) is distinct from coalesce(v_mail,'') then
+    v_old := v_old || jsonb_build_object('workEmail', s.work_email);
+    v_new := v_new || jsonb_build_object('workEmail', v_mail);
+    update person set work_email = v_mail where id = p_person;
+    v_changed := v_changed || jsonb_build_object('field','workEmail',
+      'from', s.work_email, 'to', v_mail);
+  end if;
+
+  if v_has_no and btrim(coalesce(s.employee_no,'')) is distinct from coalesce(v_no,'') then
+    v_old := v_old || jsonb_build_object('employeeNo', s.employee_no);
+    v_new := v_new || jsonb_build_object('employeeNo', v_no);
+    update person set employee_no = v_no where id = p_person;
+    v_changed := v_changed || jsonb_build_object('field','employeeNo',
+      'from', s.employee_no, 'to', v_no);
+  end if;
+
+  if v_has_join and s.joined_on is distinct from v_join then
+    v_old := v_old || jsonb_build_object('joinedOn', s.joined_on);
+    v_new := v_new || jsonb_build_object('joinedOn', v_join);
+    update person set joined_on = v_join where id = p_person;
+    v_changed := v_changed || jsonb_build_object('field','joinedOn',
+      'from', s.joined_on, 'to', v_join);
+  end if;
+
+  if v_has_role and s.app_role::text is distinct from v_role then
+    v_old := v_old || jsonb_build_object('appRole', s.app_role);
+    v_new := v_new || jsonb_build_object('appRole', v_role);
+    update person set app_role = v_role::role_kind where id = p_person;
+    insert into person_event (person_id, kind, note, at)
+    values (p_person, 'ROLE_CHANGED', s.app_role::text || ' -> ' || v_role, now());
+    v_changed := v_changed || jsonb_build_object('field','appRole',
+      'from', s.app_role, 'to', v_role);
+  end if;
+
+  -- A chair is held, not owned: the old holding is closed rather than
+  -- overwritten, so last year's answer to "who sat there" survives.
+  if v_has_chair and v_chair_now is distinct from v_chair then
+    update chair_holder
+       set to_date = current_date
+     where person_id = p_person and is_primary and to_date is null;
+    if v_chair is not null then
+      insert into chair_holder (chair_id, person_id, is_primary, from_date, seating_id)
+      values (v_chair, p_person, true, current_date,
+              case when v_has_seat then v_seat else null end);
+    end if;
+    v_old := v_old || jsonb_build_object('chairId', v_chair_now);
+    v_new := v_new || jsonb_build_object('chairId', v_chair);
+    v_changed := v_changed || jsonb_build_object('field','chair',
+      'from', (select c.title from chair c where c.id = v_chair_now),
+      'to',   (select c.title from chair c where c.id = v_chair));
+    v_seat_now := null;
+  elsif v_has_seat and v_seat_now is distinct from v_seat then
+    if v_chair_now is null then
+      null;
+    else
+      update chair_holder set seating_id = v_seat
+       where person_id = p_person and is_primary and to_date is null;
+      v_old := v_old || jsonb_build_object('seatingId', v_seat_now);
+      v_new := v_new || jsonb_build_object('seatingId', v_seat);
+      v_changed := v_changed || jsonb_build_object('field','location',
+        'from', (select cs.scope_label from chair_seating cs where cs.id = v_seat_now),
+        'to',   (select cs.scope_label from chair_seating cs where cs.id = v_seat));
+    end if;
+  end if;
+
+  if jsonb_array_length(v_changed) = 0 then
+    return jsonb_build_object('ok', true, 'changed', false, 'personId', p_person,
+      'fields','[]'::jsonb,
+      'note','Nothing was different. Nothing was written.');
+  end if;
+
+  if v_old <> '{}'::jsonb then
+    insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                             old_value, new_value)
+    values (p_actor, 'PERSON_ASSIGNED', 'person', p_person::text, v_old, v_new);
+
+    select string_agg(x->>'field', ', ' order by x->>'field') into t
+      from jsonb_array_elements(v_changed) x where x->>'field' <> 'manager';
+    insert into person_event (person_id, kind, note, at)
+    values (p_person, 'DETAILS_CHANGED', coalesce(t,'details'), now());
+  end if;
+
+  return jsonb_build_object('ok', true, 'changed', true, 'personId', p_person,
+    'name', s.full_name, 'fields', v_changed,
+    'note', s.full_name || ': ' ||
+            coalesce((select string_agg(x->>'field', ', ' order by x->>'field')
+                        from jsonb_array_elements(v_changed) x), 'nothing') ||
+            ' updated.');
+end
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.org_person_set_many(p_actor uuid, p_people jsonb, p_fields jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  v_id uuid; o jsonb;
+  v_done jsonb := '[]'::jsonb;
+  v_failed jsonb := '[]'::jsonb;
+  n_changed int := 0;
+begin
+  if p_people is null or jsonb_typeof(p_people) <> 'array'
+     or jsonb_array_length(p_people) = 0 then
+    return jsonb_build_object('error','nobody_chosen',
+      'reason','Tick the people this applies to.');
+  end if;
+  -- A cap, because "everybody" ticked by accident is a hundred-row write with
+  -- no undo. Sixty is more than any one gap on the list today.
+  if jsonb_array_length(p_people) > 60 then
+    return jsonb_build_object('error','too_many',
+      'reason','Sixty people at a time. More than that is an import, not a tidy-up.');
+  end if;
+
+  for v_id in select (x #>> '{}')::uuid from jsonb_array_elements(p_people) x loop
+    o := org_person_set(p_actor, v_id, p_fields);
+    if o->>'error' is not null then
+      -- One person's bad row must not stop the other forty-eight, and must
+      -- not be silently dropped either.
+      v_failed := v_failed || jsonb_build_object('personId', v_id,
+        'name', (select full_name from person where id = v_id),
+        'error', o->>'error', 'reason', o->>'reason', 'fields', o->'fields');
+    else
+      if coalesce((o->>'changed')::boolean, false) then n_changed := n_changed + 1; end if;
+      v_done := v_done || jsonb_build_object('personId', v_id,
+        'name', o->>'name', 'changed', coalesce((o->>'changed')::boolean,false));
+    end if;
+  end loop;
+
+  return jsonb_build_object(
+    'ok', jsonb_array_length(v_failed) = 0,
+    'changed', n_changed,
+    'asked', jsonb_array_length(p_people),
+    'done', v_done, 'failed', v_failed,
+    'note', n_changed || ' of ' || jsonb_array_length(p_people) || ' updated' ||
+            case when jsonb_array_length(v_failed) > 0
+                 then ', ' || jsonb_array_length(v_failed) || ' refused.'
+                 else '.' end);
 end
 $function$
 ;
@@ -4486,35 +4955,6 @@ begin
   values (p_actor, 'PERF_KPI_CHANGED', 'perf_assignment', a.id::text, v_was, p_in);
   return jsonb_build_object('ok', true, 'assignmentId', a.id, 'name', v_name,
     'note', 'Changed. The target is set separately, so it has not moved.');
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_assignment_edges()
- RETURNS trigger
- LANGUAGE plpgsql
-AS $function$
-declare p perf_assignment;
-begin
-  if new.part_of_id is not null then
-    select * into p from perf_assignment where id = new.part_of_id;
-    if p.person_id <> new.person_id then
-      raise exception 'a split belongs to the same person as the measure it splits';
-    end if;
-    if p.cycle_id <> new.cycle_id then
-      raise exception 'a split belongs to the same cycle as the measure it splits';
-    end if;
-    if p.part_of_id is not null then
-      raise exception 'a split cannot itself be split; one level is the whole idea';
-    end if;
-  end if;
-
-  if new.rolls_into_id is not null then
-    select * into p from perf_assignment where id = new.rolls_into_id;
-    if p.person_id = new.person_id then
-      raise exception 'a measure climbs into somebody else''s; use part_of_id for your own splits';
-    end if;
-  end if;
-  return new;
 end $function$
 ;
 

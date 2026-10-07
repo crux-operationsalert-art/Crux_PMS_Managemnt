@@ -76,7 +76,8 @@ CREATE UNIQUE INDEX penalty_no_duplicate ON public.penalty_instance USING btree 
 CREATE INDEX penalty_person_period_idx ON public.penalty_instance USING btree (person_id, period);
 CREATE INDEX penalty_recovery_idx ON public.penalty_instance USING btree (recovered_by, state, period);
 CREATE UNIQUE INDEX perf_assignment_once_split ON public.perf_assignment USING btree (part_of_id, COALESCE((split_ref)::text, lower(btrim(split_label)))) WHERE (part_of_id IS NOT NULL);
-CREATE UNIQUE INDEX perf_assignment_once_top ON public.perf_assignment USING btree (cycle_id, person_id, kpi_id) WHERE ((kpi_id IS NOT NULL) AND (part_of_id IS NULL));
+CREATE UNIQUE INDEX perf_assignment_once_top ON public.perf_assignment USING btree (cycle_id, person_id, kpi_id) WHERE ((kpi_id IS NOT NULL) AND (part_of_id IS NULL) AND (state IS DISTINCT FROM 'WITHDRAWN'::text));
+CREATE UNIQUE INDEX perf_assignment_once_top_old ON public.perf_assignment USING btree (cycle_id, person_id, kpi_id) WHERE ((kpi_id IS NOT NULL) AND (part_of_id IS NULL));
 CREATE INDEX perf_assignment_part ON public.perf_assignment USING btree (part_of_id) WHERE (part_of_id IS NOT NULL);
 CREATE INDEX perf_assignment_person ON public.perf_assignment USING btree (person_id, cycle_id);
 CREATE INDEX perf_assignment_rollup ON public.perf_assignment USING btree (rolls_into_id) WHERE (rolls_into_id IS NOT NULL);

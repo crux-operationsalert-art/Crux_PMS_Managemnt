@@ -29,6 +29,28 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public._undo_probe()
+ RETURNS jsonb
+ LANGUAGE plpgsql
+AS $function$
+declare a uuid; r record; n int := 0;
+begin
+  update perf_assignment
+     set name = 'Escalation ratio',
+         unit = '% of cases escalated, target below 2% · D1'
+   where id = '3d5081ae-02d3-45cd-9e04-b9b8d0bf94ea';
+  select id into a from person where full_name ilike 'Arun Bodupali%' limit 1;
+  for r in select id from task where title = 'probe' and status <> 'CANCELLED' loop
+    perform task_cancel(a, r.id, 'Written by a diagnostic probe on 7 Oct 2026. Not a real ask.');
+    n := n + 1;
+  end loop;
+  return jsonb_build_object(
+    'nameNow', (select name from perf_assignment where id='3d5081ae-02d3-45cd-9e04-b9b8d0bf94ea'),
+    'tasksCancelled', n,
+    'probeTasksStillOpen', (select count(*) from task where title='probe' and status='OPEN'));
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.access_level_of(p_person uuid)
  RETURNS text
  LANGUAGE sql
@@ -1961,12 +1983,13 @@ CREATE OR REPLACE FUNCTION public.is_staff(p_person uuid)
  RETURNS boolean
  LANGUAGE sql
  STABLE
- SET search_path TO 'public'
 AS $function$
   select exists (
     select 1 from person p
      where p.id = p_person
        and p.superseded_by is null
+       and coalesce(p.employee_type,'EMPLOYEE')
+           not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
        and (p.employee_no is not null
             or lower(p.work_email) like '%@cruxindia.co.in'
             or exists (select 1 from chair_holder h

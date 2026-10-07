@@ -18,6 +18,7 @@ CREATE TRIGGER daily_count_unwrap BEFORE INSERT OR UPDATE OF "values" ON public.
 CREATE TRIGGER outbox_whatsapp_mirror AFTER INSERT ON public.outbox FOR EACH ROW EXECUTE FUNCTION outbox_mirror_to_whatsapp();
 CREATE TRIGGER perf_assignment_edges_t BEFORE INSERT OR UPDATE ON public.perf_assignment FOR EACH ROW EXECUTE FUNCTION perf_assignment_edges();
 CREATE TRIGGER perf_entry_not_on_a_parent_t BEFORE INSERT OR UPDATE ON public.perf_entry FOR EACH ROW EXECUTE FUNCTION perf_entry_not_on_a_parent();
+CREATE TRIGGER person_manager_is_not_a_service_account BEFORE INSERT OR UPDATE OF manager_id ON public.person FOR EACH ROW EXECUTE FUNCTION person_manager_is_not_a_service_account();
 CREATE TRIGGER person_normalise_email BEFORE INSERT OR UPDATE OF work_email, personal_email ON public.person FOR EACH ROW EXECUTE FUNCTION person_normalise_email();
 CREATE TRIGGER person_welcome_after_insert AFTER INSERT ON public.person FOR EACH ROW EXECUTE FUNCTION person_welcome_on_create();
 

@@ -74,6 +74,7 @@ alter table public.person add constraint person_employee_no_shape CHECK (((emplo
 alter table public.person add constraint person_employee_type_check CHECK ((employee_type = ANY (ARRAY['EMPLOYEE'::text, 'PARTNER'::text, 'INTERN'::text, 'CONTRACT'::text, 'CLIENT_CONTACT'::text, 'SERVICE_ACCOUNT'::text])));
 alter table public.person add constraint person_mobile_shape CHECK (((mobile IS NULL) OR (person_mobile(mobile) ~ '^[6-9][0-9]{9}$'::text)));
 alter table public.person add constraint person_not_own_manager CHECK (((manager_id IS NULL) OR (manager_id <> id)));
+alter table public.person add constraint person_service_account_reports_to_nobody CHECK (((employee_type IS DISTINCT FROM 'SERVICE_ACCOUNT'::text) OR (manager_id IS NULL)));
 alter table public.person_document add constraint person_document_kind_check CHECK ((kind = ANY (ARRAY['ID_PROOF'::text, 'ADDRESS_PROOF'::text, 'QUALIFICATION'::text, 'BANK_DETAILS'::text])));
 alter table public.person_document add constraint person_document_state_check CHECK ((state = ANY (ARRAY['WITH_HR'::text, 'VERIFIED'::text, 'REVISION_REQUESTED'::text, 'WITH_ACCOUNTS'::text])));
 alter table public.person_request add constraint person_request_employee_type_check CHECK ((employee_type = ANY (ARRAY['EMPLOYEE'::text, 'PARTNER'::text, 'INTERN'::text, 'CONTRACT'::text])));

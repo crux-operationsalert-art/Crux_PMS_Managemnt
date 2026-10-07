@@ -8,6 +8,86 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.perf_assign_remove(p_actor uuid, p_assignment uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a perf_assignment; c perf_cycle; n_filed int; n_kids int; n_split int;
+begin
+  select * into a from perf_assignment where id = p_assignment;
+  if a.id is null then return jsonb_build_object('error','no_such_assignment'); end if;
+  if not perf_may_set(p_actor, a.person_id) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A measure is taken back by the person''s own manager or by an administrator -- and never by themselves.');
+  end if;
+  if a.state = 'WITHDRAWN' then
+    return jsonb_build_object('ok', true, 'withdrawn', true, 'changed', false,
+      'note','That measure has already been taken back.');
+  end if;
+  select * into c from perf_cycle where id = a.cycle_id;
+  if current_date > c.assign_closes
+     and not exists (select 1 from person where id = p_actor and app_role='ADMIN') then
+    return jsonb_build_object('error','window_closed',
+      'reason','Measures for ' || c.period_start || ' had to be settled by ' || c.assign_closes
+            || '. HR or an administrator can reopen the month on the Performance screen, and the reopening is recorded.');
+  end if;
+  select count(*) into n_kids from perf_assignment x
+   where x.rolls_into_id = a.id and x.person_id <> a.person_id
+     and x.state is distinct from 'WITHDRAWN';
+  if n_kids > 0 then
+    return jsonb_build_object('error','feeds_this',
+      'reason', n_kids || ' measure(s) below this one climb into it. Move or take those back first, or their numbers have nowhere to add up to.');
+  end if;
+  select count(*) into n_filed from perf_entry e
+   where e.assignment_id = a.id
+      or e.assignment_id in (select x.id from perf_assignment x where x.part_of_id = a.id);
+  select count(*) into n_split from perf_assignment where part_of_id = a.id;
+  update perf_assignment set state='WITHDRAWN' where id = a.id or part_of_id = a.id;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor,'PERF_KPI_WITHDRAWN','perf_assignment', a.id::text,
+          jsonb_build_object('name',a.name,'unit',a.unit,'target',a.target_value,
+                             'person',a.person_id,'state',a.state,'splits',n_split),
+          jsonb_build_object('state','WITHDRAWN','filings',n_filed));
+  return jsonb_build_object('ok',true,'withdrawn',true,'changed',true,
+    'filings',n_filed,'splits',n_split,
+    'note','Taken back. It stops being asked for and stops counting'
+         || case when n_split>0 then ', and its ' || n_split || ' client share(s) went with it' else '' end
+         || case when n_filed>0 then '. The ' || n_filed || ' figure(s) already filed against it still read back, because they are a record of what happened'
+                 else '. Nothing had been filed against it' end || '.');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_assignment_edges()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+declare p perf_assignment;
+begin
+  if new.part_of_id is not null then
+    select * into p from perf_assignment where id = new.part_of_id;
+    if p.person_id <> new.person_id then
+      raise exception 'a split belongs to the same person as the measure it splits';
+    end if;
+    if p.cycle_id <> new.cycle_id then
+      raise exception 'a split belongs to the same cycle as the measure it splits';
+    end if;
+    if p.part_of_id is not null then
+      raise exception 'a split cannot itself be split; one level is the whole idea';
+    end if;
+  end if;
+
+  if new.rolls_into_id is not null then
+    select * into p from perf_assignment where id = new.rolls_into_id;
+    if p.person_id = new.person_id then
+      raise exception 'a measure climbs into somebody else''s; use part_of_id for your own splits';
+    end if;
+  end if;
+  return new;
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_carry_forward(p_actor uuid, p_cycle uuid, p_person uuid, p_keep_targets boolean DEFAULT false)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -21,6 +101,11 @@ begin
   end if;
   select * into c from perf_cycle where id = p_cycle;
   if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  if current_date > c.assign_closes
+     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
+    return jsonb_build_object('error','window_closed',
+      'reason','KPIs for ' || c.period_start || ' had to be set by ' || c.assign_closes || '. HR or an administrator can reopen the month.');
+  end if;
   select * into prev from perf_cycle
    where period_kind = c.period_kind and period_start < c.period_start
    order by period_start desc limit 1;
@@ -30,6 +115,7 @@ begin
   end if;
   for r in select * from perf_assignment
             where cycle_id = prev.id and person_id = p_person and part_of_id is null
+              and state is distinct from 'WITHDRAWN'
             order by name loop
     insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit,
         target_value, weight_pct, cadence_day, set_by, carried_from_id, note)
@@ -1990,6 +2076,26 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.person_manager_is_not_a_service_account()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+declare v_name text;
+begin
+  if new.manager_id is null then return new; end if;
+  select full_name into v_name from person
+   where id = new.manager_id and employee_type = 'SERVICE_ACCOUNT';
+  if v_name is not null then
+    raise exception using errcode = '23514',
+      message = format('%s is the account the tool is administered from, not somebody who works here, so nobody can report to it.', v_name),
+      hint = 'Choose the person who actually manages them.';
+  end if;
+  return new;
+end
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.person_merge(p_actor uuid, p_loser uuid, p_winner uuid, p_choices jsonb DEFAULT '{}'::jsonb, p_confirm text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3240,6 +3346,11 @@ CREATE OR REPLACE FUNCTION public.plb_actual_set(p_actor uuid, p_sheet uuid, p_k
 AS $function$
 declare v_frozen timestamptz;
 begin
+  if not exists (select 1 from plb_goal_sheet s2 where s2.id = p_sheet
+                  and (perf_may_set(p_actor, s2.person_id) or plb_runs_scheme(p_actor))) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','An actual is recorded by the person''s own reporting manager, or by HR, Business Excellence or an administrator.');
+  end if;
   select data_frozen_at into v_frozen from plb_result where sheet_id = p_sheet;
   if v_frozen is not null then
     return jsonb_build_object('error','frozen',
@@ -4197,6 +4308,21 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.plb_runs_scheme(p_actor uuid)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select exists (
+    select 1 from person p
+     where p.id = p_actor
+       and p.employment_status = 'ACTIVE' and p.superseded_by is null
+       and (p.app_role = 'ADMIN'
+            or coalesce(p.department,'') in ('Human Resources','Business Excellence')));
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_score_lock(p_actor uuid, p_sheet uuid, p_month date)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4245,6 +4371,10 @@ begin
   v_month := date_trunc('month', p_month)::date;
   select * into s from plb_goal_sheet where id = p_sheet;
   if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+  if not (perf_may_set(p_actor, s.person_id) or plb_runs_scheme(p_actor)) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A month is scored by the person''s own reporting manager, or by HR, Business Excellence or an administrator.');
+  end if;
   if s.person_id = p_actor then
     return jsonb_build_object('error','not_permitted',
       'reason','Nobody scores themselves.');
@@ -4495,105 +4625,6 @@ begin
     'note', v_n || ' quarterly target(s) read off the monthly targets that '
             'already existed, rather than typed in again. Where the months '
             'said nothing, the quarter is left blank.');
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_sheet_issue(p_actor uuid, p_person uuid, p_quarter date, p_target numeric, p_targets jsonb DEFAULT '[]'::jsonb, p_default boolean DEFAULT false)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  v_chair uuid; v_sheet uuid; v_n int; v_w numeric; r record;
-begin
-  if p_actor = p_person and not p_default then
-    return jsonb_build_object('error','not_permitted',
-      'reason','Nobody issues their own goal sheet.');
-  end if;
-
-  select ch.chair_id into v_chair
-    from chair_holder ch where ch.person_id = p_person and ch.to_date is null
-    order by ch.is_primary desc nulls last limit 1;
-  if v_chair is null then
-    return jsonb_build_object('error','no_chair',
-      'reason','That person is not seated in a chair, so there is no measure set to build from.');
-  end if;
-
-  select count(*) into v_n from kpi_definition
-   where chair_id = v_chair and active and position < 100;
-  if v_n = 0 then
-    return jsonb_build_object('error','chair_not_in_scheme',
-      'reason','That chair has no KPIs in the registry, so it is not in the PLB scheme.');
-  end if;
-  v_w := round(100.0 / v_n, 3);
-
-  insert into plb_goal_sheet (person_id, chair_id, quarter, target_plb_inr,
-                              status, issued_by, issued_at, is_default)
-  values (p_person, v_chair, date_trunc('quarter', p_quarter)::date, p_target,
-          'ISSUED', p_actor, now(), p_default)
-  on conflict (person_id, quarter) do update
-     set target_plb_inr = excluded.target_plb_inr,
-         status = case when plb_goal_sheet.status = 'LOCKED'
-                       then plb_goal_sheet.status else 'ISSUED' end
-  returning id into v_sheet;
-
-  if (select status from plb_goal_sheet where id = v_sheet) = 'LOCKED' then
-    return jsonb_build_object('error','locked',
-      'reason','That goal sheet is locked. KPIs, weights and targets are frozen.');
-  end if;
-
-  -- the KPIs come from the registry, never from the caller
-  insert into plb_goal_kpi (sheet_id, kpi_id, weight_pct)
-  select v_sheet, k.id, v_w
-    from kpi_definition k
-   where k.chair_id = v_chair and k.active and k.position < 100
-  on conflict (sheet_id, kpi_id) do update set weight_pct = excluded.weight_pct;
-
-  -- the five attributes, same for everyone
-  insert into plb_goal_attribute (sheet_id, kpi_id)
-  select v_sheet, k.id from kpi_definition k where k.chair_id is null and k.active
-  on conflict do nothing;
-
-  -- the caller may set targets, the basis level and the monthly split
-  for r in select * from jsonb_to_recordset(coalesce(p_targets,'[]'::jsonb))
-             as x(kpi_id uuid, target numeric, basis int, basis_note text,
-                  m1 numeric, m2 numeric, m3 numeric)
-  loop
-    update plb_goal_kpi
-       set target_value = coalesce(r.target, target_value),
-           basis_level  = coalesce(r.basis, basis_level),
-           basis_note   = coalesce(r.basis_note, basis_note),
-           m1_share     = coalesce(r.m1, m1_share),
-           m2_share     = coalesce(r.m2, m2_share),
-           m3_share     = coalesce(r.m3, m3_share)
-     where sheet_id = v_sheet and kpi_id = r.kpi_id;
-  end loop;
-
-  return jsonb_build_object('ok', true, 'sheetId', v_sheet, 'kpis', v_n,
-    'weightEach', v_w,
-    'note', 'Goal sheet issued with ' || v_n || ' KPIs at ' || v_w || '% each.');
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_sheet_lock(p_actor uuid, p_sheet uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_missing int;
-begin
-  select count(*) into v_missing from plb_goal_kpi
-   where sheet_id = p_sheet and (target_value is null or basis_level is null);
-  if v_missing > 0 then
-    return jsonb_build_object('error','incomplete',
-      'reason', v_missing || ' KPI(s) have no target or no recorded basis level. '
-                || 'A target you cannot trace to a level is an opinion with a number on it.');
-  end if;
-  update plb_goal_sheet set status = 'LOCKED', locked_at = now() where id = p_sheet;
-  return jsonb_build_object('ok', true,
-    'note','Goal sheet locked. KPIs, weights and targets are frozen for the quarter.');
 end $function$
 ;
 
