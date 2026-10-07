@@ -4757,7 +4757,7 @@ CREATE OR REPLACE FUNCTION public.perf_assign(p_actor uuid, p_in jsonb)
  SECURITY DEFINER
  SET search_path TO 'public'
 AS $function$
-declare c perf_cycle; k kpi_definition; v_person uuid; v_id uuid;
+declare c perf_cycle; k kpi_definition; v_person uuid; v_id uuid; v_back uuid;
 begin
   v_person := (p_in->>'personId')::uuid;
   if not perf_may_set(p_actor, v_person) then
@@ -4775,6 +4775,39 @@ begin
   if p_in ? 'kpiId' and (p_in->>'kpiId') is not null then
     select * into k from kpi_definition where id = (p_in->>'kpiId')::uuid;
   end if;
+  if k.id is not null and nullif(p_in->>'partOf','') is null then
+    select a.id into v_back from perf_assignment a
+     where a.cycle_id = c.id and a.person_id = v_person and a.kpi_id = k.id
+       and a.part_of_id is null and a.state = 'WITHDRAWN'
+     order by a.set_at desc limit 1;
+  end if;
+  if v_back is not null then
+    update perf_assignment set
+        state        = 'ISSUED',
+        name         = coalesce(p_in->>'name', k.name),
+        unit         = coalesce(p_in->>'unit', k.unit),
+        target_value = nullif(p_in->>'target','')::numeric,
+        weight_pct   = nullif(p_in->>'weight','')::numeric,
+        cadence_day  = nullif(p_in->>'cadenceDay','')::int,
+        rolls_into_id = nullif(p_in->>'rollsInto','')::uuid,
+        set_by       = p_actor,
+        set_at       = now(),
+        note         = nullif(p_in->>'note','')
+      where id = v_back;
+    if p_in ? 'cadence' and (p_in->>'cadence') is not null then
+      execute format('update perf_assignment set cadence = %L where id = %L',
+                     p_in->>'cadence', v_back);
+    end if;
+    insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                             old_value, new_value)
+    values (p_actor, 'PERF_KPI_SET', 'person', v_person::text,
+            jsonb_build_object('state','WITHDRAWN'), p_in);
+    return jsonb_build_object('ok', true, 'assignmentId', v_back,
+      'revived', true,
+      'note', 'That measure had been taken back this month. It is the same '
+              || 'measure again, with what was already filed against it.');
+  end if;
+
   insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit, target_value,
       weight_pct, cadence_day, part_of_id, split_kind, split_ref, split_label,
       rolls_into_id, set_by, note)
