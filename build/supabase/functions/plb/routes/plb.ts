@@ -580,7 +580,7 @@ r.get("/perf/measures", async (req: any, res: any) => {
 });
 
 r.post("/perf/assign", async (req: any, res: any) => {
-  const o = await one(`select perf_assign($1, $2::jsonb) as o`,
+  const o = await one(`select perf_assign($1, coalesce($2::text,'{}')::jsonb) as o`,
     [req.person.id, JSON.stringify(req.body || {})]);
   return out(res, o.o);
 });
@@ -589,7 +589,7 @@ r.post("/perf/assign", async (req: any, res: any) => {
 // perf_assign inside the database, so nobody is given a KPI by a route that
 // skips the checks, and the answer says which were refused and why.
 r.post("/perf/assign/bulk", async (req: any, res: any) => {
-  const o = await one(`select perf_assign_bulk($1, $2::jsonb) as o`,
+  const o = await one(`select perf_assign_bulk($1, coalesce($2::text,'{}')::jsonb) as o`,
     [req.person.id, JSON.stringify(req.body || {})]);
   return out(res, o.o);
 });
@@ -607,7 +607,7 @@ r.post("/perf/assign/bulk", async (req: any, res: any) => {
 // /perf/target, which also runs the cascade down to the team and across the
 // clients; a second door onto one number is how the two start disagreeing.
 r.post("/perf/edit", async (req: any, res: any) => {
-  const o = await one(`select perf_assign_edit($1, $2::jsonb) as o`,
+  const o = await one(`select perf_assign_edit($1, coalesce($2::text,'{}')::jsonb) as o`,
     [req.person.id, JSON.stringify(req.body || {})]);
   return out(res, o.o);
 });

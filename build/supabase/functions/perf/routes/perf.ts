@@ -16,6 +16,20 @@ const maySetUp = (req: any) =>
   (req.person.department || "") === "Human Resources" ||
   (req.person.department || "") === "Business Excellence";
 
+// A jsonb parameter, serialised here rather than left to the driver.
+//
+// postgres.js decides how to send a value by the JS type it is handed, and a
+// value bound straight to a jsonb parameter is its guess to make -- which is
+// how plb's /issue came to receive {} where it was sent []. Every jsonb
+// parameter in this file goes through this and lands on coalesce($n::text,
+// '{}')::jsonb, so the cast happens on the server where it can be read.
+//
+// Anything that is not a plain object becomes an empty one: an array or a
+// string arriving where a form was expected is a caller's mistake, and the
+// function on the other side says so in words.
+const asObject = (v: unknown) =>
+  JSON.stringify(v && typeof v === "object" && !Array.isArray(v) ? v : {});
+
 function out(res: any, o: any) {
   if (o?.error) {
     return res.status(
@@ -87,8 +101,8 @@ r.get("/task/evidence", async (req: any, res: any) => {
 // Set one. people / chair / department / allReports — the four ways
 // "all the managers" actually gets written down.
 r.post("/task/assign", async (req: any, res: any) => {
-  const o = await one(`select task_assign($1,$2::jsonb) as o`,
-    [req.person.id, JSON.stringify(req.body || {})]);
+  const o = await one(`select task_assign($1,coalesce($2::text,'{}')::jsonb) as o`,
+    [req.person.id, asObject(req.body)]);
   return out(res, o.o);
 });
 
@@ -387,7 +401,7 @@ r.post("/team/set", async (req: any, res: any) => {
   const fields = b.fields && typeof b.fields === "object" && !Array.isArray(b.fields)
     ? b.fields : {};
   const o = await one(`select org_person_set($1,$2::uuid,coalesce($3::text,'{}')::jsonb) as o`,
-    [req.person.id, b.personId, JSON.stringify(fields)]);
+    [req.person.id, b.personId, asObject(fields)]);
   if (o.o?.error === "would_loop") return res.status(409).json(o.o);
   return out(res, o.o);
 });
@@ -405,7 +419,7 @@ r.post("/team/set-many", async (req: any, res: any) => {
   const o = await one(
     `select org_person_set_many($1,coalesce($2::text,'[]')::jsonb,
                                    coalesce($3::text,'{}')::jsonb) as o`,
-    [req.person.id, JSON.stringify(b.people), JSON.stringify(mfields)]);
+    [req.person.id, JSON.stringify(b.people), asObject(mfields)]);
   return out(res, o.o);
 });
 
@@ -447,8 +461,8 @@ r.get("/team/add", async (req: any, res: any) => {
 // The manager's ask. It writes a request and never a person -- the reply
 // carries a requestId, not a personId, and that difference is the point.
 r.post("/team/request", async (req: any, res: any) => {
-  const o = await one(`select person_request_open($1,$2::jsonb) as o`,
-    [req.person.id, JSON.stringify(req.body || {})]);
+  const o = await one(`select person_request_open($1,coalesce($2::text,'{}')::jsonb) as o`,
+    [req.person.id, asObject(req.body)]);
   return out(res, o.o);
 });
 
@@ -464,8 +478,8 @@ r.get("/team/requests", async (req: any, res: any) => {
 r.post("/team/request/decide", async (req: any, res: any) => {
   const b = req.body || {};
   if (!b.requestId) return res.status(400).json({ error: "missing_request" });
-  const o = await one(`select person_request_decide($1,$2::uuid,$3,$4::jsonb) as o`,
-    [req.person.id, b.requestId, b.decision || "", JSON.stringify(b.fields || {})]);
+  const o = await one(`select person_request_decide($1,$2::uuid,$3,coalesce($4::text,'{}')::jsonb) as o`,
+    [req.person.id, b.requestId, b.decision || "", asObject(b.fields)]);
   return out(res, o.o);
 });
 
@@ -497,7 +511,7 @@ r.post("/split", async (req: any, res: any) => {
       reason: "Send the clients to split across. An empty list removes the split.",
     });
   }
-  const o = await one(`select perf_split_set($1,$2::uuid,$3::jsonb) as o`,
+  const o = await one(`select perf_split_set($1,$2::uuid,coalesce($3::text,'{}')::jsonb) as o`,
     [req.person.id, b.assignmentId,
      JSON.stringify({ kind: b.kind || "CLIENT", parts: b.parts })]);
   // has_filings is a refusal to delete somebody's numbers, not a bad
@@ -619,14 +633,14 @@ r.post("/escalate/act", async (req: any, res: any) => {
 });
 
 r.post("/warn", async (req: any, res: any) => {
-  const o = await one(`select person_warn($1,$2::jsonb) as o`,
-    [req.person.id, JSON.stringify(req.body || {})]);
+  const o = await one(`select person_warn($1,coalesce($2::text,'{}')::jsonb) as o`,
+    [req.person.id, asObject(req.body)]);
   return out(res, o.o);
 });
 
 r.post("/pip", async (req: any, res: any) => {
-  const o = await one(`select pip_open($1,$2::jsonb) as o`,
-    [req.person.id, JSON.stringify(req.body || {})]);
+  const o = await one(`select pip_open($1,coalesce($2::text,'{}')::jsonb) as o`,
+    [req.person.id, asObject(req.body)]);
   // already_on_one is a state, not a malformed request: somebody is on a
   // plan and the caller has to decide what to do about that one first.
   if (o.o?.error === "already_on_one") return res.status(409).json(o.o);
