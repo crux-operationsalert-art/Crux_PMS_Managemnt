@@ -616,6 +616,43 @@ r.get("/perf/measures", async (req: any, res: any) => {
   return res.json({ catalogue, mine, chairId: chair, note });
 });
 
+// =====================================================================
+// Performance Mapping (migration 257).
+//
+// "Inside My Team, I select a person. Immediately within the same page/tab,
+//  show Performance Mapping. Do NOT send the user through unnecessary pages
+//  or multiple navigation steps."
+//
+// One click, one request: the monthly scorecard, the quarterly sheet that
+// goes with it, and the rules the screen must obey. And one save for the
+// whole monthly list, because the rule that validates it -- the weights add
+// to a hundred -- is a rule about the SET.
+// =====================================================================
+r.get("/perf/mapping", async (req: any, res: any) => {
+  const who = req.query.get("person");
+  const cycle = req.query.get("cycle");
+  if (!who) return res.status(400).json({ error: "missing_person" });
+  if (!cycle) return res.status(400).json({ error: "missing_cycle" });
+  const o = await one(`select perf_mapping($1,$2::uuid,$3::uuid) as o`,
+    [req.person.id, who, cycle]);
+  return out(res, o.o);
+});
+
+r.post("/perf/kpis", async (req: any, res: any) => {
+  const b = req.body || {};
+  if (!b.personId) return res.status(400).json({ error: "missing_person" });
+  if (!b.cycleId) return res.status(400).json({ error: "missing_cycle" });
+  if (!Array.isArray(b.measures)) {
+    return res.status(400).json({ error: "missing_measures",
+      reason: "Send the measures as a list. The whole list, because the "
+            + "weights have to add to a hundred together." });
+  }
+  const o = await one(
+    `select perf_kpis_set($1,$2::uuid,$3::uuid,coalesce($4::text,'[]')::jsonb) as o`,
+    [req.person.id, b.cycleId, b.personId, JSON.stringify(b.measures)]);
+  return out(res, o.o);
+});
+
 r.post("/perf/assign", async (req: any, res: any) => {
   const o = await one(`select perf_assign($1, coalesce($2::text,'{}')::jsonb) as o`,
     [req.person.id, JSON.stringify(req.body || {})]);

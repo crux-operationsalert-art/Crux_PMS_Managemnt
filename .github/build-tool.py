@@ -1021,6 +1021,55 @@ PATCHES.append((
       # / off track -- and every use of it carries the word beside the
       # colour, so the card reads the same in greyscale and to somebody who
       # does not see red and green apart.
+      # ------------------------------ Performance Mapping (migration 257)
+      # One table in the place the old journey used five. The rules are
+      # drawn rather than described: the running weight total goes red
+      # until it reaches a hundred, a derived parent is greyed and says
+      # what it is derived from, and a month that has finished is greyed
+      # and shows what was achieved instead of a box nobody may type in.
+      ".pfmap{border:1px solid var(--line2);border-radius:3px;padding:12px 13px;\n"
+      "  background:var(--panel2);margin:6px 0}\n"
+      ".pfmaph{display:flex;gap:16px;align-items:center;flex-wrap:wrap;\n"
+      "  margin:0 0 12px}\n"
+      ".pfmaph h3{margin:0;flex:1 1 220px}\n"
+      ".pfmtabs{display:flex;gap:6px}\n"
+      ".pfmtabs .btn.on{background:var(--ink);color:var(--panel);\n"
+      "  border-color:var(--ink)}\n"
+      ".pfmt{width:100%;border-collapse:collapse;margin:6px 0}\n"
+      ".pfmt th{text-align:left;font-size:11px;letter-spacing:.04em;\n"
+      "  text-transform:uppercase;color:var(--ink3);padding:5px 7px;\n"
+      "  border-bottom:1px solid var(--line2);white-space:nowrap}\n"
+      ".pfmt td{padding:6px 7px;vertical-align:top;\n"
+      "  border-bottom:1px solid var(--line2)}\n"
+      ".pfmt tfoot td{border-bottom:none;border-top:2px solid var(--line)}\n"
+      ".pfmt input.pfmw,.pfmt input.pfmt2{width:88px}\n"
+      ".pfmt .plact{white-space:nowrap;text-align:right}\n"
+      ".pfmt .plact .lnk{margin-left:8px}\n"
+      # A parent whose number comes from its sub-KPIs. perf_file REFUSES a
+      # figure typed against it, so this is the screen agreeing with the
+      # database rather than inventing a rule of its own.
+      ".pfmderived>td:first-child{border-left:3px solid var(--line)}\n"
+      ".pfmderivedsay{font-size:11px;color:var(--ink3);margin-top:2px}\n"
+      ".pfmlock{color:var(--ink3);background:var(--panel);padding:1px 6px;\n"
+      "  border-radius:3px}\n"
+      ".pfmsub>td{background:var(--panel);font-size:13px}\n"
+      ".pfmsubmark{color:var(--ink3);margin-right:4px}\n"
+      ".pfmsubf{padding:8px 2px}\n"
+      ".pfmsubf label,.pfmadd label{display:inline-block;margin:0 10px 6px 0}\n"
+      ".pfmedit>td{background:var(--panel)}\n"
+      ".pfmedit label{display:inline-block;margin:0 12px 6px 0}\n"
+      ".pfmfoot{display:flex;gap:12px;align-items:center;flex-wrap:wrap;\n"
+      "  margin:10px 0 0}\n"
+      ".pfmadd{flex:1 1 100%;border-top:1px solid var(--line2);\n"
+      "  margin-top:8px;padding-top:10px}\n"
+      ".pfmhist{margin:0 0 10px}\n"
+      ".pfmhist.open{border:1px solid var(--line2);border-radius:3px;\n"
+      "  padding:10px 11px;background:var(--panel)}\n"
+      # A month that has finished. Not an input nobody may use: the number
+      # that was actually achieved, which is the only useful thing left to
+      # say about it.
+      ".pfmpast{background:var(--panel);color:var(--ink3)}\n"
+      ".pfmpastv{font-weight:600;color:var(--ink2)}\n"
       # ---------------- the quarter on the Performance page (patch 19)
       # The same shape as the monthly card above it, because it is the same
       # question asked of three months at once. Drawn on THIS screen, which

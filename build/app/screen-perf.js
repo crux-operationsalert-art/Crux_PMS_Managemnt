@@ -16,6 +16,10 @@
    thing a screen should hold.                                          */
 var PF = { period:null, cycle:null, tab:"mine", tree:null, due:null, team:null,
            who:null, open:{}, measures:null, measuresFor:null, form:null,
+           /* The Performance Mapping panel for the person in `who`:
+              {tab, data, draft, hist, histOpen, row, sub, q, qsub, says}.
+              Null when nobody is open. */
+           map:null,
            sel:{}, busy:false, says:"",
            /* everybody an administrator or HR may set for but who does not
               report to them, and the text typed to find one. Drawn only
@@ -955,7 +959,7 @@ function pfTeamRow(p){
       '<label class="pfsel"><input type="checkbox" data-pfsel="' + esc(p.personId) + '"' +
         (PF.sel[p.personId] ? ' checked' : '') + '> select</label>' +
       '<button class="btn" data-pfwho="' + esc(p.personId) + '">' +
-        (open ? 'Hide' : 'Set targets') + '</button>' +
+        (open ? 'Hide' : 'Performance mapping') + '</button>' +
       '<button class="btn" data-pftask="' + esc(p.personId) + '">Assign a task</button>' +
       '</td></tr>' +
     (open ? '<tr><td colspan="2">' + pfPersonPanel() + '</td></tr>' : '');
@@ -1533,7 +1537,13 @@ function pfNode(m, depth, isTeam){
    when the window rule went in and landed in the dead copy by mistake --
    which is the whole argument against keeping one. A card drawn in two
    places is a card that gets fixed in one.                             */
+/* The person panel is the Performance Mapping panel. It used to draw a
+   tree of measures with a separate form behind every one of them; the
+   journey is now one table in this same place, so this only hands over.
+   PF.whoTree is still loaded by the older callers that reload after a
+   write, and is still what the retry button re-reads. */
 function pfPersonPanel(){
+  if (PF.map) return pfMapping();
   var t = PF.whoTree;
   if (!t) return '<p class="mute">Loading…</p>';
   /* A reason, and a way out of it. This panel used to sit on "Loading…" for
@@ -1719,6 +1729,616 @@ async function pfMeasuresFor(personId){
   pfRender();
 }
 
+
+/* ===================================================================
+   PERFORMANCE MAPPING
+   ===================================================================
+
+   "My Team -> Select Person -> Performance Mapping -> Monthly /
+    Quarterly -> Manage Scorecard. Nothing more unless genuinely
+    required by existing functionality."
+
+   What it replaced: open the team card, open a person, open the
+   measures panel, open a form per measure, and then set the target
+   through a DIFFERENT door again, because perf_assign_edit
+   deliberately does not take one. Five places to go, two of them
+   writing the same row, and a person had to know which was which.
+
+   Now: one button on the row, one request, one table, one Save.
+
+   The rules are not worked out here. perf_mapping answers how many
+   measures there are, what the weights come to and whether another may
+   be added, and perf_kpis_set refuses a save that breaks any of them.
+   A rule worked out in two places is a rule that disagrees with
+   itself, and the copy in the screen is the one that will be wrong.
+   =================================================================== */
+
+var PF_FREQ = [["DAILY","Daily"], ["WEEKLY","Weekly"], ["FORTNIGHTLY","Fortnightly"],
+               ["MONTHLY","Monthly"], ["QUARTERLY","Quarterly"]];
+
+/* The measures as the screen holds them while they are being edited.
+   Built from what the server sent, never from the DOM: a draft read
+   back out of input boxes loses every field the boxes do not show. */
+function pfMapDraft(ms){
+  return (ms || []).map(function(m){
+    return { assignmentId: m.assignmentId, name: m.name, unit: m.unit,
+             weight: m.weight === null || m.weight === undefined ? "" : m.weight,
+             target: m.target === null || m.target === undefined ? "" : m.target,
+             cadence: m.cadence || "MONTHLY", direction: m.direction || "",
+             value: m.value, pct: m.pct, kind: m.kind,
+             parts: m.parts || [], filings: m.filings };
+  });
+}
+
+async function pfMapOpen(personId){
+  PF.who = personId;
+  PF.map = { tab: "monthly", data: null, draft: [], hist: null, histOpen: false,
+             row: null, sub: null, says: "", q: null, qFor: null };
+  pfRender();
+  var o = await plb("/plb/perf/mapping?person=" + encodeURIComponent(personId) +
+                    "&cycle=" + encodeURIComponent(PF.cycle.id));
+  if (!PF.map || PF.who !== personId) return;      /* they clicked away */
+  PF.map.data = o;
+  PF.map.draft = o && !o.error ? pfMapDraft(o.measures) : [];
+  pfRender();
+}
+
+/* The weights, worked out from the draft so the total moves as somebody
+   types. The server decides whether a save is allowed; this only has to
+   agree with it closely enough to be honest about the button. */
+function pfMapWeights(){
+  return Math.round((PF.map.draft || []).reduce(function(a, m){
+    return a + (Number(m.weight) || 0); }, 0) * 100) / 100;
+}
+function pfMapOk(){
+  var d = PF.map.draft || [], r = (PF.map.data || {}).rules || {};
+  return d.length >= 3 && d.length <= (r.cap || 5) &&
+         Math.abs(pfMapWeights() - 100) <= 0.1 &&
+         d.every(function(m){ return String(m.target) !== "" && m.target !== null; });
+}
+
+/* ------------------------------------------------- previous achievements
+   Behind a + , because the owner asked for it behind a + : "Provide a
+   simple + button to expand/view the person's previous achievements.
+   Do not clutter the main screen." */
+function pfMapHistory(){
+  if (!PF.map.histOpen) {
+    return '<p class="pfmhist"><button class="btn" id="pfmhist">+ ' +
+      'Previous achievements</button></p>';
+  }
+  var h = PF.map.hist;
+  if (!h) return '<p class="pfmhist"><span class="mute">Loading the history…</span></p>';
+  if (h.error) return '<div class="pfmhist">' + msg("bad", h.reason || h.error) + '</div>';
+  var rows = (h.months || h || []);
+  if (!rows.length || !rows.map) {
+    return '<div class="pfmhist"><button class="btn" id="pfmhistshut">' +
+      '&minus; Hide</button><div class="empty">Nothing has been filed in the ' +
+      'months before this one.</div></div>';
+  }
+  return '<div class="pfmhist open"><button class="btn" id="pfmhistshut">' +
+    '&minus; Hide previous achievements</button>' +
+    '<div class="scroll"><table class="pfmt"><thead><tr>' +
+      '<th>Month</th><th>Measure</th><th>Target</th><th>Achieved</th><th></th>' +
+    '</tr></thead><tbody>' + rows.map(function(x){
+      var pct = (x.target && Number(x.target) !== 0 && x.value !== null &&
+                 x.value !== undefined)
+        ? Math.round(1000 * Number(x.value) / Number(x.target)) / 10 : null;
+      return '<tr><td>' + esc(pfMonthName(x.period || x.month)) + '</td>' +
+        '<td>' + esc(x.name || "") + '</td>' +
+        '<td>' + pfQNum(x.target, x.unit) + '</td>' +
+        '<td>' + pfQNum(x.value, x.unit) + '</td>' +
+        '<td>' + (pct === null ? '' : pfBar(pct)) + '</td></tr>';
+    }).join("") + '</tbody></table></div></div>';
+}
+
+/* ---------------------------------------------------------- the sub-KPIs
+   A sub-KPI is an ordinary assignment with part_of_id set -- the
+   mechanism that already carries a target split across banks. Nothing
+   new was built for it: perf_value already sums the children of a
+   count and target-weighted averages the children of a level, and
+   perf_file already REFUSES a number filed against a parent, in those
+   words. So the parent is greyed because the database says so, not
+   because the screen decided to. */
+function pfMapSubRow(parent, c, i){
+  return '<tr class="pfmsub">' +
+    '<td><span class="pfmsubmark">&#8627;</span> ' + esc(c.split || c.name) + '</td>' +
+    '<td class="mute">—</td>' +
+    '<td>' + pfQNum(c.target, c.unit) + '</td>' +
+    '<td class="mute">' + esc(c.cadence || "") + '</td>' +
+    '<td>' + pfQNum(c.value, c.unit) +
+      (c.pct === null || c.pct === undefined ? ''
+        : ' <span class="mute">' + esc(String(c.pct)) + '%</span>') + '</td>' +
+    '<td class="plact">' +
+      (PF.map.data.maySet
+        ? '<button class="lnk" data-pfmsubrm="' + esc(c.assignmentId) + '">Remove</button>'
+        : '') + '</td></tr>';
+}
+
+function pfMapSubForm(m){
+  if (PF.map.sub !== m.assignmentId) return "";
+  return '<tr class="pfmsubform"><td colspan="6">' +
+    '<div class="pfmsubf">' +
+      '<b>A sub-KPI under ' + esc(m.name) + '</b>' +
+      '<p class="mute">The parent is worked out from its sub-KPIs — ' +
+        (m.kind === "SUM" ? 'added up' : 'averaged, weighted by their targets') +
+        ' — so nobody types the parent in twice.</p>' +
+      '<label>Name <input id="pfmsubname" placeholder="Bank, branch, product or step"></label> ' +
+      '<label>Target <input id="pfmsubtarget" type="number" step="any"></label> ' +
+      '<button class="btn primary" id="pfmsubsave">Add it</button> ' +
+      '<button class="btn" id="pfmsubcancel">Cancel</button>' +
+      '<div id="pfmsubmsg"></div>' +
+    '</div></td></tr>';
+}
+
+/* --------------------------------------------------------- the KPI row
+   KPI Name | Weightage | Target | Frequency | Edit | +
+   Weight and target are the daily job, so they are typed straight into
+   the row. Edit opens the things that change once -- the name, the
+   frequency, which way the measure points -- rather than sending
+   anybody to a form. */
+function pfMapRow(m, i){
+  var derived = (m.parts || []).length > 0;
+  var may = PF.map.data.maySet;
+  var open = PF.map.row === i;
+  var pct = m.pct === null || m.pct === undefined ? null : m.pct;
+
+  return '<tr class="' + (derived ? 'pfmderived' : '') + '">' +
+    '<td><b>' + esc(m.name) + '</b>' +
+      (m.unit ? ' <span class="mute">' + esc(pfUnit(m.unit)) + '</span>' : '') +
+      (derived ? '<div class="pfmderivedsay">Derived from sub-KPIs</div>' : '') +
+    '</td>' +
+    '<td>' + (may
+      ? '<input class="pfmw" data-pfmw="' + i + '" type="number" step="any" ' +
+        'min="0" max="100" value="' + esc(m.weight) + '">'
+      : esc(m.weight) + '%') + '</td>' +
+    '<td>' + (may
+      ? '<input class="pfmt2" data-pfmt="' + i + '" type="number" step="any" ' +
+        'value="' + esc(m.target) + '">'
+      : pfQNum(m.target, m.unit)) + '</td>' +
+    '<td class="mute">' + esc((PF_FREQ.filter(function(f){
+        return f[0] === (m.cadence || "MONTHLY"); })[0] || ["", m.cadence || ""])[1]) +
+    '</td>' +
+    '<td>' + (derived
+      ? '<span class="pfmlock" title="Worked out from the sub-KPIs below">' +
+        pfQNum(m.value, m.unit) + '</span>'
+      : pfQNum(m.value, m.unit)) +
+      (pct === null ? '' : ' <span class="mute">' + esc(String(pct)) + '%</span>') +
+    '</td>' +
+    '<td class="plact">' + (may
+      ? '<button class="lnk" data-pfmedit="' + i + '">' +
+          (open ? 'Done' : 'Edit') + '</button>' +
+        '<button class="lnk" data-pfmsub="' + esc(m.assignmentId || "") + '"' +
+          (m.assignmentId ? '' : ' disabled title="Save the measure first"') +
+          '>+</button>' +
+        '<button class="lnk" data-pfmrm="' + i + '">Remove</button>'
+      : '') + '</td>' +
+  '</tr>' +
+  (open ? '<tr class="pfmedit"><td colspan="6">' +
+      '<label>Name <input data-pfmname="' + i + '" value="' + esc(m.name || "") + '"></label> ' +
+      '<label>Unit <input data-pfmunit="' + i + '" value="' + esc(m.unit || "") + '"></label> ' +
+      '<label>Frequency <select data-pfmcad="' + i + '">' + PF_FREQ.map(function(f){
+        return '<option value="' + f[0] + '"' +
+          ((m.cadence || "MONTHLY") === f[0] ? ' selected' : '') + '>' +
+          esc(f[1]) + '</option>'; }).join("") + '</select></label> ' +
+      '<label>Which way is better <select data-pfmdir="' + i + '">' +
+        PF_DIR.map(function(d){
+          return '<option value="' + d[0] + '"' +
+            ((m.direction || "") === d[0] ? ' selected' : '') + '>' +
+            esc(d[1]) + '</option>'; }).join("") + '</select></label>' +
+    '</td></tr>' : "") +
+  (m.parts || []).map(function(c, j){ return pfMapSubRow(m, c, j); }).join("") +
+  pfMapSubForm(m);
+}
+
+/* ------------------------------------------------------- MONTHLY
+   "Target = ONE target input box. Do not create unnecessary
+    month-wise target boxes for Monthly." */
+function pfMapMonthly(){
+  var d = PF.map.draft || [], r = (PF.map.data || {}).rules || {};
+  var w = pfMapWeights(), ok = Math.abs(w - 100) <= 0.1;
+  var may = PF.map.data.maySet;
+
+  return pfMapHistory() +
+    '<div class="scroll"><table class="pfmt"><thead><tr>' +
+      '<th>KPI</th><th>Weightage</th><th>Target</th><th>Frequency</th>' +
+      '<th>Achievement</th><th></th>' +
+    '</tr></thead><tbody>' +
+      (d.length ? d.map(pfMapRow).join("")
+        : '<tr><td colspan="6" class="mute">No measures have been set for ' +
+          'this month yet.</td></tr>') +
+    '</tbody><tfoot><tr>' +
+      '<td><b>Total weightage</b></td>' +
+      '<td class="' + (ok ? 'pfqok' : 'pfqbad') + '"><b>' + esc(String(w)) + '%</b></td>' +
+      '<td colspan="4" class="' + (ok ? 'mute' : 'pfqbad') + '">' +
+        (ok ? 'adds up' : 'has to come to 100% before this can be saved') +
+      '</td>' +
+    '</tr></tfoot></table></div>' +
+    (may ? pfMapFoot(d, r) : '') +
+    '<div id="pfmmsg">' + (PF.map.says || "") + '</div>';
+}
+
+/* The add button appears only when another measure may be added, and
+   the count says where they are. "If 5 KPIs are already configured: do
+   NOT show an unnecessary add-KPI option." */
+function pfMapFoot(d, r){
+  var tooFew = d.length < 3;
+  var mayAdd = d.length < 5;
+  return '<div class="pfmfoot">' +
+    '<span class="' + (tooFew ? 'pfqbad' : 'mute') + '">' +
+      esc(String(d.length)) + ' of 3 to 5 measures' +
+      (tooFew ? ' — a scorecard carries at least three' : '') +
+    '</span> ' +
+    (mayAdd ? '<button class="btn" id="pfmadd">Add a KPI</button> ' : '') +
+    '<button class="btn primary" id="pfmsave"' + (pfMapOk() ? '' : ' disabled') +
+      '>Save the scorecard</button>' +
+    (PF.map.adding ? pfMapAddForm() : '') +
+    '</div>';
+}
+
+function pfMapAddForm(){
+  var cat = ((PF.measures || {}).catalogue) || [];
+  return '<div class="pfmadd">' +
+    '<label>Measure <select id="pfmaddkpi">' +
+      '<option value="">— choose from the registry —</option>' +
+      cat.map(function(k){
+        return '<option value="' + esc(k.id) + '">' + esc(k.name) +
+          (k.unit ? ' (' + esc(k.unit) + ')' : '') + '</option>'; }).join("") +
+      '<option value="__own">— or name one of my own —</option>' +
+    '</select></label> ' +
+    '<label>Name <input id="pfmaddname" placeholder="only if naming your own"></label> ' +
+    '<label>Weight <input id="pfmaddw" type="number" step="any" min="0" max="100"></label> ' +
+    '<label>Target <input id="pfmaddt" type="number" step="any"></label> ' +
+    '<button class="btn primary" id="pfmaddgo">Add</button> ' +
+    '<button class="btn" id="pfmaddcancel">Cancel</button>' +
+    '<p class="mute">It joins the list below. Nothing is written until you ' +
+    'save the scorecard, so the weights can be put right first.</p>' +
+    '</div>';
+}
+
+/* ------------------------------------------------------- QUARTERLY
+   "Use the exact same journey and UI structure as Monthly ...
+    Differences only: instead of one target field, show M1 | M2 | M3."
+
+   A month that has finished is greyed and shows what was actually
+   achieved. plb_kpi_months already carries the real monthly target and
+   what was filed against it, so none of this is invented here. */
+function pfMapPast(month){
+  var now = new Date();
+  var cur = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  return new Date(month + "T00:00:00Z") < cur;
+}
+
+function pfMapQCell(m, unit){
+  var past = pfMapPast(m.month);
+  var pct = (m.target !== null && m.target !== undefined && Number(m.target) !== 0 &&
+             m.filed !== null && m.filed !== undefined)
+    ? Math.round(1000 * Number(m.filed) / Number(m.target)) / 10 : null;
+  if (past) {
+    return '<td class="pfmpast" title="' + esc(pfMonthName(m.month)) +
+      ' has finished, so it is not set from here any more">' +
+      '<div class="pfmpastv">' + pfQNum(m.filed, unit) + '</div>' +
+      '<div class="mute">of ' + pfQNum(m.target, unit) +
+        (pct === null ? '' : ' · ' + esc(String(pct)) + '%') + '</div></td>';
+  }
+  return '<td><div>' + pfQNum(m.target, unit) + '</div>' +
+    '<div class="mute">filed ' + pfQNum(m.filed, unit) + '</div>' +
+    (m.agrees === false
+      ? '<div class="pfqbad">doesn’t match the quarter</div>' : '') +
+    '</td>';
+}
+
+function pfMapQuarterly(){
+  var q = PF.map.q;
+  if (!(PF.map.data || {}).sheetId) {
+    return '<div class="empty">No goal sheet has been issued to this person ' +
+      'for the quarter this month sits in, so there is no quarterly scorecard ' +
+      'to map yet.</div>';
+  }
+  if (!q) return '<p class="mute">Loading the quarter…</p>';
+  if (q.error) return msg("bad", q.reason || q.error);
+  var ms = q.measures || [];
+  var w = Math.round(ms.reduce(function(a, m){
+    return a + (Number(m.weight) || 0); }, 0) * 100) / 100;
+  var ok = Math.abs(w - 100) <= 0.1;
+  var mm = (ms[0] || {}).months || [];
+
+  return pfMapHistory() +
+    '<div class="scroll"><table class="pfmt"><thead><tr>' +
+      '<th>KPI</th><th>Weightage</th>' +
+      (mm.length === 3
+        ? mm.map(function(x){ return '<th>' + esc(pfMonthName(x.month)) + '</th>'; }).join("")
+        : '<th>M1</th><th>M2</th><th>M3</th>') +
+      '<th></th>' +
+    '</tr></thead><tbody>' +
+      (ms.length ? ms.map(pfMapQRow).join("")
+        : '<tr><td colspan="6" class="mute">No measures on this quarter yet.</td></tr>') +
+    '</tbody><tfoot><tr>' +
+      '<td><b>Total weightage</b></td>' +
+      '<td class="' + (ok ? 'pfqok' : 'pfqbad') + '"><b>' + esc(String(w)) + '%</b></td>' +
+      '<td colspan="4" class="' + (ok ? 'mute' : 'pfqbad') + '">' +
+        (ok ? 'adds up' : 'has to come to 100%') + '</td>' +
+    '</tr></tfoot></table></div>' +
+    (q.maySet
+      ? '<p class="pfmfoot"><span class="mute">' + esc(String(ms.length)) +
+        ' measure(s). The quarter is edited from the card below the ' +
+        'scorecard, which posts the whole list at once.</span></p>'
+      : '') +
+    '<div id="pfmqmsg">' + (PF.map.qsays || "") + '</div>';
+}
+
+function pfMapQRow(x){
+  var derived = (x.parts || []).length > 0;
+  var open = PF.map.qsub === x.goalKpiId;
+  return '<tr class="' + (derived ? 'pfmderived' : '') + '">' +
+    '<td><b>' + esc(x.name) + '</b>' +
+      (x.unit ? ' <span class="mute">' + esc(pfUnit(x.unit)) + '</span>' : '') +
+      (derived ? '<div class="pfmderivedsay">Derived from sub-KPIs</div>' : '') +
+    '</td>' +
+    '<td>' + esc(String(x.weight)) + '%</td>' +
+    (x.months || []).map(function(m){ return pfMapQCell(m, x.unit); }).join("") +
+    '<td class="plact">' +
+      '<button class="lnk" data-pfmqsub="' + esc(x.goalKpiId) + '">' +
+        ((x.parts || []).length ? 'Sub-KPIs (' + (x.parts || []).length + ')' : '+') +
+      '</button></td>' +
+  '</tr>' +
+  (x.parts || []).map(function(p){
+    return '<tr class="pfmsub"><td><span class="pfmsubmark">&#8627;</span> ' +
+      esc(p.label) + '</td><td class="mute">—</td>' +
+      '<td colspan="3">' + pfQNum(p.target, x.unit) +
+        (p.note ? ' <span class="mute">' + esc(p.note) + '</span>' : '') + '</td>' +
+      '<td></td></tr>';
+  }).join("") +
+  (open ? '<tr class="pfmsubform"><td colspan="6">' + pfMapQPartsForm(x) +
+     '</td></tr>' : "");
+}
+
+function pfMapQPartsForm(x){
+  var list = (x.parts || []).concat([{ label: "", target: "" }]);
+  return '<div class="pfmsubf"><b>Sub-KPIs under ' + esc(x.name) + '</b>' +
+    '<p class="mute">A breakdown of this one measure. It carries no weight ' +
+    'and changes no score — it is how the number is going to be made. ' +
+    'Leave a row blank to drop it.</p>' +
+    '<table class="pfqpt"><tbody>' + list.map(function(p, i){
+      return '<tr><td><input data-pfmql="' + i + '" value="' + esc(p.label || "") +
+        '" placeholder="Bank, branch or step"></td>' +
+        '<td><input data-pfmqt="' + i + '" type="number" step="any" value="' +
+        esc(p.target === null || p.target === undefined ? "" : p.target) + '"></td></tr>';
+    }).join("") + '</tbody></table>' +
+    ((PF.map.q || {}).maySet
+      ? '<button class="btn primary" data-pfmqsave="' + esc(x.goalKpiId) +
+        '">Save the sub-KPIs</button> ' +
+        '<button class="btn" id="pfmqcancel">Cancel</button>'
+      : '<span class="mute">Changing these is their manager’s.</span>') +
+    '</div>';
+}
+
+/* ------------------------------------------------------------ the panel */
+function pfMapping(){
+  if (!PF.map) return "";
+  var d = PF.map.data;
+  if (!d) return '<p class="mute">Loading the mapping…</p>';
+  if (d.error) {
+    return msg("bad", d.reason || d.error) +
+      '<p><button class="btn" id="pfmretry">Try again</button></p>';
+  }
+  var who = (d.person || {}).name || "";
+  return '<div class="pfmap">' +
+    '<div class="pfmaph">' +
+      '<h3>Performance mapping <span class="mute">· ' + esc(who) + '</span></h3>' +
+      '<div class="pfmtabs">' +
+        '<button class="btn' + (PF.map.tab === "monthly" ? " on" : "") +
+          '" data-pfmtab="monthly">Monthly</button>' +
+        '<button class="btn' + (PF.map.tab === "quarterly" ? " on" : "") +
+          '" data-pfmtab="quarterly">Quarterly</button>' +
+      '</div>' +
+    '</div>' +
+    (d.maySet ? '' :
+      '<p class="mute">' + esc(d.rel === "self"
+        ? "These are your own measures. They are set by your manager."
+        : "You can read these. Setting them is their own manager’s.") + '</p>') +
+    (PF.map.tab === "monthly" ? pfMapMonthly() : pfMapQuarterly()) +
+  '</div>';
+}
+
+
+/* ------------------------------------------- Performance Mapping wiring
+   Kept in one function so a build that drops the panel drops its
+   handlers with it, rather than leaving live buttons over a panel that
+   is not there. */
+function pfMapWire(){
+  if (!PF.map) return;
+  var M = PF.map;
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmtab]"), function(b){
+    b.onclick = async function(){
+      M.tab = b.getAttribute("data-pfmtab"); M.says = ""; M.qsays = "";
+      pfRender();
+      if (M.tab === "quarterly" && !M.q && (M.data || {}).sheetId) {
+        M.q = await plb("/plb/kpi/months?sheet=" +
+                        encodeURIComponent(M.data.sheetId));
+        pfRender();
+      }
+    };
+  });
+
+  if (el("pfmretry")) el("pfmretry").onclick = function(){ pfMapOpen(PF.who); };
+
+  if (el("pfmhist")) el("pfmhist").onclick = async function(){
+    M.histOpen = true; pfRender();
+    M.hist = await plb("/plb/perf/history?person=" + encodeURIComponent(PF.who) +
+                       "&months=6");
+    M.hist = M.hist && M.hist.history ? M.hist.history : M.hist;
+    pfRender();
+  };
+  if (el("pfmhistshut")) el("pfmhistshut").onclick = function(){
+    M.histOpen = false; pfRender();
+  };
+
+  /* Typed values go into the draft, never read back out of the DOM at
+     save time: a draft rebuilt from input boxes loses every field the
+     boxes do not show, and this row carries six of them. */
+  [["pfmw","weight"], ["pfmt","target"], ["pfmname","name"],
+   ["pfmunit","unit"], ["pfmcad","cadence"], ["pfmdir","direction"]].forEach(function(p){
+    Array.prototype.forEach.call(
+      el("view").querySelectorAll("[data-" + p[0] + "]"), function(inp){
+        inp.oninput = inp.onchange = function(){
+          var i = Number(inp.getAttribute("data-" + p[0]));
+          if (M.draft[i]) M.draft[i][p[1]] = inp.value;
+          /* The running total and the Save button have to move as the
+             weights are typed; nothing else needs a redraw. */
+          if (p[1] === "weight" || p[1] === "target") pfRender();
+        };
+      });
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmedit]"), function(b){
+    b.onclick = function(){
+      var i = Number(b.getAttribute("data-pfmedit"));
+      M.row = M.row === i ? null : i; pfRender();
+    };
+  });
+
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmrm]"), function(b){
+    b.onclick = function(){
+      var i = Number(b.getAttribute("data-pfmrm"));
+      /* Taken off the draft only. Nothing is written until Save, and the
+         database refuses to drop a measure with numbers filed against
+         it, so a mistake here costs a click and not a month. */
+      M.draft = M.draft.filter(function(_, j){ return j !== i; });
+      M.row = null; pfRender();
+    };
+  });
+
+  if (el("pfmadd")) el("pfmadd").onclick = async function(){
+    M.adding = true; pfRender();
+    if (!PF.measures) {
+      PF.measures = await plb("/plb/perf/measures?cycle=" + PF.cycle.id +
+                              "&person=" + encodeURIComponent(PF.who));
+      pfRender();
+    }
+  };
+  if (el("pfmaddcancel")) el("pfmaddcancel").onclick = function(){
+    M.adding = false; pfRender();
+  };
+  if (el("pfmaddgo")) el("pfmaddgo").onclick = function(){
+    var pick = el("pfmaddkpi").value;
+    var nm = el("pfmaddname").value;
+    var cat = ((PF.measures || {}).catalogue) || [];
+    var k = cat.filter(function(x){ return x.id === pick; })[0];
+    if (!k && !String(nm).trim()) {
+      el("pfmmsg").innerHTML = msg("bad",
+        "Choose a measure from the registry, or give one a name of its own.");
+      return;
+    }
+    M.draft = M.draft.concat([{
+      assignmentId: null,
+      kpiId: k ? k.id : null,
+      name: k ? k.name : nm,
+      unit: k ? k.unit : "",
+      weight: el("pfmaddw").value,
+      target: el("pfmaddt").value,
+      cadence: (k && k.cadence) || "MONTHLY",
+      direction: "", value: null, pct: null,
+      kind: (k && k.kind) || "SUM", parts: [] }]);
+    M.adding = false; M.says = ""; pfRender();
+  };
+
+  if (el("pfmsave")) el("pfmsave").onclick = async function(){
+    var o = await plb("/plb/perf/kpis", { method: "POST", body: {
+      personId: PF.who, cycleId: PF.cycle.id,
+      measures: M.draft.map(function(m){
+        return { assignmentId: m.assignmentId, kpiId: m.kpiId, name: m.name,
+                 unit: m.unit, weight: m.weight, target: m.target,
+                 cadence: m.cadence, direction: m.direction || null };
+      })
+    }});
+    if (o.error) {
+      M.says = msg("bad", (o.fields || []).map(function(f){ return f.reason; })
+        .concat([o.reason || o.error]).filter(Boolean).join(" "));
+      pfRender();
+      return;
+    }
+    var said = msg("ok", o.note);
+    await pfMapOpen(PF.who);          /* read it back rather than guess */
+    if (PF.map) { PF.map.says = said; pfRender(); }
+  };
+
+  /* --------------------------------------------------- the sub-KPIs */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmsub]"), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute("data-pfmsub");
+      if (!id) return;
+      M.sub = M.sub === id ? null : id; pfRender();
+    };
+  });
+  if (el("pfmsubcancel")) el("pfmsubcancel").onclick = function(){
+    M.sub = null; pfRender();
+  };
+  if (el("pfmsubsave")) el("pfmsubsave").onclick = async function(){
+    var parent = M.draft.filter(function(m){ return m.assignmentId === M.sub; })[0];
+    var nm = el("pfmsubname").value, tg = el("pfmsubtarget").value;
+    if (!String(nm).trim()) {
+      el("pfmsubmsg").innerHTML = msg("bad", "Give the sub-KPI a name.");
+      return;
+    }
+    /* An ordinary assignment with part_of_id set -- the same mechanism
+       that already splits a target across banks. splitKind OTHER is the
+       slot the schema already keeps for "a part that is not a client,
+       a branch or a place". */
+    var o = await plb("/plb/perf/assign", { method: "POST", body: {
+      cycleId: PF.cycle.id, personId: PF.who,
+      name: nm, unit: parent ? parent.unit : null,
+      target: tg === "" ? null : tg,
+      partOf: M.sub, splitKind: "OTHER", splitLabel: nm }});
+    if (o.error) {
+      el("pfmsubmsg").innerHTML = msg("bad", o.reason || o.error);
+      return;
+    }
+    M.sub = null;
+    var said = msg("ok", o.note || "Added.");
+    await pfMapOpen(PF.who);
+    if (PF.map) { PF.map.says = said; pfRender(); }
+  };
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmsubrm]"), function(b){
+    b.onclick = async function(){
+      var o = await plb("/plb/perf/remove", { method: "POST",
+        body: { assignmentId: b.getAttribute("data-pfmsubrm") } });
+      var said = o.error ? msg("bad", o.reason || o.error)
+                         : msg("ok", o.note || "Taken off.");
+      await pfMapOpen(PF.who);
+      if (PF.map) { PF.map.says = said; pfRender(); }
+    };
+  });
+
+  /* ------------------------------------------ the quarter's sub-KPIs */
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqsub]"), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute("data-pfmqsub");
+      M.qsub = M.qsub === id ? null : id; pfRender();
+    };
+  });
+  if (el("pfmqcancel")) el("pfmqcancel").onclick = function(){ M.qsub = null; pfRender(); };
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqsave]"), function(b){
+    b.onclick = async function(){
+      var parts = [], i = 0, n;
+      while ((n = el("view").querySelector('[data-pfmql="' + i + '"]'))) {
+        var t = el("view").querySelector('[data-pfmqt="' + i + '"]').value;
+        if (String(n.value).trim() !== "") {
+          parts.push({ label: n.value, target: t === "" ? null : t });
+        }
+        i = i + 1;
+      }
+      var o = await plb("/plb/kpi/parts", { method: "POST", body: {
+        goalKpiId: b.getAttribute("data-pfmqsave"), parts: parts }});
+      if (o.error) { M.qsays = msg("bad", o.reason || o.error); pfRender(); return; }
+      M.qsub = null;
+      M.q = await plb("/plb/kpi/months?sheet=" + encodeURIComponent(M.data.sheetId));
+      M.qsays = msg("ok", o.note || "Saved.");
+      pfRender();
+    };
+  });
+}
+
 /* ------------------------------------------------- the quarter's handlers
 
    Kept in one function so that a build which somehow drops the quarter
@@ -1841,6 +2461,7 @@ function pfQWire(){
 /* ---------------------------------------------------------------- wiring */
 function pfWire(){
   pfQWire();
+  pfMapWire();
 
   if (el("pfwhoretry")) el("pfwhoretry").onclick = async function(){
     if (!PF.who || !PF.cycle) return;
@@ -1852,6 +2473,9 @@ function pfWire(){
   if (el("pfperiod")) el("pfperiod").onchange = async function(){
     PF.period = el("pfperiod").value; PF.tree = null; PF.who = null;
     PF.whoTree = null; PF.says = ""; PF.measures = null; PF.measuresFor = null;
+    /* A mapping panel left open across a change of month would show one
+       month's scorecard under another month's heading. */
+    PF.map = null;
     el("view").innerHTML = '<p class="mute">Loading…</p>';
     await vPerf();
   };
@@ -1897,10 +2521,16 @@ function pfWire(){
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfwho]"), function(b){
     b.onclick = async function(){
       var id = b.getAttribute("data-pfwho");
-      if (PF.who === id) { PF.who = null; PF.whoTree = null; PF.form = null; pfRender(); return; }
-      PF.who = id; PF.whoTree = null; PF.form = null; pfRender();
-      PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + id);
-      pfRender();
+      if (PF.who === id) {
+        PF.who = null; PF.whoTree = null; PF.form = null; PF.map = null;
+        pfRender(); return;
+      }
+      /* One click, one request. perf_mapping carries the monthly
+         scorecard, the quarterly sheet that goes with it and the rules
+         the screen has to obey, so there is nothing else to fetch and
+         nowhere else to go. */
+      PF.whoTree = null; PF.form = null;
+      await pfMapOpen(id);
     };
   });
 

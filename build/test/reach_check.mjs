@@ -116,6 +116,30 @@ const FEATURES = [
   { fn: "pfQWire", from: "vPerf", needs: [],
     why: "a panel whose handlers were never wired is a panel of dead buttons" },
 
+  { fn: "pfMapping", from: "vPerf",
+    needs: ["/plb/perf/mapping"],
+    why: '"My Team -> Select Person -> Performance Mapping" -- one click from '
+       + 'the team row, in the same page. If this is not reachable from vPerf '
+       + 'the whole journey is back to where it was.' },
+
+  { fn: "pfMapMonthly", from: "vPerf",
+    needs: ["/plb/perf/kpis"],
+    why: 'the monthly scorecard and the one Save that posts the whole list' },
+
+  { fn: "pfMapQuarterly", from: "vPerf",
+    needs: ["/plb/kpi/months"],
+    why: 'the quarterly scorecard, M1 M2 M3, in the same panel' },
+
+  { fn: "pfMapHistory", from: "vPerf",
+    needs: ["/plb/perf/history"],
+    why: '"a simple + button to expand/view the previous achievements"' },
+
+  { fn: "pfMapSubForm", from: "vPerf", needs: [],
+    why: 'the + that adds a sub-KPI under a KPI, inline, with no new page' },
+
+  { fn: "pfMapWire", from: "vPerf", needs: [],
+    why: 'a panel whose handlers were never wired is a panel of dead buttons' },
+
   { fn: "pfEditForm", from: "vPerf",
     needs: ["/plb/perf/edit"],
     why: '"not able to edit/update KPIs before assiging targets"' },
