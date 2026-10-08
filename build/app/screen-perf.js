@@ -1543,192 +1543,17 @@ function pfNode(m, depth, isTeam){
    PF.whoTree is still loaded by the older callers that reload after a
    write, and is still what the retry button re-reads. */
 function pfPersonPanel(){
-  if (PF.map) return pfMapping();
-  var t = PF.whoTree;
-  if (!t) return '<p class="mute">Loading…</p>';
-  /* A reason, and a way out of it. This panel used to sit on "Loading…" for
-     ever when the call failed, because call() rejected and the render that
-     was going to follow never ran. call() no longer rejects, so the reason
-     arrives here -- and a reason somebody cannot act on is only half the
-     repair, hence the button. */
-  if (t.error) {
-    return msg("bad", t.reason || t.error) +
-      '<p><button class="btn" id="pfwhoretry">Try again</button></p>';
-  }
-  var ms = t.measures || [];
-  return '<div class="pfpanel">' +
-    (ms.length
-      ? '<div class="pftree">' + ms.map(function(m){ return pfNode(m, 0, false); }).join("") + '</div>' +
-        pfMeasureAdmin(ms)
-      : '<div class="empty">' + esc(t.says || "Nothing set for them this period.") + '</div>') +
-    (pfSetWindowOpen()
-      ? '<p><button class="btn" id="pfadd">Set a KPI for ' + esc(t.person.name) + '</button></p>'
-      : pfShutHere('Setting a KPI for ' + t.person.name)) +
-    (PF.editForm ? pfEditForm(ms) : '') +
-    '</div>';
+  /* The person panel IS the Performance Mapping panel. It used to draw a
+     read-only tree, a second table of the same measures with Edit and
+     Remove on each, and an edit form that deliberately carried no target
+     box -- so changing one person's target meant leaving this card
+     altogether and finding the manager's OWN measures card higher up the
+     page. That is the journey this change exists to delete.
+
+     pfMapOpen sets PF.map before the first render, so there is no second
+     branch here any more and nothing below this line to fall through to. */
+  return pfMapping();
 }
-
-/* Change a measure, or take it back. Separate from the tree above rather
-   than two more buttons on every node, because the tree is read far more
-   often than it is edited and a row of verbs on each line is how a reading
-   surface turns into a control panel. */
-function pfMeasureAdmin(ms){
-  var top = ms.filter(function(m){ return !m.splitOf; });
-  if (!top.length) return "";
-  /* Edit and Remove go through perf_assign_edit and perf_assign_remove, and
-     both refuse once the month's window has shut. Drawing them anyway is
-     drawing two buttons that always refuse. */
-  if (!pfSetWindowOpen()) {
-    return '<div class="pfadmin"><h4>Change what they are measured on</h4>' +
-      pfShutHere('Changing what they are measured on') + '</div>';
-  }
-  return '<div class="pfadmin"><h4>Change what they are measured on</h4>' +
-    '<div class="scroll"><table><tbody>' + top.map(function(m){
-      return '<tr><td><b>' + esc(m.name) + '</b>' +
-        (m.unit ? ' <span class="mute">(' + esc(m.unit) + ')</span>' : '') +
-        (m.weight !== null && m.weight !== undefined
-          ? ' <span class="chip">' + pfNum(m.weight) + '%</span>' : '') +
-        '</td><td class="plact">' +
-          '<button class="btn" data-pfedit="' + esc(m.assignmentId) + '">Edit</button>' +
-          '<button class="btn" data-pfrm="' + esc(m.assignmentId) + '">Remove</button>' +
-        '</td></tr>';
-    }).join("") + '</tbody></table></div></div>';
-}
-
-function pfEditForm(ms){
-  var f = PF.editForm;
-  var mine = (PF.measures || {}).mine || [];
-  var others = ms.filter(function(m){
-    return !m.splitOf && m.assignmentId !== f.assignmentId; });
-  return '<div class="plform">' +
-    '<h4 class="plh">Change &ldquo;' + esc(f.was) + '&rdquo;</h4>' +
-    '<div class="hragrid">' +
-      '<label class="hrafield"><span>Call it</span>' +
-        '<input data-pfe="name" value="' + esc(f.name || "") + '"></label>' +
-      '<label class="hrafield"><span>Measured in <i class="hrahint">cases, rupees, %, days</i></span>' +
-        '<input data-pfe="unit" value="' + esc(f.unit || "") + '"></label>' +
-      '<label class="hrafield"><span>Weight %</span>' +
-        '<input data-pfe="weight" type="number" step="any" value="' + esc(f.weight || "") + '"></label>' +
-      '<label class="hrafield"><span>They file</span><select data-pfe="cadence">' +
-        '<option value="">— leave it as it is —</option>' +
-        ["DAILY","WEEKLY","MONTHLY","QUARTERLY"].map(function(c){
-          return '<option value="' + c + '"' + (f.cadence === c ? ' selected' : '') + '>' +
-            c.toLowerCase() + '</option>'; }).join("") +
-      '</select></label>' +
-      '<label class="hrafield"><span>Which way is better <i class="hrahint">more is better, or fewer is</i></span><select data-pfe="direction">' +
-        '<option value="">&mdash; as the measure suggests &mdash;</option>' +
-        '<option value="HIGHER"' + (f.direction === "HIGHER" ? ' selected' : '') +
-          '>A bigger number is better</option>' +
-        '<option value="LOWER"' + (f.direction === "LOWER" ? ' selected' : '') +
-          '>A smaller number is better</option>' +
-      '</select></label>' +
-      '<label class="hrafield"><span>Adds up into <i class="hrahint">which of YOUR measures this one feeds</i></span><select data-pfe="rollsInto">' +
-        '<option value="">— nothing —</option>' +
-        mine.map(function(m){
-          return '<option value="' + esc(m.assignmentId) + '"' +
-            (f.rollsInto === m.assignmentId ? ' selected' : '') + '>' +
-            esc(m.name) + (m.split ? ' · ' + esc(m.split) : '') + '</option>'; }).join("") +
-      '</select></label>' +
-    '</div>' +
-    '<p class="mute">The target is not here. It is set on the measure itself, ' +
-    'where setting it also divides it down the team and across the clients — ' +
-    'two places to type one number is how the two stop agreeing.</p>' +
-    '<div class="plbar">' +
-      '<button class="btn primary" id="pfesave">Save the change</button>' +
-      '<button class="btn" id="pfecancel">Cancel</button>' +
-    '</div></div>';
-}
-
-/* ------------------------------------------------------------ the form */
-function pfForm(){
-  var f = PF.form, cat = (PF.measures || {}).catalogue || [], mine = (PF.measures || {}).mine || [];
-  if (!PF.measures) return '<div class="plform"><p class="mute">Loading the measures…</p></div>';
-
-  var cads = {};
-  cat.forEach(function(k){ if (k.cadence) cads[k.cadence] = 1; });
-  var cadOpts = Object.keys(cads).sort().map(function(c){
-    return '<option value="' + esc(c) + '"' + (f.cadence === c ? ' selected' : '') + '>' +
-      esc(c.toLowerCase().replace(/_/g, " ")) + '</option>'; }).join("");
-
-  return '<div class="plform">' +
-    '<h4 class="plh">' + (f.bulk ? 'The same KPI for everyone selected' : 'A KPI for ' + esc(f.name)) + '</h4>' +
-    '<div class="hragrid">' +
-      '<label class="hrafield"><span>Measure</span><select data-pff="kpiId">' +
-        '<option value="">— choose —</option>' +
-        cat.map(function(k){
-          return '<option value="' + esc(k.id) + '"' + (f.kpiId === k.id ? ' selected' : '') + '>' +
-            esc(k.name) + (k.unit ? ' (' + esc(k.unit) + ')' : '') + '</option>'; }).join("") +
-        /* The registry is what a chair is MEANT to be measured on, and it
-           is not the whole of what a manager ever needs to ask for. Until
-           this option existed the form refused to submit without a
-           catalogue id, so "add a KPI" had no door at all: perf_assign has
-           always taken a free-text name, and nothing offered one. */
-        '<option value="NEW"' + (f.kpiId === "NEW" ? ' selected' : '') +
-          '>— something else, named here —</option>' +
-      '</select></label>' +
-    (f.kpiId === "NEW"
-      /* newName, not name: f.name already holds the PERSON's name, which is
-         what the heading above reads from. */
-      ? '<label class="hrafield"><span>Call it</span>' +
-          '<input data-pff="newName" value="' + esc(f.newName || "") +
-          '" placeholder="Name it the way they would say it"></label>' +
-        '<label class="hrafield"><span>Measured in <i class="hrahint">cases, rupees, %, days</i></span>' +
-          '<input data-pff="unit" value="' + esc(f.unit || "") +
-          '" placeholder="cases, visits, rupees, %"></label>'
-      : '') +
-      '<label class="hrafield"><span>Target</span>' +
-        '<input data-pff="target" type="number" step="any" value="' + esc(f.target || "") + '"></label>' +
-      '<label class="hrafield"><span>Weight %</span>' +
-        '<input data-pff="weight" type="number" step="any" value="' + esc(f.weight || "") + '"></label>' +
-      '<label class="hrafield"><span>They file</span><select data-pff="cadence">' +
-        '<option value="">— as the measure says —</option>' + cadOpts + '</select></label>' +
-      '<label class="hrafield"><span>On which day</span>' +
-        '<input data-pff="cadenceDay" type="number" min="1" max="28" ' +
-        'placeholder="10 for the 10th, 5 for Friday" value="' + esc(f.cadenceDay || "") + '"></label>' +
-      '<label class="hrafield"><span>Which way is better <i class="hrahint">more is better, or fewer is</i></span><select data-pff="direction">' +
-        '<option value="">&mdash; as the measure suggests &mdash;</option>' +
-        '<option value="HIGHER"' + (f.direction === "HIGHER" ? ' selected' : '') +
-          '>A bigger number is better</option>' +
-        '<option value="LOWER"' + (f.direction === "LOWER" ? ' selected' : '') +
-          '>A smaller number is better</option>' +
-      '</select></label>' +
-      '<label class="hrafield"><span>Adds up into <i class="hrahint">which of YOUR measures this one feeds</i></span><select data-pff="rollsInto">' +
-        '<option value="">— nothing yet —</option>' +
-        mine.map(function(m){
-          return '<option value="' + esc(m.assignmentId) + '"' +
-            (f.rollsInto === m.assignmentId ? ' selected' : '') + '>' +
-            esc(m.name) + (m.split ? ' · ' + esc(m.split) : '') + '</option>'; }).join("") +
-      '</select></label>' +
-    '</div>' +
-    (PF.measures.note ? '<div class="plsub">' + msg("warn", PF.measures.note) + '</div>' : '') +
-    '<p class="mute">A measure with no target is not scored and does not drag the average ' +
-    'down — it is left out and says so. Leave it blank if you genuinely have not set one ' +
-    'yet, rather than putting a nought in.</p>' +
-    '<div class="plbar">' +
-      '<button class="btn primary" id="pfsave">' +
-        (f.bulk ? 'Give it to everyone selected' : 'Set it') + '</button>' +
-      '<button class="btn" id="pfcancel">Cancel</button>' +
-    '</div></div>';
-}
-
-/* The catalogue a manager picks from. Asked for one person, it comes back
-   as that chair's measure set rather than as every measure in the company,
-   which is the difference between choosing and searching. Cached per
-   person, because the one thing worse than a long list is a long list that
-   is fetched again every time the form is drawn. */
-async function pfMeasuresFor(personId){
-  var key = personId || "all";
-  if (PF.measuresFor === key && PF.measures) return;
-  PF.measures = null; PF.measuresFor = key; pfRender();
-  var q = "/plb/perf/measures?cycle=" + PF.cycle.id +
-          (personId ? "&person=" + encodeURIComponent(personId) : "");
-  var m = await plb(q);
-  /* A second click while the first was in flight wins; this one is stale. */
-  if (PF.measuresFor !== key) return;
-  PF.measures = m;
-  pfRender();
-}
-
 
 /* ===================================================================
    PERFORMANCE MAPPING
@@ -2463,13 +2288,6 @@ function pfWire(){
   pfQWire();
   pfMapWire();
 
-  if (el("pfwhoretry")) el("pfwhoretry").onclick = async function(){
-    if (!PF.who || !PF.cycle) return;
-    PF.whoTree = null; pfRender();
-    PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id +
-                           "&person=" + encodeURIComponent(PF.who));
-    pfRender();
-  };
   if (el("pfperiod")) el("pfperiod").onchange = async function(){
     PF.period = el("pfperiod").value; PF.tree = null; PF.who = null;
     PF.whoTree = null; PF.says = ""; PF.measures = null; PF.measuresFor = null;
@@ -2600,83 +2418,13 @@ function pfWire(){
     PF.watchOpen = false; pfRender();
   };
 
-  if (el("pfadd")) el("pfadd").onclick = async function(){
-    PF.form = { personId: PF.who, name: (PF.whoTree.person || {}).name, bulk:false };
-    PF.editForm = null;
-    pfRender();
-    await pfMeasuresFor(PF.who);
-  };
-
-  /* ------------------------------------------- changing a measure given */
-  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfedit]"), function(b){
-    b.onclick = async function(){
-      var id = b.getAttribute("data-pfedit");
-      var m = ((PF.whoTree || {}).measures || []).filter(function(x){
-        return x.assignmentId === id; })[0];
-      if (!m) return;
-      PF.form = null;
-      PF.editForm = { assignmentId: id, was: m.name, name: m.name,
-                      unit: m.unit || "", weight: m.weight,
-                      cadence: "", rollsInto: m.rollsInto || "" };
-      pfRender();
-      /* The roll-up list is the SETTER's own measures, which is what the
-         database checks, so it is fetched for nobody in particular. */
-      await pfMeasuresFor(null);
-    };
-  });
-
-  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfe]"), function(f){
-    f.onchange = function(){ PF.editForm[f.getAttribute("data-pfe")] = f.value; };
-  });
-
-  if (el("pfecancel")) el("pfecancel").onclick = function(){
-    PF.editForm = null; pfRender();
-  };
-
-  if (el("pfesave")) el("pfesave").onclick = async function(){
-    if (PF.busy) return;
-    var f = PF.editForm;
-    if (!(f.name || "").trim()) {
-      PF.says = msg("bad", "A measure needs a name."); pfRender(); return;
-    }
-    PF.busy = true; el("pfesave").disabled = true;
-    var body = { assignmentId: f.assignmentId, name: f.name.trim(),
-                 unit: (f.unit || "").trim(), weight: f.weight,
-                 rollsInto: f.rollsInto };
-    /* An empty cadence means "leave it", and sending "" would be refused
-       as a cadence that does not exist. */
-    if (f.cadence) body.cadence = f.cadence;
-    var o = await plb("/plb/perf/edit", { method:"POST", body: body });
-    PF.busy = false;
-    PF.says = pfSaid(o, "Changed.");
-    if (!o.error) { PF.editForm = null; PF.whoTree = null; }
-    if (PF.who && !PF.whoTree) {
-      PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
-    }
-    pfRender();
-  };
-
-  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfrm]"), function(b){
-    b.onclick = async function(){
-      if (PF.busy) return;
-      var id = b.getAttribute("data-pfrm");
-      var m = ((PF.whoTree || {}).measures || []).filter(function(x){
-        return x.assignmentId === id; })[0] || {};
-      if (!confirm("Take “" + (m.name || "this measure") + "” back?\n\n" +
-          "If anything has been filed against it, it is withdrawn rather than " +
-          "deleted — it stops being asked for and what was filed still reads back.")) return;
-      PF.busy = true; b.disabled = true;
-      var o = await plb("/plb/perf/remove", { method:"POST", body:{ assignmentId: id } });
-      PF.busy = false;
-      PF.says = pfSaid(o, "Removed.");
-      PF.editForm = null; PF.whoTree = null;
-      if (PF.who) {
-        PF.whoTree = await plb("/plb/perf/tree?cycle=" + PF.cycle.id + "&person=" + PF.who);
-      }
-      pfRender();
-    };
-  });
-
+  /* The handlers for the removed edit form, its Remove buttons and the
+     "Set a KPI for X" button went with the renderers that drew them. Every
+     one of those jobs is now a row in the mapping table: the weight and the
+     target are typed into the row, Edit opens the name, frequency and
+     direction beside it, and Remove takes it off the draft -- nothing is
+     written until Save, and perf_kpis_set refuses to drop a measure with
+     numbers filed against it. */
   if (el("pfbulk")) el("pfbulk").onclick = async function(){
     PF.form = { bulk:true };
     pfRender();

@@ -32,6 +32,16 @@
  * Each entry in FEATURES names the screen, because "it is in the file" and
  * "it is on the page you are looking at" are different claims and only the
  * second one is worth anything.
+ *
+ * WHAT THIS CANNOT SEE. Reachability here is name-occurrence, not control
+ * flow: a function named anywhere in another function's body counts as
+ * reached, including after an early `return`. So code stranded behind a
+ * hand-over -- `function f(){ return g(); ... }` -- still reads as live.
+ * That is deliberate, because the alternative is a parser, and it errs
+ * towards saying something IS reachable. It will therefore never raise a
+ * false alarm, and it will miss dead code. Dead code is a tidiness problem;
+ * a feature nobody can reach is a broken promise, and that is the one this
+ * is here to catch.
  */
 import { readFileSync } from "node:fs";
 
@@ -140,9 +150,11 @@ const FEATURES = [
   { fn: "pfMapWire", from: "vPerf", needs: [],
     why: 'a panel whose handlers were never wired is a panel of dead buttons' },
 
-  { fn: "pfEditForm", from: "vPerf",
-    needs: ["/plb/perf/edit"],
-    why: '"not able to edit/update KPIs before assiging targets"' },
+  { fn: "pfMapRow", from: "vPerf", needs: [],
+    why: '"not able to edit/update KPIs before assiging targets" -- the row '
+       + 'carries KPI | Weightage | Target | Frequency | Edit | +, and the '
+       + 'weight and target are typed straight into it. It replaced '
+       + 'pfEditForm, which deliberately had no target box at all.' },
 
   { fn: "tmPartnerForm", from: "vTeamScreen",
     needs: ["/perf/partner"],
