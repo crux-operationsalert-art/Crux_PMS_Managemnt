@@ -8,32 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text, p_kind text)
- RETURNS uuid
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_up uuid := p_person; v_hops int := 0; v_into uuid;
-begin
-  if p_family is null then return null; end if;
-  loop
-    select manager_id into v_up from person
-     where id = v_up and manager_id is not null and manager_id <> id;
-    exit when v_up is null or v_hops >= 12;
-    v_hops := v_hops + 1;
-    select a.id into v_into from perf_assignment a
-     where a.cycle_id = p_cycle and a.person_id = v_up and a.part_of_id is null
-       and perf_family(a.unit) = p_family
-       and perf_direction(a.unit) = p_direction
-       and perf_accrual_kind(a.kpi_id, a.unit) = p_kind
-     order by a.id limit 1;
-    if v_into is not null then return v_into; end if;
-  end loop;
-  return null;
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.perf_cycle_extend(p_actor uuid, p_cycle uuid, p_until date, p_why text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -529,6 +503,232 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_kpis_set(p_actor uuid, p_cycle uuid, p_person uuid, p_measures jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  c perf_cycle; s person; x jsonb; i int := 0;
+  v_bad jsonb := '[]'::jsonb; v_notes jsonb := '[]'::jsonb;
+  v_w numeric; v_sum numeric := 0;
+  v_keep uuid[] := '{}'; v_id uuid; v_have int; v_cap int;
+  v_added int := 0; v_changed int := 0; v_gone int := 0;
+  o jsonb; r record;
+begin
+  select * into c from perf_cycle where id = p_cycle;
+  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  select * into s from person
+   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null;
+  if s.id is null then return jsonb_build_object('error','no_such_person'); end if;
+
+  if not perf_may_set(p_actor, p_person) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Setting somebody''s measures is their own manager''s and the '
+            || 'administrator''s. Nobody sets their own.');
+  end if;
+
+  if jsonb_typeof(coalesce(p_measures,'null'::jsonb)) <> 'array' then
+    return jsonb_build_object('error','invalid',
+      'reason','Send the measures as a list. This call carried '
+            || coalesce(jsonb_typeof(p_measures),'nothing') || '.');
+  end if;
+
+  select count(*) into v_have from perf_assignment a
+   where a.cycle_id = p_cycle and a.person_id = p_person
+     and a.part_of_id is null and a.state <> 'WITHDRAWN';
+  v_cap := greatest(5, v_have);
+
+  for x in select jsonb_array_elements(p_measures) loop
+    i := i + 1;
+    v_id := nullif(btrim(coalesce(x->>'assignmentId','')),'')::uuid;
+
+    if v_id is null
+       and btrim(coalesce(x->>'name','')) = ''
+       and nullif(btrim(coalesce(x->>'kpiId','')),'') is null then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ': choose a measure or give it a name.');
+    end if;
+
+    v_w := nullif(btrim(coalesce(x->>'weight','')),'')::numeric;
+    if v_w is null or v_w <= 0 or v_w > 100 then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ' needs a weight between nought and a hundred.');
+    else
+      v_sum := v_sum + v_w;
+    end if;
+
+    if nullif(btrim(coalesce(x->>'target','')),'') is null then
+      v_bad := v_bad || jsonb_build_object('at', i,
+        'reason','Measure ' || i || ' has no target. A measure with nothing to '
+              || 'hit cannot be scored, and zero is a target you can type.');
+    end if;
+
+    if v_id is not null then
+      if v_id = any(v_keep) then
+        v_bad := v_bad || jsonb_build_object('at', i,
+          'reason','Measure ' || i || ' is on the list twice.');
+      end if;
+      if not exists (select 1 from perf_assignment a
+                      where a.id = v_id and a.cycle_id = p_cycle
+                        and a.person_id = p_person and a.part_of_id is null) then
+        v_bad := v_bad || jsonb_build_object('at', i,
+          'reason','Measure ' || i || ' is not one of this person''s measures '
+                || 'for this period.');
+      end if;
+      v_keep := v_keep || v_id;
+    end if;
+  end loop;
+
+  if jsonb_array_length(p_measures) < 3 then
+    v_bad := v_bad || jsonb_build_object('at', null,
+      'reason','A scorecard carries at least three measures. This one carries '
+            || jsonb_array_length(p_measures) || '.');
+  end if;
+  if jsonb_array_length(p_measures) > v_cap then
+    v_bad := v_bad || jsonb_build_object('at', null,
+      'reason','A scorecard carries at most five measures'
+            || case when v_cap > 5 then ', and this person already carries '
+                    || v_have || ', so no more may be added' else '' end
+            || '. This one carries ' || jsonb_array_length(p_measures) || '.');
+  end if;
+
+  if jsonb_array_length(v_bad) = 0 and abs(round(v_sum, 2) - 100) > 0.1 then
+    v_bad := v_bad || jsonb_build_object('at', null,
+      'reason','The weights come to ' || round(v_sum,2) || ' and not a hundred. '
+            || 'A person''s measures have to account for all of them, or the '
+            || 'score cannot be worked out by hand.');
+  end if;
+
+  for r in
+    select a.id, a.name,
+           exists (select 1 from perf_entry e where e.assignment_id = a.id) as filed,
+           exists (select 1 from perf_assignment ch where ch.part_of_id = a.id
+                     and ch.state <> 'WITHDRAWN') as has_parts
+      from perf_assignment a
+     where a.cycle_id = p_cycle and a.person_id = p_person
+       and a.part_of_id is null and a.state <> 'WITHDRAWN'
+       and not (a.id = any(v_keep))
+  loop
+    if r.filed or r.has_parts then
+      v_bad := v_bad || jsonb_build_object('at', null,
+        'reason', r.name || ' cannot come off this scorecard: '
+              || case when r.filed then 'a number has already been filed '
+                      || 'against it' else 'it has sub-KPIs under it' end
+              || '. Set its weight low if it no longer matters.');
+    end if;
+  end loop;
+
+  if jsonb_array_length(v_bad) > 0 then
+    return jsonb_build_object('error','invalid', 'fields', v_bad,
+      'reason','Nothing was saved. Put these right and send it again.');
+  end if;
+
+  for r in
+    select a.id, a.name from perf_assignment a
+     where a.cycle_id = p_cycle and a.person_id = p_person
+       and a.part_of_id is null and a.state <> 'WITHDRAWN'
+       and not (a.id = any(v_keep))
+  loop
+    o := perf_assign_remove(p_actor, r.id);
+    if o->>'error' is not null then
+      return jsonb_build_object('error', o->>'error',
+        'reason', 'Taking ' || r.name || ' off was refused: '
+               || coalesce(o->>'reason', o->>'error'));
+    end if;
+    v_gone := v_gone + 1;
+  end loop;
+
+  i := 0;
+  for x in select jsonb_array_elements(p_measures) loop
+    i := i + 1;
+    v_id := nullif(btrim(coalesce(x->>'assignmentId','')),'')::uuid;
+
+    if v_id is null then
+      o := perf_assign(p_actor, jsonb_build_object(
+             'cycleId', p_cycle, 'personId', p_person,
+             'kpiId',   nullif(btrim(coalesce(x->>'kpiId','')),''),
+             'name',    nullif(btrim(coalesce(x->>'name','')),''),
+             'unit',    nullif(btrim(coalesce(x->>'unit','')),''),
+             'target',  (x->>'target')::numeric,
+             'weight',  (x->>'weight')::numeric,
+             'cadence', nullif(btrim(coalesce(x->>'cadence','')),''),
+             'cadenceDay', nullif(btrim(coalesce(x->>'cadenceDay','')),''),
+             'direction',  nullif(btrim(coalesce(x->>'direction','')),''),
+             'rollsInto',  nullif(btrim(coalesce(x->>'rollsInto','')),''),
+             'note',       nullif(btrim(coalesce(x->>'note','')),'')));
+      if o->>'error' is not null then
+        return jsonb_build_object('error', o->>'error',
+          'reason','Measure ' || i || ' could not be given: '
+                || coalesce(o->>'reason', o->>'error'), 'at', i);
+      end if;
+      v_added := v_added + 1;
+    else
+      o := perf_assign_edit(p_actor, jsonb_build_object(
+             'assignmentId', v_id,
+             'name',    nullif(btrim(coalesce(x->>'name','')),''),
+             'unit',    nullif(btrim(coalesce(x->>'unit','')),''),
+             'weight',  (x->>'weight')::numeric,
+             'cadence', nullif(btrim(coalesce(x->>'cadence','')),''),
+             'cadenceDay', nullif(btrim(coalesce(x->>'cadenceDay','')),''),
+             'direction',  nullif(btrim(coalesce(x->>'direction','')),''),
+             'note',       nullif(btrim(coalesce(x->>'note','')),'')));
+      if o->>'error' is not null then
+        return jsonb_build_object('error', o->>'error',
+          'reason','Measure ' || i || ' could not be changed: '
+                || coalesce(o->>'reason', o->>'error'), 'at', i);
+      end if;
+
+      if coalesce((select a.target_value from perf_assignment a where a.id = v_id), -1)
+         is distinct from (x->>'target')::numeric then
+        o := perf_target_set(p_actor, v_id, (x->>'target')::numeric, true);
+        if o->>'error' is not null then
+          return jsonb_build_object('error', o->>'error',
+            'reason','The target on measure ' || i || ' could not be set: '
+                  || coalesce(o->>'reason', o->>'error'), 'at', i);
+        end if;
+      end if;
+      v_changed := v_changed + 1;
+    end if;
+  end loop;
+
+  for r in
+    select a.name, a.target_value as t, perf_accrual_kind(a.kpi_id, a.unit) as kind,
+           (select sum(ch.target_value) from perf_assignment ch
+             where ch.part_of_id = a.id and ch.state <> 'WITHDRAWN') as parts
+      from perf_assignment a
+     where a.cycle_id = p_cycle and a.person_id = p_person
+       and a.part_of_id is null and a.state <> 'WITHDRAWN'
+       and exists (select 1 from perf_assignment ch where ch.part_of_id = a.id
+                     and ch.state <> 'WITHDRAWN')
+  loop
+    if r.kind = 'SUM' and r.parts is not null and r.t is not null
+       and round(r.parts, 2) <> round(r.t, 2) then
+      v_notes := v_notes || to_jsonb(r.name || ': its sub-KPIs come to '
+                 || round(r.parts,2) || ' against a target of ' || round(r.t,2) || '.');
+    end if;
+  end loop;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref,
+                           old_value, new_value)
+  values (p_actor, 'PERF_KPIS_SET', 'person', p_person::text, null,
+          jsonb_build_object('cycleId', p_cycle, 'measures', p_measures));
+
+  return jsonb_build_object('ok', true,
+    'personId', p_person, 'cycleId', p_cycle,
+    'added', v_added, 'changed', v_changed, 'removed', v_gone,
+    'weights', round(v_sum, 2), 'count', jsonb_array_length(p_measures),
+    'mayAdd', jsonb_array_length(p_measures) < 5,
+    'notes', v_notes,
+    'note', 'Saved. ' || jsonb_array_length(p_measures) || ' measure(s), '
+         || 'weights ' || round(v_sum, 2) || '.'
+         || case when jsonb_array_length(v_notes) > 0
+                 then ' ' || (v_notes->>0) else '' end);
+end
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_line(p_actor uuid)
  RETURNS TABLE(person_id uuid, depth integer)
  LANGUAGE sql
@@ -562,6 +762,54 @@ AS $function$
      and coalesce(p.employee_type, 'EMPLOYEE') not in ('CLIENT_CONTACT','SERVICE_ACCOUNT')
      and w.pid <> p_actor
    group by w.pid
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_mapping(p_actor uuid, p_person uuid, p_cycle uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  t jsonb; c perf_cycle; v_q date; v_sheet uuid; v_n int; v_w numeric; v_have int;
+begin
+  t := perf_tree_for(p_actor, p_person, p_cycle);
+  if t->>'error' is not null then return t; end if;
+
+  select * into c from perf_cycle where id = p_cycle;
+  v_q := date_trunc('quarter', coalesce(c.period_start, current_date))::date;
+
+  select s.id into v_sheet from plb_goal_sheet s
+   where s.person_id = p_person and s.quarter = v_q
+   order by s.created_at desc limit 1;
+
+  select count(*), coalesce(sum(coalesce(a.weight_pct,0)), 0)
+    into v_n, v_w
+    from perf_assignment a
+   where a.cycle_id = p_cycle and a.person_id = p_person
+     and a.part_of_id is null and a.state <> 'WITHDRAWN';
+  v_have := v_n;
+
+  return t || jsonb_build_object(
+    'quarter', v_q,
+    'sheetId', v_sheet,
+    'rules', jsonb_build_object(
+      'min', 3,
+      'max', 5,
+      'cap', greatest(5, v_have),
+      'count', v_n,
+      'weights', round(v_w, 2),
+      'weightsOk', abs(round(v_w, 2) - 100) <= 0.1,
+      'mayAdd', v_n < 5,
+      'tooFew', v_n < 3,
+      'says', case
+        when v_n < 3 then 'A scorecard carries at least three measures. '
+             || 'There ' || case when v_n = 1 then 'is 1' else 'are ' || v_n end
+             || ' here.'
+        when v_n >= 5 then 'Five measures is the most a scorecard carries.'
+        else null end));
+end
 $function$
 ;
 
@@ -1426,10 +1674,14 @@ begin
   end if;
   v_out := perf_tree(p_person, p_cycle);
   if jsonb_typeof(v_out) = 'object' then
-    v_out := v_out || jsonb_build_object('rel', v_rel, 'maySet', v_rel in ('self','manage','admin'));
+    v_out := v_out || jsonb_build_object(
+      'rel', v_rel,
+      'maySet', perf_may_set(p_actor, p_person),
+      'mine',   v_rel = 'self');
   end if;
   return v_out;
-end $function$
+end
+$function$
 ;
 
 CREATE OR REPLACE FUNCTION public.perf_unit_plain(p_unit text)

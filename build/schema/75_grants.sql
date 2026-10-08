@@ -679,7 +679,13 @@ grant execute on function public.perf_history(p_person uuid, p_name text, p_kpi 
 grant execute on function public.perf_history_for(p_actor uuid, p_person uuid, p_name text, p_kpi uuid, p_months integer) to service_role;
 grant execute on function public.perf_kpi_score(p_person uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_kpi_score_for(p_actor uuid, p_person uuid, p_cycle uuid) to service_role;
+grant execute on function public.perf_kpis_set(p_actor uuid, p_cycle uuid, p_person uuid, p_measures jsonb) to anon;
+grant execute on function public.perf_kpis_set(p_actor uuid, p_cycle uuid, p_person uuid, p_measures jsonb) to authenticated;
+grant execute on function public.perf_kpis_set(p_actor uuid, p_cycle uuid, p_person uuid, p_measures jsonb) to service_role;
 grant execute on function public.perf_line(p_actor uuid) to service_role;
+grant execute on function public.perf_mapping(p_actor uuid, p_person uuid, p_cycle uuid) to anon;
+grant execute on function public.perf_mapping(p_actor uuid, p_person uuid, p_cycle uuid) to authenticated;
+grant execute on function public.perf_mapping(p_actor uuid, p_person uuid, p_cycle uuid) to service_role;
 grant execute on function public.perf_may_see(p_actor uuid, p_person uuid) to service_role;
 grant execute on function public.perf_may_set(p_actor uuid, p_person uuid) to service_role;
 grant execute on function public.perf_node(p_assignment uuid, p_depth integer) to service_role;

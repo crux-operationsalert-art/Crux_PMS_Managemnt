@@ -5347,3 +5347,29 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text, p_kind text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_up uuid := p_person; v_hops int := 0; v_into uuid;
+begin
+  if p_family is null then return null; end if;
+  loop
+    select manager_id into v_up from person
+     where id = v_up and manager_id is not null and manager_id <> id;
+    exit when v_up is null or v_hops >= 12;
+    v_hops := v_hops + 1;
+    select a.id into v_into from perf_assignment a
+     where a.cycle_id = p_cycle and a.person_id = v_up and a.part_of_id is null
+       and perf_family(a.unit) = p_family
+       and perf_direction(a.unit) = p_direction
+       and perf_accrual_kind(a.kpi_id, a.unit) = p_kind
+     order by a.id limit 1;
+    if v_into is not null then return v_into; end if;
+  end loop;
+  return null;
+end $function$
+;
+
