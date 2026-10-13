@@ -155,6 +155,17 @@ begin
                (select period_start from perf_cycle where id = cyc) = '2026-10-01');
   perform t_ok('the two windows are in order',
                (select assign_closes < entry_closes from perf_cycle where id = cyc));
+
+  -- The window, held open for the rest of this test. perf_cycle_open sets
+  -- assign_closes five working days after the first of the month, so from
+  -- the ninth onwards every assertion below this line fails on the calendar
+  -- rather than on the rule it is there to test. The two assertions above
+  -- are the ones that care what the dates actually are, and they have
+  -- already run. A suite that goes red on a date is a suite people stop
+  -- reading. Rolled back with everything else.
+  update perf_cycle set assign_closes = current_date + 30,
+                        entry_closes  = greatest(entry_closes, current_date + 31)
+   where id = cyc;
   perform t_ok('opening a cycle is in the trail',
                exists (select 1 from audit_entry where action = 'PERF_CYCLE_OPENED'));
 end $$;

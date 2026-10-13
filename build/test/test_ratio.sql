@@ -71,6 +71,17 @@ begin
   select id into v_cycle from perf_cycle
    where period_start = date_trunc('month', current_date)::date and period_kind = 'MONTH';
 
+  -- The window, held open for the length of this test. perf_cycle_open sets
+  -- assign_closes five working days in, so a cycle the baseline carried in
+  -- from an earlier month is already shut -- and then the assertions below
+  -- fail on the calendar rather than on the rule they are there to test.
+  -- A suite that goes red on a date is a suite people stop reading.
+  -- Rolled back with everything else.
+  update perf_cycle set assign_closes = current_date + 30,
+                        entry_closes  = greatest(entry_closes, current_date + 30)
+   where period_start = date_trunc('month', current_date)::date
+     and period_kind = 'MONTH';
+
   -- The registry suggests; the manager decides. A COUNT suggests HIGHER, and
   -- this manager says this one is a ceiling.
   if perf_direction_of(v_kpi, 'COUNT') <> 'HIGHER' then

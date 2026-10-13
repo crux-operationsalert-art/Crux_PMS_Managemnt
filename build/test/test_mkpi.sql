@@ -50,6 +50,15 @@ begin
   select id into v_cycle from perf_cycle
    where period_start = date_trunc('month', current_date)::date and period_kind = 'MONTH';
 
+  -- The window, held open for the length of this test. perf_cycle_open sets
+  -- assign_closes five working days in, so a baseline carried into a later
+  -- month closes it -- and then every assertion below fails on the clock
+  -- rather than on the rule it is meant to be testing. Rolled back with
+  -- everything else.
+  update perf_cycle set assign_closes = current_date + 30,
+                        entry_closes  = greatest(entry_closes, current_date + 30)
+   where id = v_cycle;
+
   -- ------------------------------------------------------- nobody's own
   if perf_kpis_set(p_rep, v_cycle, p_rep, jsonb_build_array(
        jsonb_build_object('kpiId', k1, 'weight', 100, 'target', 10)))
@@ -240,6 +249,37 @@ begin
                     'can show: %', o;
   end if;
   raise notice 'PASS  a filing against a parent is refused, so the screen greys it';
+
+  -- ------------------------------------------ a sub-KPI answers to one name
+  --
+  -- It carries its name in two columns: `name`, which everything that is
+  -- not the scorecard reads, and `split_label`, which is what a part is
+  -- shown as. perf_assign_edit only ever wrote the first, so a renamed
+  -- sub-KPI answered to a different name depending on the screen.
+  o := perf_assign_edit(p_boss, jsonb_build_object(
+         'assignmentId', c1, 'name','Bank A renamed'));
+  if o->>'error' is not null then
+    raise exception 'FAIL  a sub-KPI could not be renamed: %', o;
+  end if;
+  if (select name from perf_assignment where id = c1) <> 'Bank A renamed'
+     or (select split_label from perf_assignment where id = c1) <> 'Bank A renamed' then
+    raise exception 'FAIL  the two names disagree after renaming a sub-KPI: '
+                    'name=%, split_label=%',
+                    (select name from perf_assignment where id = c1),
+                    (select split_label from perf_assignment where id = c1);
+  end if;
+  raise notice 'PASS  a renamed sub-KPI answers to one name everywhere';
+
+  -- And a measure that is NOT a part must not acquire a split_label.
+  o := perf_assign_edit(p_boss, jsonb_build_object(
+         'assignmentId', a3, 'name','MK three renamed'));
+  if o->>'error' is not null then
+    raise exception 'FAIL  a top-level measure could not be renamed: %', o;
+  end if;
+  if (select split_label from perf_assignment where id = a3) is not null then
+    raise exception 'FAIL  a measure that is not a part was given a part label';
+  end if;
+  raise notice 'PASS  and a measure that is not a part is left alone';
 
   -- --------------------------------- a level parent is weighted, not summed
   o := perf_kpis_set(p_boss, v_cycle, p_rep, jsonb_build_array(
