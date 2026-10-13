@@ -5124,7 +5124,8 @@ begin
             || c.assign_closes || '. An administrator can still change them, '
             || 'and it is recorded.');
   end if;
-  if a.part_of_id is not null and (p_in ? 'name') then
+  if a.part_of_id is not null and (p_in ? 'name')
+     and coalesce(a.split_kind, '') <> 'OTHER' then
     return jsonb_build_object('error','is_a_split',
       'reason','That row is one client''s share of a measure, not a measure. '
             || 'Rename the measure it belongs to and every share follows.');
@@ -5157,6 +5158,9 @@ begin
              'note', a.note);
   update perf_assignment set
     name        = v_name,
+    split_label = case when part_of_id is not null
+                        and nullif(btrim(coalesce(p_in->>'name','')),'') is not null
+                       then v_name else split_label end,
     direction   = case when p_in ? 'direction'
                        then nullif(upper(btrim(coalesce(p_in->>'direction',''))),'')
                        else direction end,
