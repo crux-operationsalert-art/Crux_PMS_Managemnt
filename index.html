@@ -7719,6 +7719,25 @@ function pfMapWeights(){
   return Math.round((PF.map.draft || []).reduce(function(a, m){
     return a + (Number(m.weight) || 0); }, 0) * 100) / 100;
 }
+/* The three things that have to move while somebody types, written
+   straight into the DOM. Everything else on the panel is unchanged by a
+   keystroke, and re-rendering it would cost the caret. */
+function pfMapTotals(){
+  var w = pfMapWeights(), ok = Math.abs(w - 100) <= 0.1, okAll = pfMapOk();
+  var tot = el("pfmwtot"), say = el("pfmwsay"),
+      save = el("pfmsave"), why = el("pfmwhy");
+  if (tot) {
+    tot.innerHTML = "<b>" + esc(String(w)) + "%</b>";
+    tot.className = ok ? "pfqok" : "pfqbad";
+  }
+  if (say) {
+    say.innerHTML = ok ? "adds up" : "has to come to 100% before this can be saved";
+    say.className = ok ? "mute" : "pfqbad";
+  }
+  if (save) save.disabled = !okAll;
+  if (why) why.innerHTML = esc(pfMapWhyNot());
+}
+
 function pfMapOk(){
   var d = PF.map.draft || [], r = (PF.map.data || {}).rules || {};
   return d.length >= 3 && d.length <= (r.cap || 5) &&
@@ -7768,7 +7787,14 @@ function pfMapHistory(){
    perf_file already REFUSES a number filed against a parent, in those
    words. So the parent is greyed because the database says so, not
    because the screen decided to. */
+/* A sub-KPI row, and -- since this shipped without one -- a way to change
+   it. The name and the target are the whole of a sub-KPI, so Edit opens
+   those two and nothing else. They save through the same two functions a
+   parent uses: perf_assign_edit for the name, perf_target_set for the
+   target, which is also what divides it back across anything beneath. */
 function pfMapSubRow(parent, c, i){
+  var may = PF.map.data.maySet;
+  var open = PF.map.subEdit === c.assignmentId;
   return '<tr class="pfmsub">' +
     '<td><span class="pfmsubmark">&#8627;</span> ' + esc(c.split || c.name) + '</td>' +
     '<td class="mute">—</td>' +
@@ -7777,10 +7803,23 @@ function pfMapSubRow(parent, c, i){
     '<td>' + pfQNum(c.value, c.unit) +
       (c.pct === null || c.pct === undefined ? ''
         : ' <span class="mute">' + esc(String(c.pct)) + '%</span>') + '</td>' +
-    '<td class="plact">' +
-      (PF.map.data.maySet
-        ? '<button class="lnk" data-pfmsubrm="' + esc(c.assignmentId) + '">Remove</button>'
-        : '') + '</td></tr>';
+    '<td class="plact">' + (may
+      ? '<button class="lnk" data-pfmsubed="' + esc(c.assignmentId) + '">' +
+          (open ? 'Done' : 'Edit') + '</button>' +
+        '<button class="lnk" data-pfmsubrm="' + esc(c.assignmentId) + '">Remove</button>'
+      : '') + '</td></tr>' +
+    (open
+      ? '<tr class="pfmedit"><td colspan="6">' +
+          '<label>Name <input id="pfmsubename" value="' +
+            esc(c.split || c.name || "") + '"></label> ' +
+          '<label>Target <input id="pfmsubetarget" type="number" step="any" ' +
+            'value="' + esc(c.target === null || c.target === undefined
+                            ? "" : c.target) + '"></label> ' +
+          '<button class="btn primary" data-pfmsubesave="' +
+            esc(c.assignmentId) + '">Save this sub-KPI</button>' +
+          '<div id="pfmsubemsg"></div>' +
+        '</td></tr>'
+      : "");
 }
 
 function pfMapSubForm(m){
@@ -7877,8 +7916,9 @@ function pfMapMonthly(){
           'this month yet.</td></tr>') +
     '</tbody><tfoot><tr>' +
       '<td><b>Total weightage</b></td>' +
-      '<td class="' + (ok ? 'pfqok' : 'pfqbad') + '"><b>' + esc(String(w)) + '%</b></td>' +
-      '<td colspan="4" class="' + (ok ? 'mute' : 'pfqbad') + '">' +
+      '<td id="pfmwtot" class="' + (ok ? 'pfqok' : 'pfqbad') + '"><b>' +
+        esc(String(w)) + '%</b></td>' +
+      '<td colspan="4" id="pfmwsay" class="' + (ok ? 'mute' : 'pfqbad') + '">' +
         (ok ? 'adds up' : 'has to come to 100% before this can be saved') +
       '</td>' +
     '</tr></tfoot></table></div>' +
@@ -7900,8 +7940,31 @@ function pfMapFoot(d, r){
     (mayAdd ? '<button class="btn" id="pfmadd">Add a KPI</button> ' : '') +
     '<button class="btn primary" id="pfmsave"' + (pfMapOk() ? '' : ' disabled') +
       '>Save the scorecard</button>' +
+    /* A disabled button with nothing beside it is a button that looks
+       broken. Taking a KPI off drops the total below a hundred, and that
+       is the commonest way to arrive here. */
+    '<span id="pfmwhy" class="pfmwhy">' + esc(pfMapWhyNot()) + '</span>' +
     (PF.map.adding ? pfMapAddForm() : '') +
     '</div>';
+}
+
+/* Why Save is off, in the words somebody can act on. Empty when it is on. */
+function pfMapWhyNot(){
+  if (pfMapOk()) return "";
+  var d = PF.map.draft || [], r = (PF.map.data || {}).rules || {};
+  var w = pfMapWeights();
+  if (d.length < 3) {
+    return "Add " + (3 - d.length) + " more measure(s) — a scorecard carries "
+         + "at least three.";
+  }
+  if (d.length > (r.cap || 5)) {
+    return "Take one off — a scorecard carries at most five.";
+  }
+  if (!d.every(function(m){ return String(m.target) !== "" && m.target !== null; })) {
+    return "Every measure needs a target. Zero is a target you can type.";
+  }
+  return "The weights come to " + w + "%. Spread the missing "
+       + (Math.round((100 - w) * 100) / 100) + "% across the measures to save.";
 }
 
 function pfMapAddForm(){
@@ -8113,9 +8176,15 @@ function pfMapWire(){
         inp.oninput = inp.onchange = function(){
           var i = Number(inp.getAttribute("data-" + p[0]));
           if (M.draft[i]) M.draft[i][p[1]] = inp.value;
-          /* The running total and the Save button have to move as the
-             weights are typed; nothing else needs a redraw. */
-          if (p[1] === "weight" || p[1] === "target") pfRender();
+          /* NOT pfRender(). pfRender rewrites el("view").innerHTML whole,
+             which destroys the very input being typed into: the caret and
+             the focus go with it, so the second keystroke lands nowhere and
+             the box reads as broken. That is exactly what it did.
+
+             The running total and the Save button still have to move as the
+             weights are typed, so they are updated in place -- three nodes,
+             no re-render, focus untouched. */
+          pfMapTotals();
         };
       });
   });
@@ -8132,9 +8201,18 @@ function pfMapWire(){
       var i = Number(b.getAttribute("data-pfmrm"));
       /* Taken off the draft only. Nothing is written until Save, and the
          database refuses to drop a measure with numbers filed against
-         it, so a mistake here costs a click and not a month. */
+         it, so a mistake here costs a click and not a month.
+
+         Taking one off almost always drops the total below a hundred, and
+         a Save that silently greys out reads as a broken button -- so say
+         so here as well as under the button. */
+      var gone = M.draft[i];
       M.draft = M.draft.filter(function(_, j){ return j !== i; });
-      M.row = null; pfRender();
+      M.row = null;
+      M.says = msg("ok", "“" + ((gone && gone.name) || "That measure") +
+        "” is off the list. Nothing is written until you save, and the "
+        + "weights have to come back to 100% first.");
+      pfRender();
     };
   });
 
@@ -8228,6 +8306,49 @@ function pfMapWire(){
     await pfMapOpen(PF.who);
     if (PF.map) { PF.map.says = said; pfRender(); }
   };
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmsubed]"), function(b){
+    b.onclick = function(){
+      var id = b.getAttribute("data-pfmsubed");
+      M.subEdit = M.subEdit === id ? null : id; pfRender();
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmsubesave]"), function(b){
+    b.onclick = async function(){
+      var id = b.getAttribute("data-pfmsubesave");
+      var nm = el("pfmsubename").value, tg = el("pfmsubetarget").value;
+      if (!String(nm).trim()) {
+        el("pfmsubemsg").innerHTML = msg("bad", "A sub-KPI needs a name.");
+        return;
+      }
+      /* The name first. splitLabel is what the row reads, and name is what
+         everything that is not this screen reads, so both move together --
+         one of them changing alone is how a measure starts answering to two
+         names depending on where you look. */
+      var o = await plb("/plb/perf/edit", { method: "POST", body: {
+        assignmentId: id, name: nm, splitLabel: nm }});
+      if (o.error) {
+        el("pfmsubemsg").innerHTML = msg("bad", o.reason || o.error);
+        return;
+      }
+      if (String(tg) !== "") {
+        /* perf_assign_edit deliberately takes no target; perf_target_set is
+           the one door onto that number and it runs the cascade. */
+        /* perfApi, not plb: /perf/target is served by the perf function.
+           Sent to the wrong one it is a 404 that reads as a refusal. */
+        var t = await perfApi("/perf/target", { method: "POST", body: {
+          assignmentId: id, target: tg }});
+        if (t.error) {
+          el("pfmsubemsg").innerHTML = msg("bad", t.reason || t.error);
+          return;
+        }
+      }
+      M.subEdit = null;
+      var said = msg("ok", "Saved. The parent follows from its sub-KPIs.");
+      await pfMapOpen(PF.who);
+      if (PF.map) { PF.map.says = said; pfRender(); }
+    };
+  });
+
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmsubrm]"), function(b){
     b.onclick = async function(){
       var o = await plb("/plb/perf/remove", { method: "POST",
