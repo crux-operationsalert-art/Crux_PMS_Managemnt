@@ -3958,19 +3958,22 @@ begin
   select * into s from plb_goal_sheet where id = p_sheet;
   if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
 
-  select sum(g.weight_pct * least(
-             case when g.target_value is null or g.target_value = 0 then null
-                  else g.actual_value / g.target_value end, 1.5))
-           filter (where g.actual_value is not null and g.target_value is not null
-                     and g.target_value <> 0),
+  -- 260: a ceiling, or a target of zero, through perf_ratio (253's rule);
+  -- a plain HIGHER measure keeps its arithmetic exactly, so no sheet moves
+  -- by rounding.
+  select sum(g.weight_pct * case
+             when g.target_value = 0 or perf_direction_of(g.kpi_id, k.unit, g.direction) = 'LOWER'
+               then perf_ratio(perf_direction_of(g.kpi_id, k.unit, g.direction),
+                               g.target_value, g.actual_value) / 100.0
+             else least(g.actual_value / g.target_value, 1.5) end)
+           filter (where g.actual_value is not null and g.target_value is not null),
          sum(g.weight_pct)
-           filter (where g.actual_value is not null and g.target_value is not null
-                     and g.target_value <> 0),
+           filter (where g.actual_value is not null and g.target_value is not null),
          sum(g.weight_pct),
-         count(*) filter (where g.actual_value is null or g.target_value is null
-                             or g.target_value = 0)
+         count(*) filter (where g.actual_value is null or g.target_value is null)
     into v_ach, v_weights, v_total, v_missing
-    from plb_goal_kpi g where g.sheet_id = p_sheet;
+    from plb_goal_kpi g left join kpi_definition k on k.id = g.kpi_id
+   where g.sheet_id = p_sheet;
 
   -- The whole measure set, or no answer. A partial Achievement is not a small
   -- Achievement -- it is a different number wearing the same name.
@@ -4390,7 +4393,9 @@ begin
       v_implied := case
         when r.quarterly is null then null
         when r.kind <> 'SUM' then r.quarterly
-        when v_share is not null then round(r.quarterly * v_share / 100.0, 2)
+        -- 262: 0/0/0 is "not phased" (the column cannot be null).
+        when coalesce(r.m1_share,0) + coalesce(r.m2_share,0) + coalesce(r.m3_share,0) > 0
+          then round(r.quarterly * coalesce(v_share,0) / 100.0, 2)
         else round(r.quarterly / 3.0, 2) end;
 
       -- Reset first: SELECT ... INTO leaves the variables alone when it finds
@@ -4450,7 +4455,11 @@ begin
     v_rows := v_rows || jsonb_build_object(
       'goalKpiId', r.goal_kpi_id, 'kpiId', r.kpi_id,
       'name', r.name, 'unit', r.unit, 'kind', r.kind,
-      'weight', r.weight, 'quarterly', r.quarterly, 'actual', r.actual,
+      'weight', r.weight,
+      -- 261: what is set on the row, and what the registry suggests.
+      'direction', (select g.direction from plb_goal_kpi g where g.id = r.goal_kpi_id),
+      'suggests', (select k.direction from kpi_definition k where k.id = r.kpi_id),
+      'quarterly', r.quarterly, 'actual', r.actual,
       'months', v_months,
       'parts', v_parts,
       'partsTotal', (select sum(p.target_value) from plb_goal_kpi_part p
@@ -4655,7 +4664,7 @@ begin
        and a.cycle_id = c.id and a.part_of_id is null
      limit 1;
 
-    if v is null or coalesce(ratio, 0) = 0 then
+    if v is null or ratio is null then  -- 260: zero is a target
       v_blank := v_blank + 1;
       v_rows := v_rows || jsonb_build_object(
         'name', r.name, 'unit', r.unit, 'points', null, 'counted', false,

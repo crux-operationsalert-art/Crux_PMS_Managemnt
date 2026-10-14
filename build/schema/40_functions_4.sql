@@ -366,7 +366,10 @@ begin
       update plb_goal_kpi_all g
          set weight_pct   = (x->>'weight')::numeric,
              target_value = (x->>'target')::numeric,
-             direction    = nullif(upper(btrim(coalesce(x->>'direction',''))),''),
+             -- 261: absent means keep, as m1..m3 below already do.
+             direction    = case when x ? 'direction'
+                                 then nullif(upper(btrim(coalesce(x->>'direction',''))),'')
+                                 else g.direction end,
              m1_share     = coalesce(nullif(btrim(coalesce(x->>'m1','')),'')::numeric,
                                      g.m1_share),
              m2_share     = coalesce(nullif(btrim(coalesce(x->>'m2','')),'')::numeric,
