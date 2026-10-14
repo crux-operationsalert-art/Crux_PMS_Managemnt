@@ -12,7 +12,7 @@ Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
 
 **Last reconciled against the live database: 2026-10-14.**
 
-At that reconciliation: migrations applied through **263**; twelve edge
+At that reconciliation: migrations applied through **265**; twelve edge
 functions deployed with their source in the repository; the page published
 from `app_page` `26a255d0b145` (723,486 bytes); the suite **839 assertions,
 0 failures, nothing skipped**, from a database rebuilt out of `build/schema`
@@ -122,6 +122,8 @@ PLB figures the scheme already carries. Replacing the client-facing systems.
 | D15 | **Performance Mapping**: one person, one panel, one Save | shipped (255–259) |
 | D16 | **The quarter, month by month, in the same panel** — M1 \| M2 \| M3 typed, one door onto a sheet | shipped (261, 262, `pfMapQEdit`) |
 | D17 | **The bonus scores a zero target and a ceiling the right way** | shipped (260) |
+| D18 | **October branch targets from the business sheet** — ₹ revenue (+10%), collection ×2, TAT 48 h, quality 95%; split by client, rolled up to Manish Shukla | shipped (264) |
+| D19 | **The welcome e-mail** — 103 people, their own scorecard and what is pending, CC up the line to Manish Shukla | sent (265) |
 
 ## 7. Methodology
 
@@ -269,6 +271,8 @@ than a message.
 | **261** | A quarterly save that does not mention a measure's direction keeps it (the old editor wiped every override on every save); `plb_kpi_months` returns `direction` and `suggests`. |
 | **262** | An unphased quarter (shares 0/0/0 — the columns are NOT NULL) is spread evenly; it was being read as nought a month, and every month flagged "doesn't match the quarter". |
 | **263** | The fourteen demo passwords from 30 Sep are cleared, by address. Google sign-in and Act as are unaffected. |
+| **264** | October branch targets from `Business_Targets_Oct_2026.xlsx`. Only the 36 leaf locations are read (zone and regional subtotals were checked to add up and skipped). Twelve branch managers move from "% of target" to Branch revenue ₹ (30), Branch collection ₹ = 2× (25), Turnaround time 48 h, lower (15), Branch quality 95% (15), plus expense against budget — or "Cases completed within TAT" where a team feeds it. Revenue is split by client (107 lines); revenue and collection roll into Manish Shukla's, set to the whole sheet + 10% (₹3,69,47,900 / ₹7,38,95,800). All targets pinned. |
+| **265** | The welcome e-mail through the tool's outbox: 103 people, once only, "Important" in the subject (neither sender can set a priority header), CC every manager above up to Manish Shukla and never a Managing Director. A test copy went to operations.alert first. |
 | **259** | A shut month stops offering what it will refuse. `perf_mapping` answers `mayEdit` and `assignCloses`; the panel's three monthly checks read it, and a shut month says so where Save would have been, with the date and who can reopen it. |
 
 ## 10. What is left in the design
@@ -283,6 +287,10 @@ than a message.
 | **L6** | Of the four people with no manager, two are right (Arun Bodupali, the MD, at the top; the service account). Two are not people: **`Migration:M1`** (no address) and **`cruxbposervicespvtltd@gmail.com`**, a shared mailbox typed as an employee. Data, in **All people**. |
 | **L7** | **New.** `perf_accrual_kind` reads "cost per case", "working days to close" and DSO as **counts** from their unit text, so a quarter adds three months of them together. They are levels. A registry classification — the owner's or the one-up manager's to confirm. |
 | **L8** | **New.** "Issues resolved below this chair" is registered **lower-is-better**. Resolving more below a chair reads as better. One sheet carries it; direction is the one-up manager's per KPI (253). |
+| **L10** | **October targets cover 12 of 36 sheet locations.** 23 locations (₹1,53,29,820) have nobody in a Branch Manager chair; their money is in Manish's target only. Vinayak Jondale is seated "West" with no branch of his own and was left as he was. Nitish Bhope (Zonal) has no ₹ measure, so the climb passes him. |
+| **L11** | **The division stops at the client.** Branch teams carry no revenue measure, so ₹ targets were split by client, not across executives. Giving executives a revenue share means new measures and re-weighting 66 scorecards — a decision, not a default. |
+| **L12** | **The escalation matrix is not ready to send.** 692 of 3,987 client branches are complete (17%), 3,284 are empty, none has ever been sent. The mailer is **held**; the welcome e-mail told the 14 people who cover branches how many of theirs are missing contacts. |
+| **L13** | Manish Shukla's "SLA and TAT adherence" target is **5**, against a unit that says "target 95%". Left as found. |
 | **L9** | From the 30 Sep demo page, still true: **531 of the people rows are client-bank contacts**. Removing them was left for the owner's go-ahead. |
 
 ## 11. Open items the owner must apply
@@ -374,6 +382,10 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | 2026-10-14 | **The zero-target and direction rules reach the bonus** (260) | The owner ruled on both on 7 Oct; the 30 Sep page had left the bonus side "for the owner's say". An ordinary measure keeps its arithmetic exactly, so nothing moves by rounding. |
 | 2026-10-14 | **The morning mailers stay paused** | They were paused on the owner's instruction, not because of the window. The SOW's earlier reason was wrong. |
 | 2026-10-14 | **The demo passwords are cleared by address** (263) | The demo page said to clear them when the demo was over; it was over on 30 Sep. Its own one-liner cleared *every* password, which would also take any set since for a real reason. |
+| 2026-10-14 | **Branch managers are measured in rupees, hours and a quality score** (264) | The owner's October instruction. A "% of target" measure is copied down a line, never divided or added, so the climb up and down needs rupees. |
+| 2026-10-14 | **The division is by client, not by executive** | The sheet divides each branch by client; executives carry no revenue measure, and inventing 66 of them is not "following the flow". |
+| 2026-10-14 | **The escalation matrix to clients is held** | 82% of branches have no contacts; a matrix with a hole reads as complete. |
+| 2026-10-14 | **The welcome e-mail goes to all 103, CC up to Manish and never above** | The owner's choice of recipients; the Managing Directors sit beside Manish in the data and above him in fact, so they are not copied. |
 | 2026-10-14 | **Scope is decided by one function, not restated in the edge function** | `/api/ogl/points`, `/arbiter` and `/pause-preview` called functions that take no caller, so anybody holding an assignment id could read another chair's case parties and addresses. All three now ask `ogl_detail` first and return its refusal unchanged (`crux` v8). |
 
 ## 15. Open questions
