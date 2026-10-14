@@ -231,6 +231,53 @@ begin
   end if;
   raise notice 'PASS  a measure taken off and put back is one row, revived';
 
+  -- ------------------------------------- a save that says nothing keeps it
+  -- 261. The editor's draft carried no direction, and every save wiped the
+  -- one-up manager's choice of which way a measure points.
+  select jsonb_agg(jsonb_build_object('kpiId', g.kpi_id, 'weight', g.weight_pct,
+                   'target', g.target_value, 'direction', 'LOWER'))
+    into o from plb_goal_kpi g where g.sheet_id = v_sheet;
+  if plb_sheet_measures_set(p_boss, v_sheet, o)->>'error' is not null then
+    raise exception 'FAIL  could not set a direction: %',
+      plb_sheet_measures_set(p_boss, v_sheet, o);
+  end if;
+  select jsonb_agg(x - 'direction') into o from jsonb_array_elements(o) x;
+  perform plb_sheet_measures_set(p_boss, v_sheet, o);
+  if exists (select 1 from plb_goal_kpi where sheet_id = v_sheet
+              and direction is distinct from 'LOWER') then
+    raise exception 'FAIL  a save that did not mention the direction wiped it';
+  end if;
+  if (select count(*) from jsonb_array_elements(plb_kpi_months(p_boss, v_sheet)->'measures') m
+       where m->>'direction' = 'LOWER') <> (select count(*) from plb_goal_kpi where sheet_id = v_sheet) then
+    raise exception 'FAIL  the months view does not say which way a measure points';
+  end if;
+  select jsonb_agg(x || jsonb_build_object('direction', '')) into o from jsonb_array_elements(o) x;
+  perform plb_sheet_measures_set(p_boss, v_sheet, o);
+  if exists (select 1 from plb_goal_kpi where sheet_id = v_sheet and direction is not null) then
+    raise exception 'FAIL  a manager cannot hand a measure back to the registry';
+  end if;
+  raise notice 'PASS  a save keeps the direction it was not sent, and can still clear it';
+
+  -- ------------------------------------------ an unphased quarter is even
+  -- 262. The shares cannot be null, so "no split" is 0/0/0; it was read as
+  -- a split of nought and every month was told its target should be 0.
+  update plb_goal_kpi_all set m1_share = 0, m2_share = 0, m3_share = 0
+   where sheet_id = v_sheet;
+  if exists (select 1 from jsonb_array_elements(plb_kpi_months(p_boss, v_sheet)->'measures') x
+              where x->>'kind' = 'SUM' and (x->>'quarterly')::numeric > 0
+                and (x->'months'->0->>'implied')::numeric
+                    is distinct from round((x->>'quarterly')::numeric / 3.0, 2)) then
+    raise exception 'FAIL  an unphased quarter is not spread evenly across its months';
+  end if;
+  update plb_goal_kpi_all set m1_share = 50, m2_share = 50, m3_share = 0
+   where sheet_id = v_sheet;
+  if exists (select 1 from jsonb_array_elements(plb_kpi_months(p_boss, v_sheet)->'measures') x
+              where x->>'kind' = 'SUM' and (x->>'quarterly')::numeric > 0
+                and (x->'months'->2->>'implied')::numeric <> 0) then
+    raise exception 'FAIL  a month deliberately phased to nothing is not nothing';
+  end if;
+  raise notice 'PASS  an unphased quarter is a third a month, and a phased 0 stays 0';
+
   raise notice '--- the quarterly sheet is editable: every assertion passed ---';
 end $t$;
 

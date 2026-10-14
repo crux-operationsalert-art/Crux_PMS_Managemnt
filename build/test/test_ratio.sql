@@ -18,6 +18,7 @@ begin;
 do $t$
 declare
   p_boss uuid; p_rep uuid; v_cycle uuid; v_kpi uuid; v_a uuid;
+  v_chair uuid; v_sheet uuid; v_k2 uuid; v_g2 uuid; v_ach numeric;
   o jsonb; s jsonb; n int;
 begin
   -- ------------------------------------------------------- the formula
@@ -117,6 +118,46 @@ begin
     raise exception 'FAIL  a target of zero was read as no target: %', s;
   end if;
   raise notice 'PASS  and the month''s score counts it rather than skipping it';
+
+  -- ------------------------------------------- and in the quarter's money
+  -- 260. plb_compute dropped a target of zero, which voided the whole
+  -- sheet's Achievement, and divided actual by target whatever the measure
+  -- was, which paid more for a worse ceiling number.
+  select id into v_chair from chair order by title limit 1;
+  insert into kpi_definition (name, unit, active, position)
+    values ('RT ceiling','% of work returned', true, 2) returning id into v_k2;
+  insert into plb_goal_sheet (person_id, chair_id, quarter, target_plb_inr, status)
+    values (p_rep, v_chair, date '2031-01-01', 100000, 'ISSUED') returning id into v_sheet;
+  insert into plb_goal_kpi (sheet_id, kpi_id, weight_pct, target_value, actual_value)
+    values (v_sheet, v_kpi, 50, 100, 100);
+  insert into plb_goal_kpi (sheet_id, kpi_id, weight_pct, target_value, actual_value, direction)
+    values (v_sheet, v_k2, 50, 0, 0, 'LOWER') returning id into v_g2;
+
+  v_ach := (plb_compute(v_sheet)->>'achievement')::numeric;
+  if v_ach is distinct from 100 then
+    raise exception 'FAIL  a zero target met exactly does not count in the bonus: '
+                    'Achievement %', v_ach;
+  end if;
+  update plb_goal_kpi_all set actual_value = 1 where id = v_g2;
+  v_ach := (plb_compute(v_sheet)->>'achievement')::numeric;
+  if v_ach is distinct from 50 then
+    raise exception 'FAIL  a zero target missed is not a zero: Achievement %', v_ach;
+  end if;
+  update plb_goal_kpi_all set target_value = 2, actual_value = 4 where id = v_g2;
+  v_ach := (plb_compute(v_sheet)->>'achievement')::numeric;
+  if v_ach is distinct from 75 then
+    raise exception 'FAIL  a ceiling measure at twice its ceiling scored %, not '
+                    '75 (it was being paid 100 for it)', v_ach;
+  end if;
+  update plb_goal_kpi_all set direction = null, target_value = 100, actual_value = 123.456
+   where sheet_id = v_sheet and kpi_id = v_kpi;
+  update plb_goal_kpi_all set target_value = 4, actual_value = 2 where id = v_g2;
+  v_ach := (plb_compute(v_sheet)->>'achievement')::numeric;
+  if v_ach is distinct from round(50 * 1.23456 + 50 * 1.5, 3) then
+    raise exception 'FAIL  an ordinary measure moved in the bonus: %', v_ach;
+  end if;
+  raise notice 'PASS  in the quarter''s bonus a zero target counts, a ceiling '
+               'is the right way up, and an ordinary measure did not move';
 
   raise notice '--- which way a measure points: every assertion passed ---';
 end $t$;
