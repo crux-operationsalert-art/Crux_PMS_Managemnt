@@ -793,6 +793,14 @@ begin
 
   return t || jsonb_build_object(
     'quarter', v_q,
+    -- 259: the same predicate perf_assign, perf_assign_edit and
+    -- perf_assign_remove refuse on. Offer only what will be accepted.
+    'mayEdit', coalesce((t->>'maySet')::boolean, false)
+               and (c.assign_closes is null
+                    or current_date <= c.assign_closes
+                    or exists (select 1 from person
+                                where id = p_actor and app_role = 'ADMIN')),
+    'assignCloses', c.assign_closes,
     'sheetId', v_sheet,
     'rules', jsonb_build_object(
       'min', 3,
