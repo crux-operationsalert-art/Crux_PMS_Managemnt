@@ -45,6 +45,18 @@ const json = (body: unknown, status = 200) =>
     headers: { "content-type": "application/json", ...CORS },
   });
 
+// An assignment's open points, its arbiter and its pause arithmetic are read
+// through the same door as its detail. The three functions behind them take
+// only the assignment, not the caller -- so before this, anybody signed in who
+// held an assignment id could read another chair's case parties and their
+// addresses. ogl_detail is the one place that decides who may see an
+// assignment (D8); asking it first means the rule is decided once.
+async function refuseUnlessMine(id: string, personId: string) {
+  const out = await rpc("ogl_detail", { p_assignment: id, p_person: personId });
+  if (out && out.error) return json(out, out.error === "not_yours" ? 403 : 404);
+  return null;
+}
+
 async function personFor(req: Request) {
   const token = req.headers.get("x-crux-token");
   if (!token) return null;
@@ -343,6 +355,8 @@ Deno.serve(async (req: Request) => {
     if (path === "/api/ogl/pause-preview" && req.method === "POST") {
       const { id, reason } = await req.json();
       if (!id || !reason) return json({ error: "missing" }, 400);
+      const no = await refuseUnlessMine(id, person.id);
+      if (no) return no;
       return json(await rpc("ogl_pause_preview", { p_assignment: id, p_reason: reason }));
     }
 
@@ -425,6 +439,8 @@ Deno.serve(async (req: Request) => {
     if (path === "/api/ogl/arbiter") {
       const id = url.searchParams.get("id");
       if (!id) return json({ error: "missing_id" }, 400);
+      const no = await refuseUnlessMine(id, person.id);
+      if (no) return no;
       return json(await rpc("ogl_arbiter", { p_assignment: id }));
     }
 
@@ -460,6 +476,8 @@ Deno.serve(async (req: Request) => {
     if (path === "/api/ogl/points") {
       const id = url.searchParams.get("id");
       if (!id) return json({ error: "missing_id" }, 400);
+      const no = await refuseUnlessMine(id, person.id);
+      if (no) return no;
       return json({ points: await rpc("ogl_open_points", { p_assignment: id }) });
     }
 

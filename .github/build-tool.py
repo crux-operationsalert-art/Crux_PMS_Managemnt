@@ -146,6 +146,11 @@ PATCHES.append((
 # The real fix is to redeploy those two functions with verify_jwt off. This
 # makes the page survive until then, and stops any one misconfigured
 # service from ever locking somebody out of all the others.
+#
+# That fix has since landed: every app-facing function, plb and hr included,
+# is deployed with verify_jwt off (checked 14 Oct against the live list). The
+# patch stays for the second reason -- the next deploy that forgets the flag,
+# which the MCP deploy tool defaults back on every time.
 PATCHES.append((
     "a foreign 401 no longer signs out",
     "service_unreachable",

@@ -20,7 +20,7 @@ Then: **what is left to build**, and **what is yours to do**.
 |---|---|
 | **The application** | One row of `app_page` in the database. A screen change is an update, not a deployment. GitHub Pages serves a copy, republished by a workflow. |
 | **The database** | Supabase Postgres, 190 functions, row-level security on every table that carries a person. |
-| **Six front doors** | `crux` (the app and most of the API), `api`, `mail`, `org`, `wa`, `dbprobe`. None of them holds a key the browser can see. |
+| **Twelve front doors** | `crux` (the app, sign-in and OGL), `api`, `mail`, `org`, `wa`, `cfg`, `kpi`, `ops`, `plb`, `hr`, `pack`, `perf` -- source for every one is in `build/supabase/functions/`. `dbprobe` is a retired stub that answers 410 to everything. None of them holds a key the browser can see. |
 | **The sending device** | `bridge/` — a small program on a laptop or phone that holds the WhatsApp session. Temporary, until the Cloud API is approved. |
 
 Eleven screens: Today, Escalations, Matrix, OGL, Performance, People, Org chart,

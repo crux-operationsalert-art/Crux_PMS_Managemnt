@@ -276,6 +276,20 @@ fi
 # this? It runs over the published index.html, which is the artefact a person
 # actually loads.
 echo
+echo "== an OGL assignment is read only by somebody it belongs to"
+TSLIB=${TSLIB:-/opt/node-tools/node_modules/typescript}
+if [ -x "$NODE" ] && [ -d "$TSLIB" ]; then
+  if TSLIB="$TSLIB" "$NODE" "$REPO/build/test/crux_scope_check.mjs"; then
+    pass=$((pass + 11))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: needs node and typescript (set TSLIB to its directory)."
+  missing="$missing crux"
+fi
+
+echo
 echo "== every feature is reachable from the screen it belongs on"
 if [ -x "$NODE" ]; then
   if "$NODE" "$REPO/build/test/reach_check.mjs"; then
