@@ -276,6 +276,19 @@ fi
 # this? It runs over the published index.html, which is the artefact a person
 # actually loads.
 echo
+echo "== the quarter, edited month by month in the mapping panel"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/qedit_check.mjs"; then
+    pass=$((pass + 14))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing qedit"
+fi
+
+echo
 echo "== an OGL assignment is read only by somebody it belongs to"
 TSLIB=${TSLIB:-/opt/node-tools/node_modules/typescript}
 if [ -x "$NODE" ] && [ -d "$TSLIB" ]; then

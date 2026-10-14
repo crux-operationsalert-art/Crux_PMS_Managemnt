@@ -194,8 +194,6 @@ async function pfQLoad(){
   var s = (PF.plb || {}).sheet;
   PF.qmonths = s && s.id ? await plb("/plb/kpi/months?sheet=" + encodeURIComponent(s.id)) : null;
   if (PF.qmonths && PF.qmonths.error) PF.qmonths = null;
-  PF.qopts = null;          /* fetched only when the editor is opened */
-  PF.qedit = false;
   PF.qparts = null;         /* which measure's breakdown is open      */
 }
 
@@ -1106,6 +1104,11 @@ function pfTeamSection(){
        perf_carry_forward writes the same rows by another door. Asking
        somebody for a task and reading the eligibility matrix are not
        measures and are not gated, so they stay either way. */
+    /* Q5, decided 14 Oct: the bulk path stays, as the bulk path. One
+       person is Performance mapping on their row; this bar does one thing
+       to several people at once, which the panel does not. */
+    '<p class="mute">For one person, press Performance mapping on their row. ' +
+      'The buttons below do the same thing to several people at once.</p>' +
     '<div class="plbar">' +
       (pfSetWindowOpen()
         ? '<button class="btn primary" id="pfbulk"' + (n ? '' : ' disabled') + '>' +
@@ -1415,13 +1418,7 @@ function pfQuarterCard(){
       'month is the real one sitting in PMS; what the quarter implies is what ' +
       'this quarterly target and its split say that month should have been. ' +
       'Where the two disagree the month says so.</p></div>' +
-      (q.maySet
-        ? '<div><button class="btn" id="pfqedit">' +
-          (PF.qedit ? 'Close the measure list' : 'Change the measures') +
-          '</button></div>'
-        : '') +
     '</div>' +
-    (PF.qedit ? pfQEditor() : '') +
     (ms.length
       ? ms.map(pfQMeasure).join("")
       : '<div class="empty">There are no measures on this quarter’s sheet yet.</div>') +
@@ -1437,69 +1434,6 @@ function pfQuarterCard(){
    The whole list is sent at once, because the rule that makes it valid --
    the weights add to a hundred -- is a rule about the SET. Editing one row
    at a time means every intermediate state is invalid. */
-function pfQEditor(){
-  var o = PF.qopts;
-  if (!o) return '<div class="pfqedit"><p class="mute">Loading the measure list…</p></div>';
-  /* A route that is not there yet is not a refusal, and must not be dressed
-     as one. "These measures are not yours to change" told to somebody whose
-     measures they are is how a deploy that has not happened gets mistaken
-     for a permission problem and chased for an afternoon. */
-  if (o.error === "no_route" || o.error === "no_such_function") {
-    return '<div class="pfqedit"><div class="empty">The measure editor is ' +
-      'built but not published to the server yet. Nothing is wrong with your ' +
-      'account. Everything else on this card is live and correct.</div></div>';
-  }
-  if (o.error || !o.maySet) {
-    return '<div class="pfqedit"><div class="empty">' +
-      esc(o.why || o.reason || 'These measures are not yours to change.') +
-      '</div></div>';
-  }
-  var ms = PF.qdraft || [];
-  var sum = ms.reduce(function(a, m){ return a + (Number(m.weight) || 0); }, 0);
-  var rows = ms.map(function(m, i){
-    var k = (o.measures || []).filter(function(c){ return c.kpiId === m.kpiId; })[0] || {};
-    return '<tr>' +
-      '<td>' + esc(k.name || m.name || "—") +
-        (k.unit ? '<div class="mute">' + esc(pfUnit(k.unit)) + '</div>' : '') + '</td>' +
-      '<td><input data-pfqw="' + i + '" type="number" step="any" min="0" max="100" ' +
-        'value="' + esc(m.weight === null || m.weight === undefined ? "" : m.weight) + '"></td>' +
-      '<td><input data-pfqt="' + i + '" type="number" step="any" ' +
-        'value="' + esc(m.target === null || m.target === undefined ? "" : m.target) + '"></td>' +
-      '<td><select data-pfqd="' + i + '">' + PF_DIR.map(function(d){
-          return '<option value="' + d[0] + '"' +
-            ((m.direction || "") === d[0] ? ' selected' : '') + '>' +
-            esc(d[1]) + '</option>'; }).join("") + '</select></td>' +
-      '<td><button class="lnk" data-pfqdrop="' + i + '">Take off</button></td>' +
-      '</tr>';
-  }).join("");
-  var spare = (o.measures || []).filter(function(c){
-    return !ms.some(function(m){ return m.kpiId === c.kpiId; }); });
-  return '<div class="pfqedit">' +
-    '<p class="mute">Which measures this quarter asks for, what each is worth, ' +
-    'what it asks for and which way it points. The weights have to add to a ' +
-    'hundred — a score nobody can work out by hand is a score nobody trusts. ' +
-    'Every measure needs a target, and zero is a target you can type.</p>' +
-    '<table class="pfqet"><thead><tr><th>Measure</th><th>Weight %</th>' +
-    '<th>Target</th><th>Which way is better</th><th></th></tr></thead>' +
-    '<tbody>' + (rows || '<tr><td colspan="5" class="mute">Nothing on the sheet.</td></tr>') +
-    '</tbody><tfoot><tr><td class="mute">Weights</td>' +
-    '<td class="' + (Math.round(sum * 100) / 100 === 100 ? 'pfqok' : 'pfqbad') + '">' +
-    esc(String(Math.round(sum * 100) / 100)) + '</td>' +
-    '<td colspan="3" class="mute">' +
-    (Math.round(sum * 100) / 100 === 100 ? 'adds up' : 'has to come to 100') +
-    '</td></tr></tfoot></table>' +
-    (spare.length
-      ? '<p><label>Add a measure <select id="pfqadd">' +
-        '<option value="">— choose —</option>' +
-        spare.map(function(c){
-          return '<option value="' + esc(c.kpiId) + '">' + esc(c.name) +
-            (c.ofTheChair ? '' : ' (not this chair’s)') + '</option>'; }).join("") +
-        '</select></label> <button class="btn" id="pfqaddgo">Add</button></p>'
-      : '') +
-    '<p><button class="btn primary" id="pfqsave">Save the measures</button> ' +
-    '<button class="btn" id="pfqcancel">Cancel</button></p></div>';
-}
-
 /* One node, and its parts and its team under it. Depth is only indentation;
    the shape comes from the database. */
 function pfNode(m, depth, isTeam){
@@ -1934,6 +1868,7 @@ function pfMapQuarterly(){
   }
   if (!q) return '<p class="mute">Loading the quarter…</p>';
   if (q.error) return msg("bad", q.reason || q.error);
+  if (pfMapQMay()) return pfMapQEdit();
   var ms = q.measures || [];
   var w = Math.round(ms.reduce(function(a, m){
     return a + (Number(m.weight) || 0); }, 0) * 100) / 100;
@@ -1956,11 +1891,8 @@ function pfMapQuarterly(){
       '<td colspan="4" class="' + (ok ? 'mute' : 'pfqbad') + '">' +
         (ok ? 'adds up' : 'has to come to 100%') + '</td>' +
     '</tr></tfoot></table></div>' +
-    (q.maySet
-      ? '<p class="pfmfoot"><span class="mute">' + esc(String(ms.length)) +
-        ' measure(s). The quarter is edited from the card below the ' +
-        'scorecard, which posts the whole list at once.</span></p>'
-      : '') +
+    ((PF.map.qopts || {}).why
+      ? '<p class="mute">' + esc(PF.map.qopts.why) + '</p>' : '') +
     '<div id="pfmqmsg">' + (PF.map.qsays || "") + '</div>';
 }
 
@@ -2010,6 +1942,174 @@ function pfMapQPartsForm(x){
     '</div>';
 }
 
+
+/* ------------------------------------------- the quarter, edited in place
+
+   "Quarterly: the same journey and UI as Monthly, M1 | M2 | M3 instead of
+   one target." Until this, the Quarterly tab only showed the months and the
+   quarter was changed from a second card further down the page -- two doors
+   onto one sheet, and the second one was on the person's OWN quarter card,
+   which nobody may edit.
+
+   What a manager types depends on what the measure is:
+     a COUNT (perf_accrual_kind SUM): what each month is asked for. The
+       quarter is the three added up, and the shares 255 stores are worked
+       out from them, so the months and the quarter cannot disagree.
+     a LEVEL (a %, a score, a rate): one level, which every month is held
+       to. Adding percentages is how a scorecard comes to say 280%.
+   A month that has finished is shown, greyed, with what was achieved, and
+   is not typed into -- its share is kept so the three still add up.
+
+   Whether the boxes are offered is the server's answer
+   (plb_sheet_measure_options.maySet: your report, and the sheet not
+   locked), and plb_sheet_measures_set validates the whole list again. */
+function pfMapQMay(){
+  return !!(PF.map && PF.map.qopts && PF.map.qopts.maySet);
+}
+
+function pfMapQDraft(q){
+  return (q.measures || []).map(function(x){
+    var ms = x.months || [];
+    return { kpiId: x.kpiId, goalKpiId: x.goalKpiId, name: x.name, unit: x.unit,
+             kind: x.kind, weight: x.weight, direction: x.direction || "",
+             suggests: x.suggests || "",
+             target: x.quarterly === null || x.quarterly === undefined ? "" : x.quarterly,
+             m: ms.map(function(m){
+               return m.implied === null || m.implied === undefined ? "" : m.implied; }),
+             touched: false, isNew: false, parts: x.parts || [], months: ms };
+  });
+}
+
+function pfMapQSum(r){
+  return Math.round(r.m.reduce(function(a, v){ return a + (Number(v) || 0); }, 0) * 100) / 100;
+}
+
+function pfMapQWeights(){
+  return Math.round((PF.map.qd || []).reduce(function(a, r){
+    return a + (Number(r.weight) || 0); }, 0) * 100) / 100;
+}
+
+function pfMapQEditRow(r, i){
+  var count = r.kind === "SUM";
+  var open = PF.map.qed === i;
+  var cells = [0, 1, 2].map(function(j){
+    var mo = (r.months || [])[j] || {};
+    if (mo.month && pfMapPast(mo.month)) return pfMapQCell(mo, r.unit);
+    if (!count) {
+      return '<td class="mute">' + pfQNum(r.target, r.unit) + '<div>every month</div></td>';
+    }
+    return '<td><input data-pfmqm="' + i + ':' + j + '" type="number" step="any" ' +
+      'value="' + esc(r.m[j] === null || r.m[j] === undefined ? "" : r.m[j]) + '">' +
+      (mo.filed === null || mo.filed === undefined ? ''
+        : '<div class="mute">filed ' + pfQNum(mo.filed, r.unit) + '</div>') + '</td>';
+  }).join("");
+  return '<tr>' +
+    '<td><b>' + esc(r.name || "—") + '</b>' +
+      (r.unit ? ' <span class="mute">' + esc(pfUnit(r.unit)) + '</span>' : '') +
+      ((r.parts || []).length ? '<div class="pfmderivedsay">Has sub-KPIs</div>' : '') +
+      ' <button class="lnk" data-pfmqed="' + i + '">Edit</button></td>' +
+    '<td><input data-pfmqw="' + i + '" type="number" step="any" min="0" max="100" ' +
+      'value="' + esc(r.weight === null || r.weight === undefined ? "" : r.weight) + '"></td>' +
+    cells +
+    '<td>' + (count
+      ? '<b id="pfmqq' + i + '">' + esc(String(pfMapQSum(r))) + '</b>'
+      : '<input data-pfmqtg="' + i + '" type="number" step="any" value="' +
+        esc(r.target === null || r.target === undefined ? "" : r.target) + '">') + '</td>' +
+    '<td class="plact">' +
+      (r.goalKpiId
+        ? '<button class="lnk" data-pfmqsub="' + esc(r.goalKpiId) + '">' +
+          ((r.parts || []).length ? 'Sub-KPIs (' + r.parts.length + ')' : '+') + '</button> '
+        : '') +
+      '<button class="lnk" data-pfmqdrop="' + i + '">Remove</button></td>' +
+  '</tr>' +
+  (open ? '<tr class="pfmedit"><td colspan="7"><label>Which way is better ' +
+     '<select data-pfmqd="' + i + '">' + PF_DIR.map(function(d){
+       return '<option value="' + d[0] + '"' + ((r.direction || "") === d[0] ? ' selected' : '') +
+         '>' + esc(d[1]) + '</option>'; }).join("") + '</select></label>' +
+     (r.suggests ? ' <span class="mute">The registry suggests ' +
+       esc(r.suggests === "LOWER" ? "lower" : "higher") + '.</span>' : '') +
+     '</td></tr>' : '') +
+  (r.goalKpiId && PF.map.qsub === r.goalKpiId
+    ? '<tr class="pfmsubform"><td colspan="7">' +
+      pfMapQPartsForm({ goalKpiId: r.goalKpiId, name: r.name, parts: r.parts }) + '</td></tr>'
+    : '');
+}
+
+function pfMapQEdit(){
+  var q = PF.map.q, o = PF.map.qopts;
+  if (!PF.map.qd) PF.map.qd = pfMapQDraft(q);
+  var d = PF.map.qd, w = pfMapQWeights(), ok = Math.abs(w - 100) <= 0.001;
+  var mm = ((q.measures || [])[0] || {}).months || [];
+  var spare = (o.measures || []).filter(function(c){
+    return !d.some(function(r){ return r.kpiId === c.kpiId; }); });
+  return pfMapHistory() +
+    '<div class="scroll"><table class="pfmt"><thead><tr>' +
+      '<th>KPI</th><th>Weightage</th>' +
+      (mm.length === 3
+        ? mm.map(function(x){ return '<th>' + esc(pfMonthName(x.month)) + '</th>'; }).join("")
+        : '<th>M1</th><th>M2</th><th>M3</th>') +
+      '<th>Quarter</th><th></th>' +
+    '</tr></thead><tbody>' +
+      (d.length ? d.map(pfMapQEditRow).join("")
+        : '<tr><td colspan="7" class="mute">No measures on this quarter yet.</td></tr>') +
+    '</tbody><tfoot><tr>' +
+      '<td><b>Total weightage</b></td>' +
+      '<td id="pfmqwtot" class="' + (ok ? 'pfqok' : 'pfqbad') + '"><b>' + esc(String(w)) + '%</b></td>' +
+      '<td colspan="5" id="pfmqwsay" class="' + (ok ? 'mute' : 'pfqbad') + '">' +
+        (ok ? 'adds up' : 'has to come to 100% before this can be saved') + '</td>' +
+    '</tr></tfoot></table></div>' +
+    '<p class="mute">For a count, type what each month is asked for; the ' +
+      'quarter is the three added up. For a percentage or a score, type the ' +
+      'one level every month is held to. Finished months are kept as they are.</p>' +
+    '<div class="pfmfoot">' +
+      (spare.length
+        ? '<label>Add a measure <select id="pfmqadd"><option value="">— choose —</option>' +
+          spare.map(function(c){
+            return '<option value="' + esc(c.kpiId) + '">' + esc(c.name) +
+              (c.ofTheChair ? '' : ' (not this chair’s)') + '</option>'; }).join("") +
+          '</select></label> <button class="btn" id="pfmqaddgo">Add</button> '
+        : '') +
+      '<button class="btn primary" id="pfmqsave"' + (ok ? '' : ' disabled') +
+        '>Save the quarter</button>' +
+      (ok ? '' : ' <span class="pfmwhy" id="pfmqwhy">The weights come to ' +
+        esc(String(w)) + '%, and a quarter is saved whole only when they make 100.</span>') +
+    '</div>' +
+    '<div id="pfmqmsg">' + (PF.map.qsays || "") + '</div>';
+}
+
+/* What is sent: the whole list, as plb_sheet_measures_set wants it. For a
+   count the months a manager touched become the quarter and its shares;
+   untouched, nothing about the split is sent and the stored one stands. */
+function pfMapQBody(){
+  return (PF.map.qd || []).map(function(r){
+    var o = { kpiId: r.kpiId, weight: r.weight, direction: r.direction || "" };
+    if (r.kind === "SUM" && (r.touched || r.isNew)) {
+      var t = pfMapQSum(r);
+      o.target = t;
+      if (t > 0) {
+        var sh = r.m.map(function(v){ return Math.round(10000 * (Number(v) || 0) / t) / 100; });
+        /* rounding must not leave the three at 99.99: the remainder goes to
+           the largest month, which it moves least */
+        var big = sh.indexOf(Math.max.apply(null, sh));
+        sh[big] = Math.round((sh[big] + 100 - (sh[0] + sh[1] + sh[2])) * 100) / 100;
+        o.m1 = sh[0]; o.m2 = sh[1]; o.m3 = sh[2];
+      }
+    } else {
+      o.target = r.target;
+    }
+    return o;
+  });
+}
+
+async function pfMapQReload(){
+  var M = PF.map;
+  var r = await Promise.all([
+    plb("/plb/kpi/months?sheet=" + encodeURIComponent(M.data.sheetId)),
+    plb("/plb/sheet/measures?sheet=" + encodeURIComponent(M.data.sheetId))]);
+  if (PF.map !== M) return;                     /* they clicked away */
+  M.q = r[0]; M.qopts = r[1]; M.qd = null;
+}
+
 /* ------------------------------------------------------------ the panel */
 function pfMapping(){
   if (!PF.map) return "";
@@ -2052,8 +2152,7 @@ function pfMapWire(){
       M.tab = b.getAttribute("data-pfmtab"); M.says = ""; M.qsays = "";
       pfRender();
       if (M.tab === "quarterly" && !M.q && (M.data || {}).sheetId) {
-        M.q = await plb("/plb/kpi/months?sheet=" +
-                        encodeURIComponent(M.data.sheetId));
+        await pfMapQReload();
         pfRender();
       }
     };
@@ -2288,11 +2387,98 @@ function pfMapWire(){
         goalKpiId: b.getAttribute("data-pfmqsave"), parts: parts }});
       if (o.error) { M.qsays = msg("bad", o.reason || o.error); pfRender(); return; }
       M.qsub = null;
-      M.q = await plb("/plb/kpi/months?sheet=" + encodeURIComponent(M.data.sheetId));
+      await pfMapQReload();
       M.qsays = msg("ok", o.note || "Saved.");
       pfRender();
     };
   });
+
+  /* ------------------------------------------ the quarter's own boxes
+     Held in the draft as typed, and the totals written in place: a
+     re-render on a keystroke destroys the box being typed into (13 Oct). */
+  function qTotals(){
+    var w = pfMapQWeights(), ok = Math.abs(w - 100) <= 0.001;
+    if (el("pfmqwtot")) {
+      el("pfmqwtot").className = ok ? "pfqok" : "pfqbad";
+      el("pfmqwtot").innerHTML = "<b>" + esc(String(w)) + "%</b>";
+    }
+    if (el("pfmqwsay")) {
+      el("pfmqwsay").className = ok ? "mute" : "pfqbad";
+      el("pfmqwsay").textContent = ok ? "adds up" : "has to come to 100% before this can be saved";
+    }
+    if (el("pfmqsave")) el("pfmqsave").disabled = !ok;
+    if (el("pfmqwhy")) el("pfmqwhy").textContent = ok ? "" :
+      "The weights come to " + w + "%, and a quarter is saved whole only when they make 100.";
+  }
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqw]"), function(inp){
+    inp.oninput = function(){
+      var r = (M.qd || [])[Number(inp.getAttribute("data-pfmqw"))];
+      if (r) { r.weight = inp.value; qTotals(); }
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqm]"), function(inp){
+    inp.oninput = function(){
+      var ij = inp.getAttribute("data-pfmqm").split(":");
+      var r = (M.qd || [])[Number(ij[0])];
+      if (!r) return;
+      r.m[Number(ij[1])] = inp.value; r.touched = true;
+      if (el("pfmqq" + ij[0])) el("pfmqq" + ij[0]).textContent = String(pfMapQSum(r));
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqtg]"), function(inp){
+    inp.oninput = function(){
+      var r = (M.qd || [])[Number(inp.getAttribute("data-pfmqtg"))];
+      if (r) r.target = inp.value;
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqd]"), function(sel){
+    sel.onchange = function(){
+      var r = (M.qd || [])[Number(sel.getAttribute("data-pfmqd"))];
+      if (r) r.direction = sel.value;
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqed]"), function(b){
+    b.onclick = function(){
+      var i = Number(b.getAttribute("data-pfmqed"));
+      M.qed = M.qed === i ? null : i; pfRender();
+    };
+  });
+  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfmqdrop]"), function(b){
+    b.onclick = function(){
+      var i = Number(b.getAttribute("data-pfmqdrop"));
+      var r = (M.qd || [])[i];
+      M.qd = (M.qd || []).filter(function(_, j){ return j !== i; });
+      M.qed = null;
+      M.qsays = r ? msg("warn", esc(r.name) + " is off the list. Nothing is saved until " +
+        "Save the quarter, and the weights have to come back to 100 first.") : "";
+      pfRender();
+    };
+  });
+  if (el("pfmqaddgo")) el("pfmqaddgo").onclick = function(){
+    var id = el("pfmqadd").value;
+    if (!id) return;
+    var c = ((M.qopts || {}).measures || []).filter(function(x){ return x.kpiId === id; })[0] || {};
+    var mo = (((M.q || {}).measures || [])[0] || {}).months || [];
+    M.qd = (M.qd || []).concat([{ kpiId: id, name: c.name, unit: c.unit, kind: c.kind,
+      weight: "", direction: "", suggests: c.suggests || "", target: "",
+      m: ["", "", ""], touched: false, isNew: true, parts: [],
+      months: mo.map(function(x){ return { month: x.month }; }) }]);
+    pfRender();
+  };
+  if (el("pfmqsave")) el("pfmqsave").onclick = async function(){
+    el("pfmqsave").disabled = true;
+    var o = await plb("/plb/sheet/measures", { method: "POST", body: {
+      sheetId: M.data.sheetId, measures: pfMapQBody() }});
+    if (o.error) {
+      M.qsays = msg("bad", (o.fields || []).map(function(f){ return f.reason; })
+        .concat([o.reason || o.error]).filter(Boolean).join(" "));
+      pfRender();
+      return;
+    }
+    await pfMapQReload();
+    M.qsays = msg("ok", o.note || "The quarter is saved.");
+    pfRender();
+  };
 }
 
 /* ------------------------------------------------- the quarter's handlers
@@ -2301,80 +2487,9 @@ function pfMapWire(){
    block drops its wiring with it, rather than leaving live buttons over a
    panel that is not there. */
 function pfQWire(){
-  if (el("pfqedit")) el("pfqedit").onclick = async function(){
-    PF.qedit = !PF.qedit; PF.qsays = "";
-    if (PF.qedit) {
-      pfRender();                                  /* say "Loading…" first */
-      var s = (PF.plb || {}).sheet;
-      PF.qopts = await plb("/plb/sheet/measures?sheet=" + encodeURIComponent(s.id));
-      /* The draft starts as what is on the sheet now, read from the card
-         we already have, so opening the editor asks nothing extra. */
-      PF.qdraft = ((PF.qmonths || {}).measures || []).map(function(m){
-        return { kpiId:m.kpiId, name:m.name, weight:m.weight,
-                 target:m.quarterly, direction:m.direction || "" };
-      });
-    }
-    pfRender();
-  };
-
-  if (el("pfqcancel")) el("pfqcancel").onclick = function(){
-    PF.qedit = false; PF.qdraft = null; PF.qsays = ""; pfRender();
-  };
-
-  if (el("pfqaddgo")) el("pfqaddgo").onclick = function(){
-    var id = el("pfqadd").value;
-    if (!id) return;
-    var c = ((PF.qopts || {}).measures || []).filter(function(m){
-      return m.kpiId === id; })[0] || {};
-    PF.qdraft = (PF.qdraft || []).concat([{ kpiId:id, name:c.name,
-      weight:"", target:"", direction:c.suggests || "" }]);
-    pfRender();
-  };
-
-  Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfqdrop]"), function(b){
-    b.onclick = function(){
-      var i = Number(b.getAttribute("data-pfqdrop"));
-      PF.qdraft = (PF.qdraft || []).filter(function(_, j){ return j !== i; });
-      pfRender();
-    };
-  });
-
-  /* Typing is held in the draft rather than read at save time, so adding a
-     row does not throw away what was typed into the others. */
-  ["pfqw:weight", "pfqt:target", "pfqd:direction"].forEach(function(pair){
-    var attr = pair.split(":")[0], field = pair.split(":")[1];
-    Array.prototype.forEach.call(
-      el("view").querySelectorAll("[data-" + attr + "]"), function(inp){
-        inp.oninput = inp.onchange = function(){
-          var i = Number(inp.getAttribute("data-" + attr));
-          if (PF.qdraft && PF.qdraft[i]) PF.qdraft[i][field] = inp.value;
-          if (field === "weight") pfRender();   /* the running total moves */
-        };
-      });
-  });
-
-  if (el("pfqsave")) el("pfqsave").onclick = async function(){
-    var s = (PF.plb || {}).sheet;
-    var o = await plb("/plb/sheet/measures", { method:"POST", body:{
-      sheetId: s.id,
-      measures: (PF.qdraft || []).map(function(m){
-        return { kpiId:m.kpiId, weight:m.weight, target:m.target,
-                 direction:m.direction || null };
-      })
-    }});
-    if (o.error) {
-      PF.qsays = msg("bad", (o.fields || []).map(function(f){ return f.reason; })
-        .concat([o.reason || o.error]).filter(Boolean).join(" "));
-      pfRender();
-      return;
-    }
-    PF.qsays = msg("ok", o.note);
-    PF.qedit = false; PF.qdraft = null;
-    await pfQLoad();
-    PF.qsays = msg("ok", o.note);
-    pfRender();
-  };
-
+  /* The quarter's measures are changed in Performance mapping -> Quarterly,
+     the one door onto a sheet. The card below is the person's own quarter,
+     and nobody sets their own. */
   Array.prototype.forEach.call(el("view").querySelectorAll("[data-pfqparts]"), function(b){
     b.onclick = function(){
       PF.qparts = b.getAttribute("data-pfqparts"); PF.qsays = ""; pfRender();

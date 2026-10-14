@@ -119,9 +119,12 @@ const FEATURES = [
        + 'the measure a person is reading, not two tabs away. The live '
        + 'database had nought sub-KPIs on it while this was unreachable.' },
 
-  { fn: "pfQEditor", from: "vPerf",
+  { fn: "pfMapQEdit", from: "vPerf",
     needs: ["/plb/sheet/measures"],
-    why: '"still not able to edit/update KPIs of quaterly scorecard"' },
+    why: '"still not able to edit/update KPIs of quaterly scorecard" -- and '
+       + '"M1 | M2 | M3 instead of one target". The quarter is edited in the '
+       + 'mapping panel\'s Quarterly tab, the same door as the month; the '
+       + 'old editor sat on the person\'s OWN quarter card, which nobody may edit.' },
 
   { fn: "pfQWire", from: "vPerf", needs: [],
     why: "a panel whose handlers were never wired is a panel of dead buttons" },
