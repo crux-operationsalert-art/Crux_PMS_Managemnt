@@ -136,7 +136,7 @@ Deno.serve(async (req: Request) => {
       }
       const cfg = await rpc("mail_settings", {});
       const relayUrl = cfg?.mail_relay_url, secret = cfg?.mail_relay_secret;
-      if (!url || !secret) {
+      if (!relayUrl || !secret) {
         return json({ error: "no_relay",
           reason: "Set the relay URL and its secret, then check again." }, 400);
       }
