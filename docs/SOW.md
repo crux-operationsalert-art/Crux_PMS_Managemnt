@@ -12,9 +12,9 @@ Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
 
 **Last reconciled against the live database: 2026-10-14.**
 
-At that reconciliation: migrations applied through **259**; twelve edge
+At that reconciliation: migrations applied through **263**; twelve edge
 functions deployed with their source in the repository; the page published
-from `app_page` `caa1bbcb8d1b` (717,809 bytes); the suite **822 assertions,
+from `app_page` `26a255d0b145` (723,486 bytes); the suite **839 assertions,
 0 failures, nothing skipped**, from a database rebuilt out of `build/schema`
 and nothing else.
 
@@ -120,6 +120,8 @@ PLB figures the scheme already carries. Replacing the client-facing systems.
 | D13 | An escalation about a **person**, not only a case | shipped (251) |
 | D14 | Business Associates, and the file HR holds on one | shipped (252) |
 | D15 | **Performance Mapping**: one person, one panel, one Save | shipped (255–259) |
+| D16 | **The quarter, month by month, in the same panel** — M1 \| M2 \| M3 typed, one door onto a sheet | shipped (261, 262, `pfMapQEdit`) |
+| D17 | **The bonus scores a zero target and a ceiling the right way** | shipped (260) |
 
 ## 7. Methodology
 
@@ -192,7 +194,8 @@ department.
   `current_date > perf_cycle.assign_closes`, for anybody but an
   administrator. Answered once, server-side, by `perf_mapping` (259).
 - The quarterly sheet is governed by neither. It is editable until the sheet
-  **locks**.
+  **locks** — answered by `plb_sheet_measure_options.maySet`, which the
+  Quarterly tab reads and does not work out for itself.
 
 **How a number is worked out.** None of this was rebuilt; all of it was
 reused.
@@ -240,7 +243,7 @@ than a message.
 | `+` adds a sub-KPI inline; the parent greys, locks, reads "Derived from Sub-KPIs" | `pfMapSubForm()` / `pfMapSubRow()`, using `perf_value`'s existing SUM and LEVEL logic |
 | Target = **one** input box, not month-wise boxes | one `data-pfmt` box per row |
 | Total weightage always 100%, shown prominently, saving prevented otherwise | the table foot, and `perf_kpis_set` refuses the save |
-| Quarterly: the same journey and UI, M1 \| M2 \| M3 instead of one target | the Quarterly tab of the same panel, `pfMapQuarterly()` |
+| Quarterly: the same journey and UI, M1 \| M2 \| M3 instead of one target | the Quarterly tab of the same panel, `pfMapQEdit()`. A count types each month; the quarter is the three added up and the stored shares are worked out from them. A level types the one level every month is held to. |
 | Past months greyed, read-only, showing the actual achievement | `pfMapQCell()` — the real monthly target, what was filed, and whether the two agree with the quarter's split |
 | Do **not** blindly rebuild | no table, column or constraint was added for any of it |
 
@@ -262,25 +265,30 @@ than a message.
 | **256** | The October window runs to the **15th**, through `perf_cycle_extend` so that who reopened it and why is recorded. `crux-perf-reminders` and `crux-matrix-nudge` are paused; `crux-mail` is deliberately left running — it is the sender, not a mailer, and stopping it would stop activation codes too. |
 | **257** | `perf_kpis_set` — the monthly twin of `plb_sheet_measures_set`. It validates the whole list and then writes row by row through `perf_assign`, `perf_assign_edit`, `perf_target_set` and `perf_assign_remove`; it writes nothing itself. `perf_mapping` returns the tree plus the quarter, the sheet id and the rules, so the page does not re-derive them. |
 | **258** | A sub-KPI can be renamed. `perf_assign_edit` refused to rename any part; it now refuses only `CLIENT`/`BRANCH`/`PLACE` — one client's share of a measure is not a measure — and a renamed `OTHER` part moves both its name and its label. |
+| **260** | The quarterly bonus (`plb_compute`) scores a ceiling, and a target of zero, through `perf_ratio`. It had been dividing actual by target for every measure: one zero target voided the whole sheet, and 89 of 201 sheets were paid more for a worse ceiling number (up to 9.78 points). An ordinary measure keeps its old arithmetic to the last digit. `plb_month_suggest` stops reading 0 as "not set". |
+| **261** | A quarterly save that does not mention a measure's direction keeps it (the old editor wiped every override on every save); `plb_kpi_months` returns `direction` and `suggests`. |
+| **262** | An unphased quarter (shares 0/0/0 — the columns are NOT NULL) is spread evenly; it was being read as nought a month, and every month flagged "doesn't match the quarter". |
+| **263** | The fourteen demo passwords from 30 Sep are cleared, by address. Google sign-in and Act as are unaffected. |
 | **259** | A shut month stops offering what it will refuse. `perf_mapping` answers `mayEdit` and `assignCloses`; the panel's three monthly checks read it, and a shut month says so where Save would have been, with the date and who can reopen it. |
 
 ## 10. What is left in the design
 
-Nothing here is broken. These are the places where what is live is narrower
-than the specification, with what it would take to close each one.
-
-| | What is not done | Why it matters | What it needs |
-|---|---|---|---|
-| **L1** | **M1 \| M2 \| M3 are shown, not typed.** The Quarterly tab draws the three months — the real target, what was filed, whether they agree with the quarter — but the phasing still comes from `plb_month_suggest` and `m1_share`/`m2_share`/`m3_share`. There is no box to type a month's share into. | The specification says "instead of one target field, show M1 \| M2 \| M3", and a manager who wants a back-loaded quarter cannot say so from the panel. | Three number boxes on `pfMapQRow` for the unfinished months, posting shares to `plb_kpi_months_set` (new), validating that the three come to the quarter's target. Past months stay read-only — that part is done. |
-| **L2** | **The quarter is edited in two places.** The Quarterly tab of the mapping panel reads and adds sub-KPIs; changing which measures are on the sheet, and what each is worth, is still the *Change the measures* card under the quarter card on the appraisal screen (`pfQEditor`). | "Use the exact same journey and UI structure as Monthly." Two doors to one sheet is the confusion the rebuild was for. | Move `pfQEditor`'s list into the Quarterly tab's table foot, as `pfMapFoot` is for the month, and post the same `/sheet/measures`. `pfQEditor` then goes, as `pfEditForm` and `pfMeasureAdmin` did. |
-| **L3** | **The old bulk path still exists beside the panel.** `pfForm` (set one measure across several people), `pfTargets`/`pfTargetPanel`/`pfSplitBlock` (the manager's own cascade) are still on the screen. | They are not duplicates of the panel — they do a job the panel does not, one measure across a team — but they are the last of the "excessive configuration screens" the owner asked to be thinned. | A decision, not code: keep them as the bulk tool and label them as one, or fold "give this measure to several people" into the panel as a second step. **Owner's call — see Q5.** |
-| **L4** | **Sub-KPIs are built, reachable and barely used.** One sub-KPI exists in the live database. | The feature was unreachable for a fortnight and nobody has been told it is there. | Nothing in the code. A line in the help panel and a note to managers. |
-| **L5** | **The morning mailers are paused and nothing says when they resume.** `crux-perf-reminders` and `crux-matrix-nudge` are `active = false`. | They were paused because they nagged about a window the screen would not let anybody act on. That reason has now gone (259). | `select cron.alter_job(jobid, active := true)` for both, when the owner wants them back. Migration 256 names them. |
-| **L6** | **Six people have no manager and three no designation.** | `perf_rel` is the whole permission model and it is built on `manager_id`; a person with no manager has nobody who may set their measures. | Data, in **All people**, which exists for exactly this. |
+| | Where it stands |
+|---|---|
+| **L1** | **Done, 14 Oct.** M1 \| M2 \| M3 are typed on the Quarterly tab. No new function was needed — `plb_sheet_measures_set` (255) already took `m1..m3` and validated them as a set. |
+| **L2** | **Done, 14 Oct.** The quarter has one door: the Quarterly tab. `pfQEditor` is deleted; it sat on the person's *own* quarter card, which nobody may edit. |
+| **L3** | **Decided (Q5): the bulk path stays, as the bulk path**, with a sentence pointing one person at Performance mapping. |
+| **L4** | **Done.** The help panel says how to reach Performance mapping and what `+` does. |
+| **L5** | **Not done, deliberately.** This section used to say the mailers were paused "because they nagged about a window" and that 259 removed the reason. Migration 256 says otherwise: they were paused on the **owner's instruction** — "pause the daily morning mailers as of now". Turning them back on is the owner's call. |
+| **L6** | Of the four people with no manager, two are right (Arun Bodupali, the MD, at the top; the service account). Two are not people: **`Migration:M1`** (no address) and **`cruxbposervicespvtltd@gmail.com`**, a shared mailbox typed as an employee. Data, in **All people**. |
+| **L7** | **New.** `perf_accrual_kind` reads "cost per case", "working days to close" and DSO as **counts** from their unit text, so a quarter adds three months of them together. They are levels. A registry classification — the owner's or the one-up manager's to confirm. |
+| **L8** | **New.** "Issues resolved below this chair" is registered **lower-is-better**. Resolving more below a chair reads as better. One sheet carries it; direction is the one-up manager's per KPI (253). |
+| **L9** | From the 30 Sep demo page, still true: **531 of the people rows are client-bank contacts**. Removing them was left for the owner's go-ahead. |
 
 ## 11. Open items the owner must apply
 
-**None.** For the first time in this engagement the list is empty.
+**Nothing to apply.** Every migration through 263 is live. What is left is
+decisions, not statements: L5 (the mailers), L6, L7, L8 and L9 above.
 
 Migration **254** — removing `perf_assignment_once_top_old` — was the last
 one, and it is **done**: the live database now carries one index,
@@ -305,6 +313,7 @@ apply itself.
 | R4 | 6 of 108 staff have no manager, 3 no designation | Not a code defect, but `perf_rel` is built on `manager_id`. **All people** exists to find and fix it. |
 | R5 | Aniket Chalke has **42** direct reports, and the reporting line has **six** roots — six people with no manager at all | A data shape nobody chose. Worth the owner's decision (Q1). |
 | R6 | **A check that cannot run is not a check** | `window_check.mjs` threw a `ReferenceError` before its first assertion for six days, because its harness named a renderer that had been deleted — and the suite counted that as one failure among hundreds while the thing it guarded quietly stopped being true. `run.sh` now exits non-zero on a **skipped** check as well as a failed one, and the whole suite is run from a clean rebuild before every commit. |
+| R8 | **260 moved Q3 bonus figures** on 89 sheets, because their ceiling measures are now scored the right way up (Manish Shukla ₹2,01,476 → ₹1,99,155; Virendra Pal ₹2,32,693 → ₹2,36,817; Anuja Adhali unchanged) | Intended — it is the owner's 7 Oct rule reaching the one scorer it had missed. Nothing is stored: reverting `plb_compute` reverts every figure. The rupee targets on the demo sheets remain placeholders. |
 | R7 | A feature can be published and unreachable | Four times in one fortnight. `reach_check.mjs` now asserts that 15 named features are reachable **from the screen the owner is told to open**. Its own limitation is documented in the file: reachability is name-occurrence, not control flow, so it errs towards "reachable" and will miss dead code — it cannot raise a false alarm, and it cannot catch tidiness. |
 
 ## 13. Validation and acceptance
@@ -313,13 +322,13 @@ apply itself.
 
 ```
 TSLIB=/path/to/typescript ./build/test/run.sh
-== 822 passed, 0 failed
+== 839 passed, 0 failed
 ```
 
 | | |
 |---|---|
-| SQL | **593 assertions over 27 files** |
-| JavaScript | **10 checks, 229 assertions** — `driver` 10, `crux_scope` 11, `linkify` 14, `forget` 15, `reach` 15, `help` 20, `okr` 22, `today` 28, `window` 35, `list` 59 |
+| SQL | **596 assertions over 27 files** |
+| JavaScript | **11 checks, 243 assertions** — `driver` 10, `crux_scope` 11, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `help` 20, `okr` 22, `today` 28, `window` 35, `list` 59 |
 | Policy | `check_access_matches_nav.py` — the navigation and the database agree on all **262** combinations (8 levels × 29 screens, 30 chair titles) |
 
 - **The published page carries the change.** After every publish the new
@@ -360,6 +369,11 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | 2026-10-13 | **One keystroke does not redraw the page** | `pfRender()` rewrites `el("view").innerHTML` whole, destroying the input being typed into. Totals are recomputed in place. |
 | 2026-10-14 | **The screen asks the server what the clock says; it does not work the date out itself** | Two copies of a rule is how the screen and the server come to disagree. `perf_mapping` answers `mayEdit` with the writers' own predicate (259). |
 | 2026-10-14 | **A skipped check fails the suite** | `window_check` had been throwing for six days and the suite reported it as one failure among hundreds, while the promise it guarded silently lapsed. |
+| 2026-10-14 | **Q4: M1/M2/M3 are typed by the manager** — as month targets for a count, one level for a percentage | The owner's own specification: "M1 \| M2 \| M3 instead of one target field". Shares are derived, so the months and the quarter cannot disagree. |
+| 2026-10-14 | **Q5: the bulk path stays**, labelled | Giving one measure to several people is a job the single-person panel does not do. |
+| 2026-10-14 | **The zero-target and direction rules reach the bonus** (260) | The owner ruled on both on 7 Oct; the 30 Sep page had left the bonus side "for the owner's say". An ordinary measure keeps its arithmetic exactly, so nothing moves by rounding. |
+| 2026-10-14 | **The morning mailers stay paused** | They were paused on the owner's instruction, not because of the window. The SOW's earlier reason was wrong. |
+| 2026-10-14 | **The demo passwords are cleared by address** (263) | The demo page said to clear them when the demo was over; it was over on 30 Sep. Its own one-liner cleared *every* password, which would also take any set since for a real reason. |
 | 2026-10-14 | **Scope is decided by one function, not restated in the edge function** | `/api/ogl/points`, `/arbiter` and `/pause-preview` called functions that take no caller, so anybody holding an assignment id could read another chair's case parties and addresses. All three now ask `ogl_detail` first and return its refusal unchanged (`crux` v8). |
 
 ## 15. Open questions
@@ -368,9 +382,11 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 |---|---|---|
 | Q1 | Aniket Chalke has 42 direct reports, and six people sit at the top of the line with no manager above them. Is that the intended shape? | No — but it decides L6 |
 | Q2 | Should the KPI window be 5 working days, or longer while the tool is being rolled out? October is extended to the 15th; `perf_cycle_extend` makes either possible. | No |
-| Q3 | **When do the morning mailers come back on?** They were paused because they nagged about a window nobody could act on; that reason has gone. | No — L5 |
-| Q4 | **Should M1/M2/M3 be typed by the manager**, or keep coming from `plb_month_suggest` with the panel only showing the result? | Decides L1 |
-| Q5 | **Does the bulk path stay?** "Give this measure to several people at once" is a real job the single-person panel does not do. Keep it as a labelled bulk tool, or fold it into the panel? | Decides L3 |
+| Q3 | **When do the morning mailers come back on?** They were paused on your instruction. | No — L5 |
+| Q4 | ~~Should M1/M2/M3 be typed by the manager?~~ **Answered from the specification: yes** (14 Oct). | — |
+| Q5 | ~~Does the bulk path stay?~~ **Decided: yes, labelled** (14 Oct). | — |
+| Q6 | Are "cost per case", "days to close" and DSO levels rather than counts? (L7) | No |
+| Q7 | Go-ahead to remove the 531 client-bank contacts from `person`? (L9) | No |
 
 ## 16. Status and next actions
 
@@ -378,24 +394,17 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 
 | | |
 |---|---|
-| Migrations | everything through **259**. `plb_goal_kpi` is a view; `plb_goal_kpi_all` holds the rows. One index on `perf_assignment`, narrow, the old one gone |
+| Migrations | everything through **263** |
 | Edge functions | `crux` v8, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v5, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
-| Published page | `app_page` `caa1bbcb8d1b`, 717,809 bytes. Performance Mapping, the quarterly card, sub-KPIs, the measure editor and the shut-month notice all on Performance & appraisal |
-| Suite | **822 passed, 0 failed, nothing skipped**, from a clean rebuild |
+| Published page | `app_page` `26a255d0b145` (723,486 bytes). Performance Mapping with the quarter editable month by month; the shut-month notice; no second quarter editor |
+| Suite | **839 passed, 0 failed, nothing skipped**, from a clean rebuild |
 | October | `assign_closes` **2026-10-15**, `entry_closes` 2026-11-06. 101 people carry measures |
-| Mailers | `crux-perf-reminders` and `crux-matrix-nudge` **paused**; `crux-mail`, `crux-tick`, `crux-penalty`, `crux-task-sweep`, `crux-request-strikes`, `crux-wa-bridge`, `crux-whatsapp` running |
-| Owner's list | **empty** |
+| Mailers | `crux-perf-reminders` and `crux-matrix-nudge` **paused, on the owner's instruction**; the rest running |
+| Demo passwords | **none set** (263) |
+| Owner's list | decisions only: Q3, Q6, Q7, and the two non-person rows in L6 |
 
 **Next actions, in order.**
 
-1. **The owner answers Q4 and Q5.** They are the only two things standing
-   between §10 and a finished design, and both are product decisions rather
-   than engineering ones.
-2. **L1, if Q4 says so**: three month boxes on the quarterly row and a
-   `plb_kpi_months_set` behind them.
-3. **L2**: fold `pfQEditor` into the Quarterly tab so the quarter has one
-   door, as the month does.
-4. **L5**: turn the two morning mailers back on, now that the screen no
-   longer offers what the clock refuses.
-5. **L6**: six people without a manager, in **All people**. Until that is
-   done, those six have nobody the tool will let set their measures.
+1. **The owner answers Q3, Q6, Q7.** Each is a one-line answer; none needs engineering first.
+2. **L6**: retire `Migration:M1` and re-type the shared mailbox, in **All people**.
+3. **L7**: once Q6 is answered, mark the level measures as levels in the registry.
