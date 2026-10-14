@@ -41,7 +41,7 @@ const esc = (s) => String(s ?? "")
 const harness = `
 ${src}
 return { PF, pfSetWindowOpen, pfMayExtend, pfShutHere, pfReopenForm,
-         pfSaid, pfTeamSection, pfPersonPanel, pfMeasureAdmin, pfWatchBlock,
+         pfSaid, pfTeamSection, pfPersonPanel, pfMapMayEdit, pfWatchBlock,
          setMe: function(x){ me = x; } };
 `;
 let me = null;
@@ -58,7 +58,7 @@ const mod = new Function(
   (n) => "₹" + n, (s) => String(s), () => {}, () => "", () => {}, null);
 
 const { PF, pfSetWindowOpen, pfMayExtend, pfShutHere, pfReopenForm,
-        pfSaid, pfPersonPanel, pfMeasureAdmin, pfTeamSection, setMe } = mod;
+        pfSaid, pfPersonPanel, pfMapMayEdit, pfTeamSection, setMe } = mod;
 
 const OPEN  = { id: "c1", period_start: "2026-10-01", assign_closes: "2026-10-08",
                 entry_closes: "2026-11-06", assign_open: true, entry_open: true };
@@ -116,30 +116,58 @@ ok("and tells HR they can do it themselves",
    /You can reopen the month/.test(pfShutHere("x")));
 
 // ------------------------------------------ every KPI control reads the rule
-setMe(MANAGER); PF.cycle = SHUT;
-PF.whoTree = { person: { name: "Manish Shukla" },
-               measures: [{ assignmentId: "a1", name: "Cases", unit: "COUNT" }] };
-const panel = pfPersonPanel();
-ok("with the window shut, Set a KPI is not offered",
-   !panel.includes('id="pfadd"'), panel.slice(0, 120));
-ok("and the reason is there instead", panel.includes("pfshut"));
+// The person panel IS the Performance mapping panel now (pfMeasureAdmin and
+// its Set-a-KPI button were deleted with the journey it replaced). Whether
+// its controls are offered is answered by the SERVER (migration 259,
+// perf_mapping.mayEdit), with the same test the writers refuse on. What is
+// asserted here is that the screen follows that answer and nothing else.
+const ROWS = [{ assignmentId: "a1", name: "Cases", unit: "COUNT", weight: 100,
+                target: 10, cadence: "MONTHLY", parts: [] }];
+function mapping(maySet, mayEdit) {
+  PF.map = { tab: "monthly", draft: ROWS.map((r) => Object.assign({}, r)),
+             data: { maySet, mayEdit, rel: maySet ? "manage" : "watch",
+                     person: { name: "Manish Shukla" }, measures: ROWS,
+                     rules: { min: 3, max: 5, cap: 5, count: 1 } },
+             hist: null, histOpen: false, row: null, sub: null, says: "" };
+  return pfPersonPanel();
+}
+const CONTROLS = ["data-pfmw=", "data-pfmt=", "data-pfmedit", "data-pfmrm",
+                  "data-pfmsub", 'id="pfmsave"'];
 
-const admin = pfMeasureAdmin(PF.whoTree.measures);
-ok("nor Edit", !admin.includes("data-pfedit"));
-ok("nor Remove", !admin.includes("data-pfrm"));
-ok("and that card says why too", admin.includes("pfshut"));
+setMe(MANAGER); PF.cycle = SHUT;
+let shut = mapping(true, false);
+ok("with the window shut, the mapping offers no box, Edit, Remove, + or Save",
+   CONTROLS.every((c) => !shut.includes(c)),
+   CONTROLS.filter((c) => shut.includes(c)).join(","));
+ok("and the reason is there instead, where Save would have been",
+   shut.includes("pfshut") && shut.includes("2026-09-07"));
 
 PF.cycle = OPEN;
-ok("with the window open, Set a KPI is offered again",
-   pfPersonPanel().includes('id="pfadd"'));
-ok("and so are Edit and Remove",
-   pfMeasureAdmin(PF.whoTree.measures).includes("data-pfedit") &&
-   pfMeasureAdmin(PF.whoTree.measures).includes("data-pfrm"));
+const open = mapping(true, true);
+ok("with the window open, all of them are offered again",
+   CONTROLS.every((c) => open.includes(c)),
+   CONTROLS.filter((c) => !open.includes(c)).join(","));
+ok("and no shut note is drawn", !open.includes("pfshut"));
 
+// The administrator's exception lives in perf_mapping, which answers
+// mayEdit true for them after the window. The screen does not repeat it.
 setMe(ADMIN); PF.cycle = SHUT;
-ok("an administrator is still offered all three outside the window",
-   pfPersonPanel().includes('id="pfadd"') &&
-   pfMeasureAdmin(PF.whoTree.measures).includes("data-pfrm"));
+ok("an administrator past the window is offered what the server says",
+   mapping(true, true).includes('id="pfmsave"'));
+
+setMe(MANAGER);
+const reader = mapping(false, false);
+ok("somebody who only reads is told whose they are, not that the month is shut",
+   !reader.includes("pfshut") && CONTROLS.every((c) => !reader.includes(c)));
+
+const mayBody = (src.match(/function pfMapMayEdit\(\)\{[\s\S]*?\n\}/) || [""])[0];
+ok("the mapping asks the server and does not test the clock for itself",
+   /mayEdit/.test(mayBody) && !/assign_open|assign_closes|app_role/.test(mayBody),
+   mayBody.slice(0, 120));
+ok("and every monthly control reads that one answer",
+   (src.match(/var may = pfMapMayEdit\(\);/g) || []).length === 3 &&
+   !/PF\.map\.data\.maySet;/.test(src));
+PF.map = null;
 
 // ------------------------------------- and so does the live team card
 // This is the one that caught the author out: there used to be a SECOND,

@@ -40,6 +40,14 @@ begin
     values ('BA Other','ba.o@example.invalid','VIEWER') returning id into p_other;
 
   -- --------------------------------------------- the title, and only the title
+  -- The designation is a ROW 252 inserts, and the suite rebuilds from a
+  -- schema snapshot that carries no rows -- so this file went red on a clean
+  -- build while passing against live. The test brings its own copy, in 252's
+  -- exact words, and is rolled back with everything else.
+  insert into designation (title, seniority, is_desk_head)
+  select 'Business Associate', 45, false
+   where not exists (select 1 from designation
+                      where lower(btrim(title)) = 'business associate');
   select id into v_d from designation where lower(btrim(title)) = 'business associate';
   if v_d is null then
     raise exception 'FAIL  there is no Business Associate designation';

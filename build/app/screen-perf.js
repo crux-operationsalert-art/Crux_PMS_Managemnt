@@ -1689,7 +1689,7 @@ function pfMapHistory(){
    parent uses: perf_assign_edit for the name, perf_target_set for the
    target, which is also what divides it back across anything beneath. */
 function pfMapSubRow(parent, c, i){
-  var may = PF.map.data.maySet;
+  var may = pfMapMayEdit();
   var open = PF.map.subEdit === c.assignmentId;
   return '<tr class="pfmsub">' +
     '<td><span class="pfmsubmark">&#8627;</span> ' + esc(c.split || c.name) + '</td>' +
@@ -1742,7 +1742,7 @@ function pfMapSubForm(m){
    anybody to a form. */
 function pfMapRow(m, i){
   var derived = (m.parts || []).length > 0;
-  var may = PF.map.data.maySet;
+  var may = pfMapMayEdit();
   var open = PF.map.row === i;
   var pct = m.pct === null || m.pct === undefined ? null : m.pct;
 
@@ -1797,10 +1797,19 @@ function pfMapRow(m, i){
 /* ------------------------------------------------------- MONTHLY
    "Target = ONE target input box. Do not create unnecessary
     month-wise target boxes for Monthly." */
+/* Whether the monthly controls are offered. Not worked out here: the
+   server answers it (259) with the same test perf_assign, perf_assign_edit
+   and perf_assign_remove refuse on -- your report, AND the month's window
+   still open or you are an administrator. Asking maySet alone offered a
+   whole scorecard of boxes after the window shut, and refused the Save. */
+function pfMapMayEdit(){
+  return !!(PF.map && PF.map.data && PF.map.data.mayEdit);
+}
+
 function pfMapMonthly(){
   var d = PF.map.draft || [], r = (PF.map.data || {}).rules || {};
   var w = pfMapWeights(), ok = Math.abs(w - 100) <= 0.1;
-  var may = PF.map.data.maySet;
+  var may = pfMapMayEdit();
 
   return pfMapHistory() +
     '<div class="scroll"><table class="pfmt"><thead><tr>' +
@@ -1818,7 +1827,8 @@ function pfMapMonthly(){
         (ok ? 'adds up' : 'has to come to 100% before this can be saved') +
       '</td>' +
     '</tr></tfoot></table></div>' +
-    (may ? pfMapFoot(d, r) : '') +
+    (may ? pfMapFoot(d, r)
+         : PF.map.data.maySet ? pfShutHere("Changing these KPIs") : '') +
     '<div id="pfmmsg">' + (PF.map.says || "") + '</div>';
 }
 

@@ -21,7 +21,7 @@ begin;
 
 do $t$
 declare
-  p_boss uuid; p_rep uuid; v_cycle uuid;
+  p_boss uuid; p_rep uuid; p_admin uuid; v_cycle uuid;
   k1 uuid; k2 uuid; k3 uuid; k4 uuid; k5 uuid; k6 uuid; kl uuid;
   a1 uuid; a2 uuid; a3 uuid; ap uuid; c1 uuid; c2 uuid;
   o jsonb; n int; v numeric; v_list jsonb;
@@ -329,6 +329,43 @@ begin
   end if;
   raise notice 'PASS  one read gives the whole scorecard, and only the manager '
                'is offered the controls';
+
+  -- ----------------------------------------------- the offer follows the clock
+  -- 259. maySet is "is this your report"; whether a Save will land is also
+  -- the window, which perf_assign, _edit and _remove refuse on. The mapping
+  -- must answer the second question with the writers' own test.
+  update perf_cycle set assign_closes = current_date - 1 where id = v_cycle;
+  o := perf_mapping(p_boss, p_rep, v_cycle);
+  if not coalesce((o->>'maySet')::boolean, false)
+     or coalesce((o->>'mayEdit')::boolean, true) then
+    raise exception 'FAIL  a shut month still offers the manager the controls: '
+                    'maySet=%, mayEdit=%', o->'maySet', o->'mayEdit';
+  end if;
+  select jsonb_agg(jsonb_build_object('assignmentId', a.id, 'weight', a.weight_pct,
+                                      'target', coalesce(a.target_value,0)))
+    into v_list from perf_assignment a
+   where a.cycle_id = v_cycle and a.person_id = p_rep and a.part_of_id is null
+     and a.state <> 'WITHDRAWN';
+  if perf_kpis_set(p_boss, v_cycle, p_rep, v_list)->>'error'
+     is distinct from 'window_closed' then
+    raise exception 'FAIL  the mapping and the write disagree about a shut month: %',
+                    perf_kpis_set(p_boss, v_cycle, p_rep, v_list);
+  end if;
+  insert into person (full_name, work_email, app_role)
+    values ('MK Admin','mk.admin@example.invalid','ADMIN') returning id into p_admin;
+  if not coalesce((perf_mapping(p_admin, p_rep, v_cycle)->>'mayEdit')::boolean, false) then
+    raise exception 'FAIL  an administrator is refused a shut month, which '
+                    'perf_assign itself allows them';
+  end if;
+  update perf_cycle set assign_closes = current_date + 30 where id = v_cycle;
+  if not coalesce((perf_mapping(p_boss, p_rep, v_cycle)->>'mayEdit')::boolean, false) then
+    raise exception 'FAIL  an open month does not offer the manager the controls';
+  end if;
+  if coalesce((perf_mapping(p_rep, p_rep, v_cycle)->>'mayEdit')::boolean, false) then
+    raise exception 'FAIL  a person is offered their own controls in an open month';
+  end if;
+  raise notice 'PASS  the mapping offers the controls only when a save would '
+               'land, and the write agrees';
 
   raise notice '--- the monthly scorecard: every assertion passed ---';
 end $t$;
