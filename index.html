@@ -386,6 +386,15 @@ input.pbtg,input.pbbl{width:92px}
 .mxlv td{padding:3px 8px 3px 0;border:none;vertical-align:top}
 .mxl{width:28px;color:var(--mute);font-variant-numeric:tabular-nums}
 #mxperiod{width:auto;min-width:170px}
+/* the two mail switches (270) */
+.mpwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:16px 0}
+.mpwrap .card{margin:0}
+.mpcard p{margin:0 0 10px}
+.mpcard h2 + p{margin-top:12px}
+.mpcard button{margin:4px 15px 14px}
+.mpstate{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;vertical-align:middle}
+.mppaused .mpstate{background:var(--gold-bg);color:var(--gold-ink)}
+.mpon .mpstate{background:var(--green-bg);color:var(--body)}
 .hrawarn{color:var(--gold-ink);font-size:12px;line-height:1.45}
 /* --------------------------------- the three states, as colour
    on target / part of the way / behind, used by the tiles, the
@@ -1936,7 +1945,8 @@ var HELP = {
   matrix: { t:"Escalation matrix",
     w:"The monthly statement that goes to each client, naming who to call.",
     s:["Check the contacts, then despatch.",
-       "What went out is kept. A contact changed afterwards does not rewrite last month."] },
+       "What went out is kept. A contact changed afterwards does not rewrite last month.",
+       "While the administrator has client mail paused, nothing can be sent, and the Send button says so."] },
 
   visits: { t:"Visits & claims",
     w:"Where you went, and what it cost.",
@@ -1968,6 +1978,12 @@ var HELP = {
   profile:{ t:"My profile", w:"Your own record, and your sign-in.",
     s:["Change your password here.",
        "Anything you cannot edit is held by Human Resources."] },
+
+  mail:   { t:"E-mail", w:"How the tool's messages leave the building, and the two switches that hold them.",
+    s:["Two switches: internal mail, and the client escalation matrix. Each pauses only what it says.",
+       "Paused is held, not thrown away. Messages wait in the queue with their WhatsApp copies, and the card counts them.",
+       "Unpausing internal mail sends what has been waiting. The card asks first, and says how much.",
+       "A test you send yourself still goes, so the route can be checked before it is opened."] },
 
   config: { t:"Settings", w:"How the tool behaves for everybody.",
     s:["These are company-wide. A change here is felt by every user.",
@@ -10286,6 +10302,9 @@ async function mxCardLoad(){
   var late = m.clients.filter(function(c){ return !c.sentAt; });
   box.innerHTML = '<div class="card"><h2>This month’s escalation matrix</h2>' +
     '<div class="mxline' + (late.length ? ' due' : ' done') + '">' + esc(m.says) + '</div>' +
+    (m.clientMailPaused
+      ? '<div class="mxline">Sending to clients is paused by the administrator.</div>'
+      : '') +
     (late.length
       ? '<ul class="mxlist">' + late.slice(0, 6).map(function(c){
           return '<li>' + esc(c.name) + ' <span class="mute">' + esc(c.ready) +
@@ -10372,6 +10391,10 @@ function mxPack(){
   var held = p.heldBack || [];
   var picked = rec.filter(function(r){ return MX.to[r.email]; }).length;
   var may = (MX.month || {}).maySend;
+  /* 270: the administrator's switch. matrix_send refuses while it is on, so
+     the button is not offered -- a Send that is always refused is worse than
+     no Send -- and the reason is said where the button would be. */
+  var paused = (MX.month || {}).clientMailPaused;
 
   return '<div class="mxpack">' +
     '<div class="mxsays">' + esc(p.says) + '</div>' +
@@ -10399,7 +10422,12 @@ function mxPack(){
       : '<div class="empty">Nothing is complete enough to send.</div>') +
 
     '<div class="plbar">' +
-      (may
+      (may && paused
+        ? '<button class="btn primary" disabled>Sending is paused</button>' +
+          '<span class="mute">Client escalation-matrix mail is paused by the ' +
+          'administrator (Messaging, E-mail). Nothing can be sent to a client ' +
+          'until it is switched back on.</span>'
+        : may
         ? '<button class="btn primary" id="mxsend"' +
             (picked && ready.length ? '' : ' disabled') + '>' +
             (picked && ready.length
@@ -10792,6 +10820,101 @@ async function resetPanel(){
 /* ------------------------------------------------------------------ mail */
 /* The one screen where a secret goes in. Nothing here ever reads one back:
    the status says whether a key is set, never what it is. */
+/* ================================================ MAIL-SWITCHES (270)
+   The two mail switches, at the top of Messaging, E-mail.
+
+   "Add that pause and unpause button for admin ... And same but different
+   button for normal internal mails too, as tool is not 100% live" -- the
+   owner, 16 Oct.
+
+   Two switches, not one, because they stop different things: the client
+   escalation matrix is a letter to a bank, and internal mail is everything
+   the tool writes to staff. Pausing one must never quietly pause or release
+   the other.
+
+   Nothing is decided here. The database holds the messages back
+   (mail_held, read by outbox_claim and both WhatsApp claims) and refuses
+   the matrix (matrix_send); this card only shows each switch, says what it
+   is holding, and asks before releasing it -- because unpausing internal
+   mail sends whatever has been waiting, and the card must say how much
+   before it is pressed, not after.                                        */
+var MP_KINDS = [
+  { kind: "internal", title: "Internal mail",
+    what: "Everything the tool writes to staff: welcome letters, daily-count " +
+          "reminders, overdue notices and escalations. While paused, each message " +
+          "waits in the queue, intact, and its WhatsApp copy waits with it. A test " +
+          "you send yourself from this screen still goes." },
+  { kind: "client", title: "Client escalation matrix",
+    what: "The monthly letter to client branches saying who to call at which " +
+          "level. While paused, nobody can send it and nothing reaches a client." }
+];
+
+/* "12 e-mails and 721 WhatsApp copies", or "" when nothing is waiting. */
+function mpHeld(s){
+  s = s || {};
+  var parts = [];
+  if (s.heldMail) parts.push(s.heldMail + " e-mail" + (s.heldMail === 1 ? "" : "s"));
+  if (s.heldWhatsapp) parts.push(s.heldWhatsapp + " WhatsApp cop" +
+                                 (s.heldWhatsapp === 1 ? "y" : "ies"));
+  return parts.join(" and ");
+}
+
+/* A switch the server did not describe is drawn as paused: the database
+   reads a missing switch as paused, and the screen must not say otherwise. */
+function mpIsPaused(s){ return !s || s.paused !== false; }
+
+function mpCard(m){
+  var p = m && m.pause;
+  if (!p) return "";
+  return '<div class="mpwrap">' + MP_KINDS.map(function(k){
+    var s = p[k.kind] || {}, paused = mpIsPaused(s), held = mpHeld(s);
+    return '<div class="card mpcard ' + (paused ? 'mppaused' : 'mpon') + '">' +
+      '<h2>' + esc(k.title) + ' <span class="mpstate">' +
+        (paused ? 'Paused' : 'Sending') + '</span></h2>' +
+      '<p class="mute">' + esc(k.what) + '</p>' +
+      '<p>' + esc(paused
+          ? (held ? held + " waiting. They go when this is unpaused."
+                  : "Nothing is waiting.")
+          : "On. New messages go out within a minute.") + '</p>' +
+      (s.since ? '<p class="mute">Last changed ' + esc(when(s.since)) +
+                 (s.by ? ' by ' + esc(s.by) : '') + '.</p>' : '') +
+      '<button' + (paused ? '' : ' class="ghost"') +
+        ' data-mpkind="' + k.kind + '" data-mpto="' + (paused ? 'on' : 'off') + '">' +
+        (paused ? 'Unpause ' : 'Pause ') + esc(k.title.toLowerCase()) + '</button>' +
+      '<div id="mpmsg-' + k.kind + '"></div></div>';
+  }).join("") + '</div>';
+}
+
+/* What unpausing will release, in the words of the confirm box. */
+function mpConfirm(kind, s){
+  if (kind === "client") {
+    return "Unpause client escalation-matrix mail?\n\nOperations will be able to " +
+           "send the monthly matrix to client branches.";
+  }
+  var held = mpHeld(s);
+  return "Unpause internal mail?\n\n" +
+         (held ? held + " waiting will start going out within a minute."
+               : "New messages will go out within a minute.");
+}
+
+function mpWire(m, reload){
+  Array.prototype.forEach.call(document.querySelectorAll("[data-mpkind]"), function(b){
+    b.onclick = async function(){
+      var kind = b.getAttribute("data-mpkind");
+      var on = b.getAttribute("data-mpto") === "on";
+      if (on && !confirm(mpConfirm(kind, ((m && m.pause) || {})[kind]))) return;
+      b.disabled = true;
+      var out = await crux("/api/mail/pause", { method: "POST",
+                                                body: { kind: kind, paused: !on } });
+      b.disabled = false;
+      var box = el("mpmsg-" + kind);
+      if (out.error) { if (box) box.innerHTML = msg("bad", out.reason || out.error); return; }
+      if (box) box.innerHTML = msg("ok", out.note || "Done.");
+      setTimeout(reload, 900);
+    };
+  });
+}
+
 async function vMail(){
   var m = await crux("/api/mail");
   var providers = [["","Not set"],["apps_script","Apps Script relay (recommended)"],
@@ -10803,7 +10926,7 @@ async function vMail(){
     'This is how it gets out of the building.</p>' +
 
     '<div class="tiles" style="margin:16px 0">' +
-      '<div class="tile"><b>' + (m.ready ? "Ready" : "Not sending") + '</b><span>status</span></div>' +
+      '<div class="tile"><b>' + (mpIsPaused(m.pause && m.pause.internal) ? "Paused" : m.ready ? "Ready" : "Not sending") + '</b><span>status</span></div>' +
       '<div class="tile"><b>' + esc(m.provider || "&mdash;") + '</b><span>provider</span></div>' +
       '<div class="tile"><b>' + esc(m.queued) + '</b><span>waiting</span></div>' +
       '<div class="tile"><b>' + esc(m.deferred) + '</b><span>deferred</span></div>' +
@@ -10812,6 +10935,7 @@ async function vMail(){
       '<div class="tile"><b>' + esc(m.sentToday) + ' / ' + esc(m.cap) + '</b><span>today</span></div>' +
     '</div>' +
 
+    mpCard(m) +
     (m.lastError ? msg("bad", "Last failure: " + m.lastError) : "") +
     (!m.provider ? msg("warn", "No provider is set, so nothing is being sent. " +
       "The queue is intact and waiting - nothing is being lost.") : "") +
@@ -11007,6 +11131,7 @@ async function vMail(){
       el("keyBox").innerHTML = "";
     }
   }
+  mpWire(m, vMail);
   el("mp").onchange = keyBox; keyBox();
 
   el("msave").onclick = async function(){
