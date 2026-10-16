@@ -12,9 +12,9 @@ Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
 
 **Last reconciled against the live database: 2026-10-14.**
 
-At that reconciliation: migrations applied through **266**; twelve edge
+At that reconciliation: migrations applied through **267** (268 written, awaiting the owner); twelve edge
 functions deployed with their source in the repository; the page published
-from `app_page` `ef789fe9b850` (726,913 bytes); the suite **851 assertions,
+from `app_page` `ef789fe9b850` (726,913 bytes); the suite **853 assertions,
 0 failures, nothing skipped**, from a database rebuilt out of `build/schema`
 and nothing else.
 
@@ -273,6 +273,8 @@ than a message.
 | **262** | An unphased quarter (shares 0/0/0 — the columns are NOT NULL) is spread evenly; it was being read as nought a month, and every month flagged "doesn't match the quarter". |
 | **263** | The fourteen demo passwords from 30 Sep are cleared, by address. Google sign-in and Act as are unaffected. |
 | **264** | October branch targets from `Business_Targets_Oct_2026.xlsx`. Only the 36 leaf locations are read (zone and regional subtotals were checked to add up and skipped). Twelve branch managers move from "% of target" to Branch revenue ₹ (30), Branch collection ₹ = 2× (25), Turnaround time 48 h, lower (15), Branch quality 95% (15), plus expense against budget — or "Cases completed within TAT" where a team feeds it. Revenue is split by client (107 lines); revenue and collection roll into Manish Shukla's, set to the whole sheet + 10% (₹3,69,47,900 / ₹7,38,95,800). All targets pinned. |
+| **267** | Manish Shukla's "SLA and TAT adherence" target 5 → **95**, through `perf_target_set`; the copy down the line corrects the nine Team Leaders' "Cases within TAT", which had inherited the 5. Dry-run first: exactly ten measures moved. |
+| **268** | **Written, not applied** — the 531 client-bank contacts leave `person`. Of 160 foreign keys, only `branch_contact.person_id` (750 rows; details copied across first, 55 had no name of their own) and `person_event` (531 DEACTIVATED records) point at them. Every row is archived whole in `person_removed` first. The session's destructive-statement confirmation was not given, so the owner runs it from the Supabase SQL editor. |
 | **266** | October's KPI window reopened to **31 Oct** through `perf_cycle_extend`, reason recorded (the owner, 16 Oct: "the option to edit the KPIs is gone"). The 5-working-day rule is untouched from November. The mapping panel now hands HR, BE and administrators a Reopen button where Save was. |
 | **265** | The welcome e-mail through the tool's outbox: 103 people, once only, "Important" in the subject (neither sender can set a priority header), CC every manager above up to Manish Shukla and never a Managing Director. A test copy went to operations.alert first. |
 | **259** | A shut month stops offering what it will refuse. `perf_mapping` answers `mayEdit` and `assignCloses`; the panel's three monthly checks read it, and a shut month says so where Save would have been, with the date and who can reopen it. |
@@ -292,7 +294,8 @@ than a message.
 | **L10** | **October targets cover 12 of 36 sheet locations.** 23 locations (₹1,53,29,820) have nobody in a Branch Manager chair; their money is in Manish's target only. Vinayak Jondale is seated "West" with no branch of his own and was left as he was. Nitish Bhope (Zonal) has no ₹ measure, so the climb passes him. |
 | **L11** | **The division stops at the client.** Branch teams carry no revenue measure, so ₹ targets were split by client, not across executives. Giving executives a revenue share means new measures and re-weighting 66 scorecards — a decision, not a default. |
 | **L12** | **The escalation matrix is not ready to send.** 692 of 3,987 client branches are complete (17%), 3,284 are empty, none has ever been sent. The mailer is **held**; the welcome e-mail told the 14 people who cover branches how many of theirs are missing contacts. |
-| **L13** | Manish Shukla's "SLA and TAT adherence" target is **5**, against a unit that says "target 95%". Left as found. |
+| **L13** | ~~Manish's SLA target 5~~ — **fixed (267)**. |
+| **L14** | **A month can be scored before it ends.** The 16 Oct audit: `plb_score_month` accepted a manager's October score on the 16th, with half the month's filings still to come. Allowed today; whether it should wait for the month's last working day is the owner's call. |
 | **L9** | From the 30 Sep demo page, still true: **531 of the people rows are client-bank contacts**. Removing them was left for the owner's go-ahead. |
 
 ## 11. Open items the owner must apply
@@ -332,13 +335,13 @@ apply itself.
 
 ```
 TSLIB=/path/to/typescript ./build/test/run.sh
-== 851 passed, 0 failed
+== 853 passed, 0 failed
 ```
 
 | | |
 |---|---|
 | SQL | **596 assertions over 27 files** |
-| JavaScript | **12 checks, 255 assertions** — `driver` 10, `daily` 10, `crux_scope` 11, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `help` 20, `okr` 22, `today` 28, `window` 37, `list` 59 |
+| JavaScript | **12 checks, 257 assertions** — `driver` 10, `daily` 12, `crux_scope` 11, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `help` 20, `okr` 22, `today` 28, `window` 37, `list` 59 |
 | Policy | `check_access_matches_nav.py` — the navigation and the database agree on all **262** combinations (8 levels × 29 screens, 30 chair titles) |
 
 - **The published page carries the change.** After every publish the new
@@ -384,6 +387,7 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | 2026-10-14 | **The zero-target and direction rules reach the bonus** (260) | The owner ruled on both on 7 Oct; the 30 Sep page had left the bonus side "for the owner's say". An ordinary measure keeps its arithmetic exactly, so nothing moves by rounding. |
 | 2026-10-14 | **The morning mailers stay paused** | They were paused on the owner's instruction, not because of the window. The SOW's earlier reason was wrong. |
 | 2026-10-14 | **The demo passwords are cleared by address** (263) | The demo page said to clear them when the demo was over; it was over on 30 Sep. Its own one-liner cleared *every* password, which would also take any set since for a real reason. |
+| 2026-10-16 | **A filing carries its details** | perf_file always took a note; the Daily update now offers a details box beside each number and sends it. The "Anything else about today" card points there. |
 | 2026-10-16 | **October reopened to the 31st** (266) | The owner's choice: scorecards were reset on the 14th and the window shut on the 15th, leaving no time to correct them. |
 | 2026-10-16 | **The Daily update draws the scorecard, not the due list** | A measure with sub-KPIs is never filed itself, so a list of what is due made it vanish and its sub-KPIs pose as KPIs. Only what is due gets a box; everything else says when it is due. |
 | 2026-10-14 | **Branch managers are measured in rupees, hours and a quality score** (264) | The owner's October instruction. A "% of target" measure is copied down a line, never divided or added, so the climb up and down needs rupees. |
@@ -413,7 +417,7 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | Migrations | everything through **266** |
 | Edge functions | `crux` v8, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v5, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
 | Published page | `app_page` `ef789fe9b850` (726,913 bytes). The reportee's Daily update nests sub-KPIs; Performance Mapping with the quarter editable month by month; the shut-month notice; no second quarter editor |
-| Suite | **851 passed, 0 failed, nothing skipped**, from a clean rebuild |
+| Suite | **853 passed, 0 failed, nothing skipped**, from a clean rebuild |
 | October | `assign_closes` **2026-10-31** (reopened, 266), `entry_closes` 2026-11-06. 103 people carry measures |
 | Mailers | `crux-perf-reminders` and `crux-matrix-nudge` **paused, on the owner's instruction**; the rest running |
 | Demo passwords | **none set** (263) |

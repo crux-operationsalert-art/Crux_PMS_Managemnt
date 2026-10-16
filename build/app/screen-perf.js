@@ -462,7 +462,11 @@ function pfDaily(){
     if (!d) return '<span class="mute">not due today</span>';
     drawn[m.assignmentId] = true;
     return '<input class="pfin" data-pffile="' + esc(m.assignmentId) + '" type="number" step="any" ' +
-      'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '">';
+      'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '">' +
+      /* "updating the daily count and details" (16 Oct): perf_file has
+         always taken a note with the number; the screen never offered one. */
+      '<input class="pfnote" data-pfnote="' + esc(m.assignmentId) + '" maxlength="300" ' +
+        'placeholder="details (optional)">';
   }
   function pct(m){
     return (m.pct === null || m.pct === undefined) ? '' : esc(m.pct) + '%';
@@ -499,7 +503,9 @@ function pfDaily(){
       '<td>' + (d.target ? pfNum(d.target, d.unit) : '<span class="mute">no target</span>') + '</td>' +
       '<td></td><td></td><td><input class="pfin" data-pffile="' + esc(d.assignmentId) +
       '" type="number" step="any" placeholder="' +
-      (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '"></td></tr>';
+      (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '">' +
+      '<input class="pfnote" data-pfnote="' + esc(d.assignmentId) + '" maxlength="300" ' +
+        'placeholder="details (optional)"></td></tr>';
   }).join("");
   var any = Object.keys(drawn).length > 0;
 
@@ -508,7 +514,7 @@ function pfDaily(){
     'number where there is a box; the number is for today, and filing it tomorrow ' +
     'does not make it tomorrow’s number.</p>' +
     '<div class="scroll"><table class="pfmt"><thead><tr>' +
-      '<th>KPI</th><th>Monthly target</th><th>Achieved</th><th>%</th><th>Today’s count</th>' +
+      '<th>KPI</th><th>Monthly target</th><th>Achieved</th><th>%</th><th>Today’s count and details</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
     (any
       ? '<p><button class="btn primary" id="pfsubmitday">Submit daily update</button> ' +
@@ -533,7 +539,10 @@ function pfDayNote(){
     'three milestones and an evidence reference — it is not a place to put a dated ' +
     'note. Nothing here holds one. Until something does, the record a manager scores ' +
     'A-3 from is the task list below, which is the same idea with a date and an owner ' +
-    'on it.</div></div>';
+    'on it.</div>' +
+    '<p class="mute">A detail about one of your numbers — a client remark, a problem ' +
+    'with a case — goes in the details box beside that number in the Daily update ' +
+    'above, and is kept with it.</p></div>';
 }
 
 /* ----------------------------------------- E · your last fourteen days
@@ -2932,7 +2941,11 @@ function pfWire(){
     var today = new Date().toISOString().slice(0,10), done = 0, bad = [];
     for (var i = 0; i < boxes.length; i++) {
       var o = await plb("/plb/perf/file", { method:"POST", body:{
-        assignmentId: boxes[i].getAttribute("data-pffile"), asOf: today, value: boxes[i].value } });
+        assignmentId: boxes[i].getAttribute("data-pffile"), asOf: today, value: boxes[i].value,
+        note: (function(id){
+          var n = el("view").querySelector('[data-pfnote="' + id + '"]');
+          return n && String(n.value).trim() !== "" ? String(n.value).trim() : null;
+        })(boxes[i].getAttribute("data-pffile")) } });
       if (o.error) bad.push(o.reason || o.error); else done++;
     }
     PF.busy = false;

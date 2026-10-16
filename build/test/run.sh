@@ -279,7 +279,7 @@ echo
 echo "== the daily update: every KPI, its sub-KPIs under it"
 if [ -x "$NODE" ]; then
   if "$NODE" "$REPO/build/test/daily_check.mjs"; then
-    pass=$((pass + 10))
+    pass=$((pass + 12))
   else
     fail=$((fail + 1))
   fi

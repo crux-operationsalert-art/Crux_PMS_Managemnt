@@ -57,6 +57,11 @@ ok("a KPI not due today is still listed, and says so", h.includes("Branch qualit
    (h.match(/not due today/g) || []).length === 2);
 ok("something due that the scorecard did not draw still gets its box", boxes.includes("late"));
 ok("one Submit for the day", (h.match(/id="pfsubmitday"/g) || []).length === 1);
+const notes = (h.match(/data-pfnote="([^"]+)"/g) || []).map((x) => x.split('"')[1]);
+ok("every number has a details box beside it, and nothing else does",
+   notes.slice().sort().join(",") === boxes.slice().sort().join(","), notes.join(","));
+ok("and the details go with the number when the day is submitted",
+   /data-pfnote="' \+ id \+ '"/.test(src) && /note: \(function\(id\)/.test(src));
 
 PF.due = [];
 h = pfDaily();

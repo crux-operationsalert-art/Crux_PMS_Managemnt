@@ -447,6 +447,7 @@ PATCHES.append((
       '.pfbar i.warn{background:var(--gold)}\n'
       '.pfbar i.bad{background:var(--terra)}\n'
       'input.pfin{width:120px}\n'
+      'input.pfnote{width:190px;margin-left:6px}\n'
       '/* input{width:100%;min-height:44px} in the base sheet catches\n'
       '   checkboxes as well as text boxes, which is why a tick elsewhere in\n'
       '   the tool is a 44px-tall square. Here it is a tick.              */\n'
