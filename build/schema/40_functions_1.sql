@@ -2231,6 +2231,20 @@ AS $function$
 $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.mail_audience(p_template text, p_entity_type text)
+ RETURNS text
+ LANGUAGE sql
+ IMMUTABLE
+ SET search_path TO 'public'
+AS $function$
+  select case
+           when p_template = 'TEST' then 'test'
+           when p_template like 'MATRIX_MONTHLY%' or p_entity_type = 'client' then 'client'
+           else 'internal'
+         end
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.mail_configure(p_actor uuid, p_provider text DEFAULT NULL::text, p_from text DEFAULT NULL::text, p_from_name text DEFAULT NULL::text, p_reply_to text DEFAULT NULL::text, p_api_key text DEFAULT NULL::text, p_cap text DEFAULT NULL::text, p_oauth_client_id text DEFAULT NULL::text, p_oauth_client_secret text DEFAULT NULL::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -2380,6 +2394,20 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.mail_held(p_template text, p_entity_type text)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select case mail_audience(p_template, p_entity_type)
+           when 'test' then false
+           when 'client' then mail_paused('client')
+           else mail_paused('internal')
+         end
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.mail_oauth_begin(p_actor uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -2453,6 +2481,113 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.mail_pause_says()
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select concat_ws(' ',
+    case when mail_paused('internal')
+         then 'Internal mail is paused by the administrator; what is queued waits, intact.' end,
+    case when mail_paused('client')
+         then 'Client escalation-matrix mail is paused by the administrator.' end,
+    case when mail_paused('internal') or mail_paused('client')
+         then 'An administrator switches it back on under Messaging, E-mail.' end)
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.mail_pause_set(p_actor uuid, p_kind text, p_paused boolean)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_key text; v_old text; v_new text;
+begin
+  if not exists (select 1 from person
+                  where id = p_actor and app_role = 'ADMIN'
+                    and employment_status = 'ACTIVE' and superseded_by is null) then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Pausing and unpausing mail is administrator work.');
+  end if;
+  if p_kind not in ('client','internal') or p_paused is null then
+    return jsonb_build_object('error','invalid',
+      'reason','Say which mail (client or internal) and whether it is paused.');
+  end if;
+
+  v_key := case p_kind when 'client' then 'mail_client_paused' else 'mail_internal_paused' end;
+  v_new := case when p_paused then 'true' else 'false' end;
+  select value into v_old from app_setting where key = v_key;
+
+  update app_setting set value = v_new, updated_by = p_actor, updated_at = now()
+   where key = v_key;
+  if not found then
+    insert into app_setting (key, value, plain_language, group_name, updated_by)
+    values (v_key, v_new, 'Switched from the Mail screen.', 'Mail', p_actor);
+  end if;
+
+  if v_old is distinct from v_new then
+    insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+    values (p_actor, case when p_paused then 'MAIL_PAUSED' else 'MAIL_RESUMED' end,
+            'app_setting', v_key,
+            jsonb_build_object('value', v_old), jsonb_build_object('value', v_new));
+  end if;
+
+  return jsonb_build_object('ok', true, 'pause', mail_pause_state(),
+    'note', case
+      when p_paused and p_kind = 'client'
+        then 'Client escalation-matrix mail is paused. Nobody can send the matrix to a client.'
+      when p_paused
+        then 'Internal mail is paused. New messages wait in the queue, intact.'
+      when p_kind = 'client'
+        then 'Client escalation-matrix mail is on. Operations can send the monthly matrix.'
+      else 'Internal mail is on. What was waiting starts going out within a minute.'
+    end);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.mail_pause_state()
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select jsonb_object_agg(k.kind, jsonb_build_object(
+           'paused', mail_paused(k.kind),
+           'since', s.updated_at,
+           'by', p.full_name,
+           'heldMail', (select count(*) from outbox o
+                         where o.state in ('QUEUED','DEFERRED')
+                           and mail_audience(o.template_key, o.entity_type) = k.kind),
+           'heldWhatsapp', (select count(*) from wa_outbox w
+                             where w.state = 'QUEUED'
+                               and mail_audience(w.template_key, w.entity_type) = k.kind),
+           'byTemplate', coalesce((select jsonb_object_agg(t.template_key, t.n) from (
+                             select o.template_key, count(*) n from outbox o
+                              where o.state in ('QUEUED','DEFERRED')
+                                and mail_audience(o.template_key, o.entity_type) = k.kind
+                              group by 1) t), '{}'::jsonb)))
+    from (values ('client', 'mail_client_paused'), ('internal', 'mail_internal_paused')) k(kind, key)
+    left join app_setting s on s.key = k.key
+    left join person p on p.id = s.updated_by
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.mail_paused(p_kind text)
+ RETURNS boolean
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  -- anything but an explicit 'false' is paused: fail closed
+  select coalesce(lower(btrim((select value from app_setting
+                                where key = case p_kind when 'client' then 'mail_client_paused'
+                                                        else 'mail_internal_paused' end))), 'true')
+         <> 'false'
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.mail_settings()
  RETURNS jsonb
  LANGUAGE sql
@@ -2500,6 +2635,7 @@ AS $function$
                  coalesce(nullif((select value from s where key='mail_from'),''),'') <> ''
                  and coalesce(nullif((select value from s where key='mail_api_key'),''),'') <> ''
              end,
+    'pause',     mail_pause_state(),  -- 270
     'queued',    (select count(*) from outbox where state='QUEUED'),
     'deferred',  (select count(*) from outbox where state='DEFERRED'),
     'abandoned', (select count(*) from outbox where state='ABANDONED'),
@@ -2628,6 +2764,7 @@ begin
     'period', v_period, 'clients', rows,
     'total', n_clients, 'sent', n_sent, 'withGaps', n_gap,
     'maySend', v_view = 'matrix' or v_view = 'full',
+    'clientMailPaused', mail_paused('client'),  -- 270
     'says', case
       when n_clients = 0 then 'You cover no active branch, so there is no matrix to send.'
       when n_sent = n_clients then 'This month''s matrix has gone to all ' || n_clients || ' client(s).'
@@ -2840,6 +2977,15 @@ begin
   if v_view not in ('matrix','full') then
     return jsonb_build_object('error','read_only',
       'reason','Operations owns the matrix. Your function may read it and not send it.');
+  end if;
+
+  -- 270: the client switch. Refused before anything is recorded, so a
+  -- paused send leaves no despatch behind it saying it went.
+  if mail_paused('client') then
+    return jsonb_build_object('error','paused',
+      'reason','Client escalation-matrix mail is paused by the administrator, so '
+               'nothing has been sent or recorded. It is switched back on under '
+               'Messaging, E-mail.');
   end if;
 
   v_period := date_trunc('month', p_period)::date;
@@ -3309,205 +3455,6 @@ begin
 
   r := ogl_transition(p_assignment, p_outcome, p_actor, 'arbitration: ' || p_reason);
   return r || jsonb_build_object('arbiter', arb, 'outcome', p_outcome);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_attach_begin(p_assignment uuid, p_actor uuid, p_file_name text, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a assignment%rowtype; v_ext text; v_key text; v_may boolean;
-  v_bucket text; v_limit bigint;
-begin
-  select * into a from assignment where id = p_assignment;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-
-  v_may := p_actor in (a.assignor_id, a.allocated_to_id)
-        or (select app_role from person where id = p_actor) = 'ADMIN'
-        or exists (select 1 from temp_participant_grant g
-                    where g.assignment_id = p_assignment and g.person_id = p_actor
-                      and g.revoked_at is null and g.expires_at > now());
-  if not v_may then
-    return jsonb_build_object('error','not_yours',
-      'reason','Only the people working on this assignment may attach to it.');
-  end if;
-  if a.current_state in ('CLOSED','CANCELLED') then
-    return jsonb_build_object('error','finished',
-      'reason','This assignment is ' || a.current_state || '. Reopen it first.');
-  end if;
-  if coalesce(btrim(coalesce(p_file_name,'')),'') = '' then
-    return jsonb_build_object('error','no_file_name');
-  end if;
-
-  v_ext := lower(coalesce(substring(p_file_name from '\.([A-Za-z0-9]{1,5})$'), 'bin'));
-  v_bucket := case v_ext
-                when 'pdf' then 'case-documents'
-                when 'jpg' then 'visit-photos' when 'jpeg' then 'visit-photos'
-                when 'png' then 'visit-photos' when 'heic' then 'visit-photos'
-                else null end;
-  if v_bucket is null then
-    return jsonb_build_object('error','unsupported_type',
-      'reason','Attach a photograph (jpg, png or heic) or a PDF. "' || v_ext || '" is neither.');
-  end if;
-
-  select file_size_limit into v_limit from storage.buckets where id = v_bucket;
-
-  -- assignment/cycle/uuid: readable enough to find by hand, and impossible
-  -- to guess your way into
-  v_key := a.ref || '/' || a.breach_cycle_no || '/' ||
-           gen_random_uuid()::text || '.' || v_ext;
-
-  return jsonb_build_object('bucket', v_bucket, 'key', v_key, 'ext', v_ext,
-    'ref', a.ref, 'cycle', a.breach_cycle_no, 'max_bytes', v_limit,
-    'mime', case v_ext when 'pdf' then 'application/pdf'
-                       when 'png' then 'image/png'
-                       when 'heic' then 'image/heic'
-                       else 'image/jpeg' end);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_attach_done(p_assignment uuid, p_actor uuid, p_key text, p_file_name text, p_mime text DEFAULT NULL::text, p_bytes bigint DEFAULT NULL::bigint, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid, p_caption text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a assignment%rowtype; v_id uuid;
-begin
-  select * into a from assignment where id = p_assignment;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-  -- the key has to be one we would have issued for this assignment
-  if p_key not like (a.ref || '/%') then
-    return jsonb_build_object('error','key_mismatch',
-      'reason','That storage key does not belong to this assignment.');
-  end if;
-
-  insert into ogl_attachment (assignment_id, requirement_id, doc_kind, file_name,
-    party_kind, party_seq, storage_key, mime, bytes, uploaded_by, uploaded_at, caption)
-  values (p_assignment, p_requirement, upper(coalesce(nullif(btrim(p_doc_kind),''),'EVIDENCE')),
-    btrim(p_file_name), 'APPLICANT', 1, p_key, p_mime, p_bytes, p_actor, now(), p_caption)
-  returning id into v_id;
-
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (p_assignment, 'EVIDENCE_ATTACHED', p_actor,
-          jsonb_build_object('attachment', v_id, 'file', btrim(p_file_name),
-                             'requirement', p_requirement, 'bytes', p_bytes));
-
-  return jsonb_build_object('id', v_id, 'file_name', btrim(p_file_name));
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_attach_remove(p_attachment uuid, p_actor uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare t ogl_attachment%rowtype; a assignment%rowtype;
-begin
-  select * into t from ogl_attachment where id = p_attachment;
-  if not found then return jsonb_build_object('error','no_such_attachment'); end if;
-  select * into a from assignment where id = t.assignment_id;
-  if p_actor not in (t.uploaded_by, a.assignor_id)
-     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
-    return jsonb_build_object('error','not_yours',
-      'reason','The person who attached it, the assignor, or an administrator.');
-  end if;
-  update ogl_attachment set removed_at = now(), removed_by = p_actor
-   where id = p_attachment and removed_at is null;
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (t.assignment_id, 'EVIDENCE_REMOVED', p_actor,
-          jsonb_build_object('attachment', p_attachment, 'file', t.file_name));
-  return jsonb_build_object('id', p_attachment, 'removed', true);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_attachments(p_assignment uuid, p_person uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare d jsonb;
-begin
-  -- borrow ogl_detail's scoping rather than write a second version of it
-  d := ogl_detail(p_assignment, p_person);
-  if d ? 'error' then return d; end if;
-
-  return jsonb_build_object('attachments', coalesce((
-    select jsonb_agg(jsonb_build_object('id', t.id, 'file_name', t.file_name,
-             'doc_kind', t.doc_kind, 'caption', t.caption, 'bytes', t.bytes,
-             'mime', t.mime, 'key', t.storage_key,
-             'bucket', case when t.storage_key like '%.pdf' then 'case-documents' else 'visit-photos' end,
-             'point', (select r.force1_point_id from case_verification_requirement r
-                        where r.id = t.requirement_id),
-             'by', (select full_name from person where id = t.uploaded_by),
-             'at', t.uploaded_at) order by t.uploaded_at desc)
-      from ogl_attachment t
-     where t.assignment_id = p_assignment and t.removed_at is null), '[]'::jsonb));
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_attribution_confirm(p_segment uuid, p_reason uuid, p_actor uuid, p_remarks text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  s sla_clock_segment%rowtype; a assignment%rowtype; r reason_taxonomy%rowtype;
-  v_attr text;
-begin
-  select * into s from sla_clock_segment where id = p_segment for update;
-  if not found then return jsonb_build_object('error','no_such_segment'); end if;
-  if s.attribution <> 'PENDING_REVIEW' then
-    return jsonb_build_object('error','nothing_pending',
-      'reason','That stretch of time is already attributed to ' || s.attribution || '.');
-  end if;
-
-  select asg.* into a from assignment asg
-    join sla_instance si on si.assignment_id = asg.id
-   where si.id = s.sla_instance_id;
-
-  if a.assignor_id is distinct from p_actor
-     and (select app_role from person where id = p_actor) is distinct from 'ADMIN'
-     and not exists (select 1 from person p where p.id = a.assignor_id and p.manager_id = p_actor) then
-    return jsonb_build_object('error','not_yours_to_confirm',
-      'reason','The assignor, their manager, or an administrator confirms attribution.');
-  end if;
-
-  select * into r from reason_taxonomy where id = p_reason and context = 'ATTRIBUTION';
-  if not found then
-    return jsonb_build_object('error','no_such_reason',
-      'reason','Choose one of the attribution outcomes.');
-  end if;
-  if r.requires_remarks and coalesce(btrim(coalesce(p_remarks,'')),'') = '' then
-    return jsonb_build_object('error','remarks_required',
-      'reason','Reclassifying time needs a sentence saying why.');
-  end if;
-
-  v_attr := case r.code
-    when 'RECLASSIFIED_ASSIGNEE' then 'ASSIGNEE'
-    when 'RECLASSIFIED_EXTERNAL' then 'EXTERNAL'
-    -- the delay's own reason stands
-    else coalesce((select implied_attribution from reason_taxonomy where id = s.reason_id), 'EXTERNAL')
-  end;
-
-  update sla_clock_segment
-     set attribution      = v_attr,
-         counts_to_strike = (v_attr = 'ASSIGNEE'),
-         reason_text      = coalesce(p_remarks, s.reason_text),
-         set_by           = p_actor
-   where id = p_segment;
-
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (a.id, 'ATTRIBUTION_CONFIRMED', p_actor,
-          jsonb_build_object('segment', p_segment, 'outcome', r.code,
-                             'attribution', v_attr, 'remarks', p_remarks));
-
-  return jsonb_build_object('segment', p_segment, 'outcome', r.code, 'attribution', v_attr);
 end $function$
 ;
 

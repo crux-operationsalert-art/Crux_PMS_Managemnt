@@ -8,6 +8,115 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_sheet(p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  with s as (select * from plb_goal_sheet where id = p_sheet),
+  c as (select plb_compute(p_sheet) as calc),
+  fence as (select coalesce(sum(d.ring_fenced_inr), 0) as inr
+              from plb_dispute d
+             where d.sheet_id = p_sheet and d.closed_at is null),
+  k as (
+    select jsonb_agg(jsonb_build_object(
+             'kpiId', g.kpi_id, 'name', d.name, 'unit', d.unit,
+             'weight', g.weight_pct, 'target', g.target_value,
+             'actual', g.actual_value,
+             'ratio', case when g.target_value is null or g.target_value = 0 or g.actual_value is null
+                           then null else round(100 * g.actual_value / g.target_value, 2) end,
+             'ratioCapped', case when g.target_value is null or g.target_value = 0 or g.actual_value is null
+                           then null else round(100 * least(g.actual_value / g.target_value, 1.5), 2) end,
+             'basisLevel', g.basis_level, 'basisNote', g.basis_note,
+             'split', jsonb_build_array(g.m1_share, g.m2_share, g.m3_share))
+             order by d.position) as kpis
+      from plb_goal_kpi g join kpi_definition d on d.id = g.kpi_id
+     where g.sheet_id = p_sheet),
+  a as (
+    select jsonb_agg(jsonb_build_object(
+             'kpiId', ga.kpi_id, 'name', d.name, 'unit', d.unit,
+             'fixed', d.mandatory, 'proposal', ga.proposal,
+             'state', ga.state, 'evidence', ga.evidence_ref,
+             'milestones', jsonb_build_array(ga.m1_milestone, ga.m2_milestone, ga.m3_milestone),
+             'overlapNote', ga.overlap_note, 'decidedNote', ga.decided_note,
+             'proposedAt', ga.proposed_at,
+             'approvedBy', (select full_name from person where id = ga.approved_by),
+             'approvedAt', ga.approved_at) order by d.position) as attributes
+      from plb_goal_attribute ga join kpi_definition d on d.id = ga.kpi_id
+     where ga.sheet_id = p_sheet),
+  m as (
+    select jsonb_agg(jsonb_build_object(
+             'month', ms.month, 'kpiPoints', ms.kpi_points,
+             'attrPoints', ms.attr_points, 'monthlyScore', ms.monthly_score,
+             'selfKpi', ms.self_kpi, 'selfAttr', ms.self_attr,
+             'selfAt', ms.self_at, 'gapReason', ms.gap_reason,
+             'lockedAt', ms.locked_at, 'excluded', ms.excluded,
+             'excludedWhy', ms.excluded_why,
+             'needsCountersign', coalesce(ms.attr_points, 0) > 7.5,
+             'countersignAt', ms.countersign_at,
+             'countersignBy', (select p.full_name from person p where p.id = ms.countersign_by),
+             'scoredBy', (select p.full_name from person p where p.id = ms.scored_by))
+             order by ms.month) as months
+      from plb_month_score ms where ms.sheet_id = p_sheet),
+  r as (select * from plb_result where sheet_id = p_sheet)
+  select jsonb_build_object(
+    'sheetId',   s.id,
+    'person',    (select full_name from person where id = s.person_id),
+    'personId',  s.person_id,
+    'chair',     (select title from chair where id = s.chair_id),
+    'quarter',   s.quarter,
+    'status',    s.status,
+    'isDefault', s.is_default,
+    'issuedAt',  s.issued_at,
+    'issuedBy',  (select full_name from person where id = s.issued_by),
+    'acknowledgedAt', s.acknowledged_at,
+    'lockedAt',  s.locked_at,
+    'targetPlb', s.target_plb_inr,
+    'kpis',      coalesce(k.kpis, '[]'::jsonb),
+    'attributes',coalesce(a.attributes, '[]'::jsonb),
+    'months',    coalesce(m.months, '[]'::jsonb),
+    'calc',      c.calc,
+    'disputeWindow', plb_dispute_window(p_sheet),
+    'disputes',  plb_disputes(p_sheet),
+    'ringFenced', fence.inr,
+    'payableNow', case when (c.calc->>'amount') is null then null
+                       else greatest((c.calc->>'amount')::numeric - fence.inr, 0) end,
+    'result', case when r.sheet_id is null then null else jsonb_build_object(
+        'achievement', r.achievement, 'payoutFactor', r.payout_factor,
+        'monthsCounted', r.months_counted, 'monthlyMean', r.monthly_mean,
+        'consistency', r.consistency, 'amount', r.amount_inr,
+        'dataFrozenAt', r.data_frozen_at,
+        'certifiedBy', (select full_name from person where id = r.certified_by),
+        'certifiedAt', r.certified_at, 'publishedAt', r.published_at) end,
+    'gate',      null,
+    'arithmetic',
+      case when (c.calc->>'amount') is null then
+        case when (c.calc->>'achievement') is null then
+          'Not yet computable: ' || coalesce(c.calc->>'measuresWithoutAnActual','some')
+          || ' of ' || coalesce((select jsonb_array_length(k.kpis)::text), '0')
+          || ' measures have no actual against a target. Achievement is the whole measure '
+          || 'set or nothing -- a part of it is a different number wearing the same name.'
+        else
+          'Not yet computable: no month has been scored, so there is no consistency factor.'
+        end
+      else
+        to_char(s.target_plb_inr,'FM9,99,99,999') || ' target  ×  '
+        || (c.calc->>'payoutFactor') || '% payout factor (Achievement '
+        || (c.calc->>'achievement') || '%)  ×  ' || (c.calc->>'consistency')
+        || ' consistency (mean ' || (c.calc->>'monthlyMean') || ' of 10 over '
+        || (c.calc->>'monthsCounted') || ' month(s))  =  '
+        || to_char((c.calc->>'amount')::numeric,'FM9,99,99,999.00')
+        || case when fence.inr > 0 then
+             '.  Ring-fenced while disputed: ' || to_char(fence.inr,'FM9,99,99,999.00')
+             || '.  Payable now: '
+             || to_char(greatest((c.calc->>'amount')::numeric - fence.inr, 0),'FM9,99,99,999.00')
+           else '' end
+      end)
+  from s, c, fence, k, a, m left join r on true;
+$function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_sheet_for(p_actor uuid, p_sheet uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -3923,6 +4032,7 @@ begin
      where o.id in (
        select id from wa_outbox
         where state = 'QUEUED' and not_before <= now()
+          and not mail_held(template_key, entity_type)  -- 270: a paused audience waits
         order by not_before
         limit v_room
         for update skip locked)
@@ -4233,6 +4343,7 @@ begin
    where o.id in (
      select id from wa_outbox
       where state = 'QUEUED' and not_before <= now()
+        and not mail_held(template_key, entity_type)  -- 270: a paused audience waits
       order by not_before
       limit least(p_limit, v_room)
       for update skip locked)

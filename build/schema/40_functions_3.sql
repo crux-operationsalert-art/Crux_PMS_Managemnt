@@ -8,6 +8,119 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.perf_cascade(p_assignment uuid, p_depth integer DEFAULT 0)
+ RETURNS integer
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a perf_assignment; kind text; r record;
+  v_pinned numeric := 0; v_free int := 0; v_each numeric; v_n int := 0;
+begin
+  if p_depth > 12 then return 0; end if;
+  select * into a from perf_assignment where id = p_assignment;
+  if a.id is null or a.target_value is null then return 0; end if;
+  kind := perf_accrual_kind(a.kpi_id, a.unit);
+
+  select coalesce(sum(case when c.target_source = 'MANUAL'
+                           then coalesce(c.target_value,0) else 0 end), 0),
+         count(*) filter (where c.target_source <> 'MANUAL')
+    into v_pinned, v_free
+    from perf_assignment c where c.rolls_into_id = a.id;
+  if v_free = 0 then return 0; end if;
+
+  if kind = 'SUM' then
+    v_each := round((a.target_value - v_pinned) / v_free, 2);
+    if v_each < 0 then v_each := 0; end if;
+  else
+    v_each := a.target_value;
+  end if;
+
+  for r in select c.id from perf_assignment c
+            where c.rolls_into_id = a.id and c.target_source <> 'MANUAL'
+  loop
+    update perf_assignment set target_value = v_each, target_source = 'SHARED' where id = r.id;
+    v_n := v_n + 1 + perf_cascade(r.id, p_depth + 1);
+  end loop;
+  return v_n;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text, p_kind text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_up uuid := p_person; v_hops int := 0; v_into uuid;
+begin
+  if p_family is null then return null; end if;
+  loop
+    select manager_id into v_up from person
+     where id = v_up and manager_id is not null and manager_id <> id;
+    exit when v_up is null or v_hops >= 12;
+    v_hops := v_hops + 1;
+    select a.id into v_into from perf_assignment a
+     where a.cycle_id = p_cycle and a.person_id = v_up and a.part_of_id is null
+       and perf_family(a.unit) = p_family
+       and perf_direction(a.unit) = p_direction
+       and perf_accrual_kind(a.kpi_id, a.unit) = p_kind
+     order by a.id limit 1;
+    if v_into is not null then return v_into; end if;
+  end loop;
+  return null;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_cycle_extend(p_actor uuid, p_cycle uuid, p_until date, p_why text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a person%rowtype; c perf_cycle; v_was date;
+begin
+  select * into a from person where id=p_actor and employment_status='ACTIVE' and superseded_by is null;
+  if a.id is null or (a.app_role <> 'ADMIN'
+                      and coalesce(a.department,'') <> 'Human Resources'
+                      and coalesce(a.department,'') <> 'Business Excellence') then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Reopening a month for KPI setting is HR''s, Business Excellence''s or an administrator''s -- the same three who open it.');
+  end if;
+  select * into c from perf_cycle where id=p_cycle;
+  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  if p_why is null or btrim(p_why)='' then
+    return jsonb_build_object('error','reason_required',
+      'reason','Reopening a month changes what a team can still be asked for, so it carries the reason it was reopened.');
+  end if;
+  if p_until is null then
+    return jsonb_build_object('error','no_date','reason','Say the date KPI setting should close instead.');
+  end if;
+  if p_until < current_date then
+    return jsonb_build_object('error','already_past',
+      'reason', p_until || ' is in the past, so it would shut the month rather than reopen it.');
+  end if;
+  if p_until <= c.assign_closes then
+    return jsonb_build_object('error','not_later',
+      'reason','KPIs for ' || c.period_start || ' can already be set until ' || c.assign_closes || '. This only ever moves that date later.');
+  end if;
+  if p_until > c.entry_closes then
+    return jsonb_build_object('error','after_filing_closes',
+      'reason','Filing for ' || c.period_start || ' closes on ' || c.entry_closes || ', so a KPI set after that could never be filed against.');
+  end if;
+  v_was := c.assign_closes;
+  update perf_cycle set assign_closes = p_until where id = c.id;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor,'PERF_CYCLE_EXTENDED','perf_cycle', c.id::text,
+          jsonb_build_object('assignCloses', v_was),
+          jsonb_build_object('assignCloses', p_until, 'why', btrim(p_why), 'by', a.full_name));
+  return jsonb_build_object('ok',true,'cycleId',c.id,'period',c.period_start,
+    'was',v_was,'assignCloses',p_until,
+    'note','KPIs for ' || c.period_start || ' may now be set until ' || p_until || '. Who reopened it and why is recorded.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_cycle_open(p_actor uuid, p_period date, p_kind text DEFAULT 'MONTH'::text)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -5219,114 +5332,5 @@ begin
   return jsonb_build_object('ok', true,
     'note','Recorded. It is an input, not a score, and it is not averaged with your manager''s.');
 end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_sheet(p_sheet uuid)
- RETURNS jsonb
- LANGUAGE sql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-  with s as (select * from plb_goal_sheet where id = p_sheet),
-  c as (select plb_compute(p_sheet) as calc),
-  fence as (select coalesce(sum(d.ring_fenced_inr), 0) as inr
-              from plb_dispute d
-             where d.sheet_id = p_sheet and d.closed_at is null),
-  k as (
-    select jsonb_agg(jsonb_build_object(
-             'kpiId', g.kpi_id, 'name', d.name, 'unit', d.unit,
-             'weight', g.weight_pct, 'target', g.target_value,
-             'actual', g.actual_value,
-             'ratio', case when g.target_value is null or g.target_value = 0 or g.actual_value is null
-                           then null else round(100 * g.actual_value / g.target_value, 2) end,
-             'ratioCapped', case when g.target_value is null or g.target_value = 0 or g.actual_value is null
-                           then null else round(100 * least(g.actual_value / g.target_value, 1.5), 2) end,
-             'basisLevel', g.basis_level, 'basisNote', g.basis_note,
-             'split', jsonb_build_array(g.m1_share, g.m2_share, g.m3_share))
-             order by d.position) as kpis
-      from plb_goal_kpi g join kpi_definition d on d.id = g.kpi_id
-     where g.sheet_id = p_sheet),
-  a as (
-    select jsonb_agg(jsonb_build_object(
-             'kpiId', ga.kpi_id, 'name', d.name, 'unit', d.unit,
-             'fixed', d.mandatory, 'proposal', ga.proposal,
-             'state', ga.state, 'evidence', ga.evidence_ref,
-             'milestones', jsonb_build_array(ga.m1_milestone, ga.m2_milestone, ga.m3_milestone),
-             'overlapNote', ga.overlap_note, 'decidedNote', ga.decided_note,
-             'proposedAt', ga.proposed_at,
-             'approvedBy', (select full_name from person where id = ga.approved_by),
-             'approvedAt', ga.approved_at) order by d.position) as attributes
-      from plb_goal_attribute ga join kpi_definition d on d.id = ga.kpi_id
-     where ga.sheet_id = p_sheet),
-  m as (
-    select jsonb_agg(jsonb_build_object(
-             'month', ms.month, 'kpiPoints', ms.kpi_points,
-             'attrPoints', ms.attr_points, 'monthlyScore', ms.monthly_score,
-             'selfKpi', ms.self_kpi, 'selfAttr', ms.self_attr,
-             'selfAt', ms.self_at, 'gapReason', ms.gap_reason,
-             'lockedAt', ms.locked_at, 'excluded', ms.excluded,
-             'excludedWhy', ms.excluded_why,
-             'needsCountersign', coalesce(ms.attr_points, 0) > 7.5,
-             'countersignAt', ms.countersign_at,
-             'countersignBy', (select p.full_name from person p where p.id = ms.countersign_by),
-             'scoredBy', (select p.full_name from person p where p.id = ms.scored_by))
-             order by ms.month) as months
-      from plb_month_score ms where ms.sheet_id = p_sheet),
-  r as (select * from plb_result where sheet_id = p_sheet)
-  select jsonb_build_object(
-    'sheetId',   s.id,
-    'person',    (select full_name from person where id = s.person_id),
-    'personId',  s.person_id,
-    'chair',     (select title from chair where id = s.chair_id),
-    'quarter',   s.quarter,
-    'status',    s.status,
-    'isDefault', s.is_default,
-    'issuedAt',  s.issued_at,
-    'issuedBy',  (select full_name from person where id = s.issued_by),
-    'acknowledgedAt', s.acknowledged_at,
-    'lockedAt',  s.locked_at,
-    'targetPlb', s.target_plb_inr,
-    'kpis',      coalesce(k.kpis, '[]'::jsonb),
-    'attributes',coalesce(a.attributes, '[]'::jsonb),
-    'months',    coalesce(m.months, '[]'::jsonb),
-    'calc',      c.calc,
-    'disputeWindow', plb_dispute_window(p_sheet),
-    'disputes',  plb_disputes(p_sheet),
-    'ringFenced', fence.inr,
-    'payableNow', case when (c.calc->>'amount') is null then null
-                       else greatest((c.calc->>'amount')::numeric - fence.inr, 0) end,
-    'result', case when r.sheet_id is null then null else jsonb_build_object(
-        'achievement', r.achievement, 'payoutFactor', r.payout_factor,
-        'monthsCounted', r.months_counted, 'monthlyMean', r.monthly_mean,
-        'consistency', r.consistency, 'amount', r.amount_inr,
-        'dataFrozenAt', r.data_frozen_at,
-        'certifiedBy', (select full_name from person where id = r.certified_by),
-        'certifiedAt', r.certified_at, 'publishedAt', r.published_at) end,
-    'gate',      null,
-    'arithmetic',
-      case when (c.calc->>'amount') is null then
-        case when (c.calc->>'achievement') is null then
-          'Not yet computable: ' || coalesce(c.calc->>'measuresWithoutAnActual','some')
-          || ' of ' || coalesce((select jsonb_array_length(k.kpis)::text), '0')
-          || ' measures have no actual against a target. Achievement is the whole measure '
-          || 'set or nothing -- a part of it is a different number wearing the same name.'
-        else
-          'Not yet computable: no month has been scored, so there is no consistency factor.'
-        end
-      else
-        to_char(s.target_plb_inr,'FM9,99,99,999') || ' target  ×  '
-        || (c.calc->>'payoutFactor') || '% payout factor (Achievement '
-        || (c.calc->>'achievement') || '%)  ×  ' || (c.calc->>'consistency')
-        || ' consistency (mean ' || (c.calc->>'monthlyMean') || ' of 10 over '
-        || (c.calc->>'monthsCounted') || ' month(s))  =  '
-        || to_char((c.calc->>'amount')::numeric,'FM9,99,99,999.00')
-        || case when fence.inr > 0 then
-             '.  Ring-fenced while disputed: ' || to_char(fence.inr,'FM9,99,99,999.00')
-             || '.  Payable now: '
-             || to_char(greatest((c.calc->>'amount')::numeric - fence.inr, 0),'FM9,99,99,999.00')
-           else '' end
-      end)
-  from s, c, fence, k, a, m left join r on true;
-$function$
 ;
 

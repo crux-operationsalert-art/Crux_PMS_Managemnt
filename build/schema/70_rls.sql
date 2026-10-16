@@ -178,6 +178,7 @@ alter table public.wa_bridge enable row level security;
 alter table public.wa_bridge_event enable row level security;
 alter table public.wa_budget enable row level security;
 alter table public.wa_outbox enable row level security;
+alter table public.window_miss enable row level security;
 create policy audit_no_delete on public.audit_entry as PERMISSIVE for DELETE to public using (false);
 create policy audit_no_update on public.audit_entry as PERMISSIVE for UPDATE to public using (false);
 create policy audit_read on public.audit_entry as PERMISSIVE for SELECT to public using (app_is_admin());

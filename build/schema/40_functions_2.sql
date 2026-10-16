@@ -8,6 +8,205 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.ogl_attach_begin(p_assignment uuid, p_actor uuid, p_file_name text, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a assignment%rowtype; v_ext text; v_key text; v_may boolean;
+  v_bucket text; v_limit bigint;
+begin
+  select * into a from assignment where id = p_assignment;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+
+  v_may := p_actor in (a.assignor_id, a.allocated_to_id)
+        or (select app_role from person where id = p_actor) = 'ADMIN'
+        or exists (select 1 from temp_participant_grant g
+                    where g.assignment_id = p_assignment and g.person_id = p_actor
+                      and g.revoked_at is null and g.expires_at > now());
+  if not v_may then
+    return jsonb_build_object('error','not_yours',
+      'reason','Only the people working on this assignment may attach to it.');
+  end if;
+  if a.current_state in ('CLOSED','CANCELLED') then
+    return jsonb_build_object('error','finished',
+      'reason','This assignment is ' || a.current_state || '. Reopen it first.');
+  end if;
+  if coalesce(btrim(coalesce(p_file_name,'')),'') = '' then
+    return jsonb_build_object('error','no_file_name');
+  end if;
+
+  v_ext := lower(coalesce(substring(p_file_name from '\.([A-Za-z0-9]{1,5})$'), 'bin'));
+  v_bucket := case v_ext
+                when 'pdf' then 'case-documents'
+                when 'jpg' then 'visit-photos' when 'jpeg' then 'visit-photos'
+                when 'png' then 'visit-photos' when 'heic' then 'visit-photos'
+                else null end;
+  if v_bucket is null then
+    return jsonb_build_object('error','unsupported_type',
+      'reason','Attach a photograph (jpg, png or heic) or a PDF. "' || v_ext || '" is neither.');
+  end if;
+
+  select file_size_limit into v_limit from storage.buckets where id = v_bucket;
+
+  -- assignment/cycle/uuid: readable enough to find by hand, and impossible
+  -- to guess your way into
+  v_key := a.ref || '/' || a.breach_cycle_no || '/' ||
+           gen_random_uuid()::text || '.' || v_ext;
+
+  return jsonb_build_object('bucket', v_bucket, 'key', v_key, 'ext', v_ext,
+    'ref', a.ref, 'cycle', a.breach_cycle_no, 'max_bytes', v_limit,
+    'mime', case v_ext when 'pdf' then 'application/pdf'
+                       when 'png' then 'image/png'
+                       when 'heic' then 'image/heic'
+                       else 'image/jpeg' end);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_attach_done(p_assignment uuid, p_actor uuid, p_key text, p_file_name text, p_mime text DEFAULT NULL::text, p_bytes bigint DEFAULT NULL::bigint, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid, p_caption text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a assignment%rowtype; v_id uuid;
+begin
+  select * into a from assignment where id = p_assignment;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+  -- the key has to be one we would have issued for this assignment
+  if p_key not like (a.ref || '/%') then
+    return jsonb_build_object('error','key_mismatch',
+      'reason','That storage key does not belong to this assignment.');
+  end if;
+
+  insert into ogl_attachment (assignment_id, requirement_id, doc_kind, file_name,
+    party_kind, party_seq, storage_key, mime, bytes, uploaded_by, uploaded_at, caption)
+  values (p_assignment, p_requirement, upper(coalesce(nullif(btrim(p_doc_kind),''),'EVIDENCE')),
+    btrim(p_file_name), 'APPLICANT', 1, p_key, p_mime, p_bytes, p_actor, now(), p_caption)
+  returning id into v_id;
+
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (p_assignment, 'EVIDENCE_ATTACHED', p_actor,
+          jsonb_build_object('attachment', v_id, 'file', btrim(p_file_name),
+                             'requirement', p_requirement, 'bytes', p_bytes));
+
+  return jsonb_build_object('id', v_id, 'file_name', btrim(p_file_name));
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_attach_remove(p_attachment uuid, p_actor uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare t ogl_attachment%rowtype; a assignment%rowtype;
+begin
+  select * into t from ogl_attachment where id = p_attachment;
+  if not found then return jsonb_build_object('error','no_such_attachment'); end if;
+  select * into a from assignment where id = t.assignment_id;
+  if p_actor not in (t.uploaded_by, a.assignor_id)
+     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_yours',
+      'reason','The person who attached it, the assignor, or an administrator.');
+  end if;
+  update ogl_attachment set removed_at = now(), removed_by = p_actor
+   where id = p_attachment and removed_at is null;
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (t.assignment_id, 'EVIDENCE_REMOVED', p_actor,
+          jsonb_build_object('attachment', p_attachment, 'file', t.file_name));
+  return jsonb_build_object('id', p_attachment, 'removed', true);
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_attachments(p_assignment uuid, p_person uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare d jsonb;
+begin
+  -- borrow ogl_detail's scoping rather than write a second version of it
+  d := ogl_detail(p_assignment, p_person);
+  if d ? 'error' then return d; end if;
+
+  return jsonb_build_object('attachments', coalesce((
+    select jsonb_agg(jsonb_build_object('id', t.id, 'file_name', t.file_name,
+             'doc_kind', t.doc_kind, 'caption', t.caption, 'bytes', t.bytes,
+             'mime', t.mime, 'key', t.storage_key,
+             'bucket', case when t.storage_key like '%.pdf' then 'case-documents' else 'visit-photos' end,
+             'point', (select r.force1_point_id from case_verification_requirement r
+                        where r.id = t.requirement_id),
+             'by', (select full_name from person where id = t.uploaded_by),
+             'at', t.uploaded_at) order by t.uploaded_at desc)
+      from ogl_attachment t
+     where t.assignment_id = p_assignment and t.removed_at is null), '[]'::jsonb));
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_attribution_confirm(p_segment uuid, p_reason uuid, p_actor uuid, p_remarks text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  s sla_clock_segment%rowtype; a assignment%rowtype; r reason_taxonomy%rowtype;
+  v_attr text;
+begin
+  select * into s from sla_clock_segment where id = p_segment for update;
+  if not found then return jsonb_build_object('error','no_such_segment'); end if;
+  if s.attribution <> 'PENDING_REVIEW' then
+    return jsonb_build_object('error','nothing_pending',
+      'reason','That stretch of time is already attributed to ' || s.attribution || '.');
+  end if;
+
+  select asg.* into a from assignment asg
+    join sla_instance si on si.assignment_id = asg.id
+   where si.id = s.sla_instance_id;
+
+  if a.assignor_id is distinct from p_actor
+     and (select app_role from person where id = p_actor) is distinct from 'ADMIN'
+     and not exists (select 1 from person p where p.id = a.assignor_id and p.manager_id = p_actor) then
+    return jsonb_build_object('error','not_yours_to_confirm',
+      'reason','The assignor, their manager, or an administrator confirms attribution.');
+  end if;
+
+  select * into r from reason_taxonomy where id = p_reason and context = 'ATTRIBUTION';
+  if not found then
+    return jsonb_build_object('error','no_such_reason',
+      'reason','Choose one of the attribution outcomes.');
+  end if;
+  if r.requires_remarks and coalesce(btrim(coalesce(p_remarks,'')),'') = '' then
+    return jsonb_build_object('error','remarks_required',
+      'reason','Reclassifying time needs a sentence saying why.');
+  end if;
+
+  v_attr := case r.code
+    when 'RECLASSIFIED_ASSIGNEE' then 'ASSIGNEE'
+    when 'RECLASSIFIED_EXTERNAL' then 'EXTERNAL'
+    -- the delay's own reason stands
+    else coalesce((select implied_attribution from reason_taxonomy where id = s.reason_id), 'EXTERNAL')
+  end;
+
+  update sla_clock_segment
+     set attribution      = v_attr,
+         counts_to_strike = (v_attr = 'ASSIGNEE'),
+         reason_text      = coalesce(p_remarks, s.reason_text),
+         set_by           = p_actor
+   where id = p_segment;
+
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (a.id, 'ATTRIBUTION_CONFIRMED', p_actor,
+          jsonb_build_object('segment', p_segment, 'outcome', r.code,
+                             'attribution', v_attr, 'remarks', p_remarks));
+
+  return jsonb_build_object('segment', p_segment, 'outcome', r.code, 'attribution', v_attr);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.ogl_attribution_pending(p_sla uuid)
  RETURNS boolean
  LANGUAGE sql
@@ -4357,6 +4556,7 @@ begin
   with claimed as (
     select id from outbox
      where state = 'QUEUED' and not_before <= now()
+       and not mail_held(template_key, entity_type)  -- 270: a paused audience waits
      order by not_before
      for update skip locked
      limit least(p_limit, v_room)
@@ -4368,6 +4568,12 @@ begin
   )
   select coalesce(jsonb_agg(to_jsonb(b)), '[]'::jsonb) into v_msgs from bumped b;
 
+  -- 270: nothing claimed because of a pause is said, never silent
+  if v_msgs = '[]'::jsonb and exists (
+       select 1 from outbox where state = 'QUEUED' and mail_held(template_key, entity_type)) then
+    return jsonb_build_object('held', 'paused', 'reason', mail_pause_says(),
+                              'messages', '[]'::jsonb);
+  end if;
   return jsonb_build_object('messages', v_msgs, 'room', v_room);
 end $function$
 ;
@@ -5248,119 +5454,6 @@ begin
     'note', n || ' measure(s) carried from ' || prev.period_start ||
       case when p_keep_targets then ' with last month''s targets.'
            else '. The targets are blank on purpose -- last month''s number is not this month''s promise.' end);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_cascade(p_assignment uuid, p_depth integer DEFAULT 0)
- RETURNS integer
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  a perf_assignment; kind text; r record;
-  v_pinned numeric := 0; v_free int := 0; v_each numeric; v_n int := 0;
-begin
-  if p_depth > 12 then return 0; end if;
-  select * into a from perf_assignment where id = p_assignment;
-  if a.id is null or a.target_value is null then return 0; end if;
-  kind := perf_accrual_kind(a.kpi_id, a.unit);
-
-  select coalesce(sum(case when c.target_source = 'MANUAL'
-                           then coalesce(c.target_value,0) else 0 end), 0),
-         count(*) filter (where c.target_source <> 'MANUAL')
-    into v_pinned, v_free
-    from perf_assignment c where c.rolls_into_id = a.id;
-  if v_free = 0 then return 0; end if;
-
-  if kind = 'SUM' then
-    v_each := round((a.target_value - v_pinned) / v_free, 2);
-    if v_each < 0 then v_each := 0; end if;
-  else
-    v_each := a.target_value;
-  end if;
-
-  for r in select c.id from perf_assignment c
-            where c.rolls_into_id = a.id and c.target_source <> 'MANUAL'
-  loop
-    update perf_assignment set target_value = v_each, target_source = 'SHARED' where id = r.id;
-    v_n := v_n + 1 + perf_cascade(r.id, p_depth + 1);
-  end loop;
-  return v_n;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_climb(p_cycle uuid, p_person uuid, p_family text, p_direction text, p_kind text)
- RETURNS uuid
- LANGUAGE plpgsql
- STABLE SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare v_up uuid := p_person; v_hops int := 0; v_into uuid;
-begin
-  if p_family is null then return null; end if;
-  loop
-    select manager_id into v_up from person
-     where id = v_up and manager_id is not null and manager_id <> id;
-    exit when v_up is null or v_hops >= 12;
-    v_hops := v_hops + 1;
-    select a.id into v_into from perf_assignment a
-     where a.cycle_id = p_cycle and a.person_id = v_up and a.part_of_id is null
-       and perf_family(a.unit) = p_family
-       and perf_direction(a.unit) = p_direction
-       and perf_accrual_kind(a.kpi_id, a.unit) = p_kind
-     order by a.id limit 1;
-    if v_into is not null then return v_into; end if;
-  end loop;
-  return null;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_cycle_extend(p_actor uuid, p_cycle uuid, p_until date, p_why text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a person%rowtype; c perf_cycle; v_was date;
-begin
-  select * into a from person where id=p_actor and employment_status='ACTIVE' and superseded_by is null;
-  if a.id is null or (a.app_role <> 'ADMIN'
-                      and coalesce(a.department,'') <> 'Human Resources'
-                      and coalesce(a.department,'') <> 'Business Excellence') then
-    return jsonb_build_object('error','not_permitted',
-      'reason','Reopening a month for KPI setting is HR''s, Business Excellence''s or an administrator''s -- the same three who open it.');
-  end if;
-  select * into c from perf_cycle where id=p_cycle;
-  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
-  if p_why is null or btrim(p_why)='' then
-    return jsonb_build_object('error','reason_required',
-      'reason','Reopening a month changes what a team can still be asked for, so it carries the reason it was reopened.');
-  end if;
-  if p_until is null then
-    return jsonb_build_object('error','no_date','reason','Say the date KPI setting should close instead.');
-  end if;
-  if p_until < current_date then
-    return jsonb_build_object('error','already_past',
-      'reason', p_until || ' is in the past, so it would shut the month rather than reopen it.');
-  end if;
-  if p_until <= c.assign_closes then
-    return jsonb_build_object('error','not_later',
-      'reason','KPIs for ' || c.period_start || ' can already be set until ' || c.assign_closes || '. This only ever moves that date later.');
-  end if;
-  if p_until > c.entry_closes then
-    return jsonb_build_object('error','after_filing_closes',
-      'reason','Filing for ' || c.period_start || ' closes on ' || c.entry_closes || ', so a KPI set after that could never be filed against.');
-  end if;
-  v_was := c.assign_closes;
-  update perf_cycle set assign_closes = p_until where id = c.id;
-  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
-  values (p_actor,'PERF_CYCLE_EXTENDED','perf_cycle', c.id::text,
-          jsonb_build_object('assignCloses', v_was),
-          jsonb_build_object('assignCloses', p_until, 'why', btrim(p_why), 'by', a.full_name));
-  return jsonb_build_object('ok',true,'cycleId',c.id,'period',c.period_start,
-    'was',v_was,'assignCloses',p_until,
-    'note','KPIs for ' || c.period_start || ' may now be set until ' || p_until || '. Who reopened it and why is recorded.');
 end $function$
 ;
 
