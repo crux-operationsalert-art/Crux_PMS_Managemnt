@@ -561,6 +561,18 @@ declare boss uuid; cl uuid; o jsonb; p jsonb; snap jsonb;
 begin
   select id into boss from who where nm ='boss'; select id into cl from who where nm ='cl';
 
+  -- 270: client escalation-matrix mail is paused unless somebody has said
+  -- otherwise, and a rebuilt database has said nothing. These assertions are
+  -- about the letter, so the switch is put on for them -- after showing that,
+  -- while it was off, nothing was sent and nothing was recorded.
+  o := matrix_send(boss, cl, '2026-10-05', array['vendors@sbi.test']);
+  perform t_ok('with client mail paused, the matrix is refused and nothing is recorded',
+               o->>'error' = 'paused'
+               and not exists (select 1 from matrix_dispatch where client_id = cl), o::text);
+  insert into app_setting (key, value, plain_language, group_name)
+    values ('mail_client_paused', 'false', 'test_190_198', 'Mail')
+  on conflict (key) do update set value = 'false';
+
   o := matrix_send(boss, cl, '2026-10-05', array[]::text[]);
   perform t_ok('sending to nobody is refused', o->>'error' = 'no_recipient', o::text);
 
@@ -594,6 +606,7 @@ begin
 
   perform t_ok('the month now says it has gone',
                (matrix_month(boss,'2026-10-05')#>>'{clients,0,sentAt}') is not null);
+  update app_setting set value = 'true' where key = 'mail_client_paused';
 end $$;
 
 -- ============================================ 198: the nudge, once a month

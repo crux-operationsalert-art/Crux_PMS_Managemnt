@@ -189,9 +189,16 @@ begin
   raise notice 'PASS  a WhatsApp copy waits with the e-mail it copies, by the same switch';
 
   -- ------------------------------------------------ who can reach the switch
-  if has_function_privilege('anon', 'mail_pause_set(uuid,text,boolean)', 'execute')
-     or has_function_privilege('authenticated', 'mail_pause_set(uuid,text,boolean)', 'execute') then
-    raise exception 'FAIL  the switch can be flipped with the public key, as anybody';
+  -- What the schema snapshot can carry is the explicit grants, so that is
+  -- what is asserted here: nothing names anon or authenticated. The rest --
+  -- that PUBLIC's default EXECUTE was revoked too -- is a revoke, which the
+  -- snapshot does not record and a rebuilt database cannot show; 270 and 271
+  -- assert it against the live database, where it is true.
+  if exists (select 1 from pg_proc p,
+                    aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+              where p.proname = 'mail_pause_set'
+                and a.grantee in ('anon'::regrole, 'authenticated'::regrole)) then
+    raise exception 'FAIL  the switch is granted to the public key, so anybody can flip it';
   end if;
   if not has_function_privilege('service_role', 'mail_pause_set(uuid,text,boolean)', 'execute') then
     raise exception 'FAIL  the Mail screen''s own service cannot reach the switch';

@@ -14,7 +14,7 @@ Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
 
 At that reconciliation: migrations applied through **271** (268 written, still not applied — see §11); twelve edge
 functions deployed with their source in the repository; the page published
-from `app_page` `ef789fe9b850` (726,913 bytes); the suite **857 assertions,
+from `app_page` `415f71bbacb4` (735,728 bytes); the suite **891 assertions,
 0 failures, nothing skipped**, from a database rebuilt out of `build/schema`
 and nothing else.
 
@@ -345,7 +345,7 @@ apply itself.
 | R5 | Aniket Chalke has **42** direct reports, and the reporting line has **six** roots — six people with no manager at all | A data shape nobody chose. Worth the owner's decision (Q1). |
 | R6 | **A check that cannot run is not a check** | `window_check.mjs` threw a `ReferenceError` before its first assertion for six days, because its harness named a renderer that had been deleted — and the suite counted that as one failure among hundreds while the thing it guarded quietly stopped being true. `run.sh` now exits non-zero on a **skipped** check as well as a failed one, and the whole suite is run from a clean rebuild before every commit. |
 | R8 | **260 moved Q3 bonus figures** on 89 sheets, because their ceiling measures are now scored the right way up (Manish Shukla ₹2,01,476 → ₹1,99,155; Virendra Pal ₹2,32,693 → ₹2,36,817; Anuja Adhali unchanged) | Intended — it is the owner's 7 Oct rule reaching the one scorer it had missed. Nothing is stored: reverting `plb_compute` reverts every figure. The rupee targets on the demo sheets remain placeholders. |
-| R9 | **A new function or table was open to the public key unless somebody remembered to close it** | Supabase's defaults grant `anon` EXECUTE on every new function and full rights on every new table, and row security starts off. 22 functions, a table and a view had slipped through (271). The defaults are now turned round, and 271's proof names the five functions left open on purpose. Residual: a function created by a role other than `postgres` still gets the platform default. |
+| R9 | **A new function or table was open to the public key unless somebody remembered to close it** | Supabase's defaults grant `anon` EXECUTE on every new function and full rights on every new table, and row security starts off. 22 functions, a table and a view had slipped through (271). **This is the second time.** 228 closed 30 such functions on 7 Oct and named the same five exceptions, but it left the default in place, so every function written after it opened again. The defaults are now turned round, and 271's proof names the five left open on purpose. Residuals: a function created by a role other than `postgres` still gets the platform default. And the local rebuild cannot show a revoke from PUBLIC (the snapshot records grants, not revokes), so `test_mailpause` asserts the explicit grants and the live proofs in 270 and 271 assert the rest. |
 | R7 | A feature can be published and unreachable | Four times in one fortnight. `reach_check.mjs` now asserts that 15 named features are reachable **from the screen the owner is told to open**. Its own limitation is documented in the file: reachability is name-occurrence, not control flow, so it errs towards "reachable" and will miss dead code — it cannot raise a false alarm, and it cannot catch tidiness. |
 
 ## 13. Validation and acceptance
@@ -354,13 +354,13 @@ apply itself.
 
 ```
 TSLIB=/path/to/typescript ./build/test/run.sh
-== 857 passed, 0 failed
+== 891 passed, 0 failed
 ```
 
 | | |
 |---|---|
-| SQL | **600 assertions over 28 files** |
-| JavaScript | **12 checks, 257 assertions** — `driver` 10, `daily` 12, `crux_scope` 11, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `help` 20, `okr` 22, `today` 28, `window` 37, `list` 59 |
+| SQL | **611 assertions over 29 files** |
+| JavaScript | **13 checks, 280 assertions** — `driver` 10, `daily` 12, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `crux_scope` 17, `mailpause` 17, `help` 20, `okr` 22, `today` 28, `window` 37, `list` 59 |
 | Policy | `check_access_matches_nav.py` — the navigation and the database agree on all **262** combinations (8 levels × 29 screens, 30 chair titles) |
 
 - **The published page carries the change.** After every publish the new
@@ -442,8 +442,8 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 |---|---|
 | Migrations | everything through **271**, except **268** (§11) |
 | Edge functions | `crux` v9, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v5, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
-| Published page | `app_page` `ef789fe9b850` (726,913 bytes). The reportee's Daily update nests sub-KPIs; Performance Mapping with the quarter editable month by month; the shut-month notice; no second quarter editor |
-| Suite | **857 passed, 0 failed, nothing skipped**, from a clean rebuild |
+| Published page | `app_page` `415f71bbacb4` (735,728 bytes). The two mail switches on Messaging, E-mail; the matrix Send says when it is paused. The reportee's Daily update nests sub-KPIs; Performance Mapping with the quarter editable month by month; the shut-month notice; no second quarter editor |
+| Suite | **891 passed, 0 failed, nothing skipped**, from a clean rebuild |
 | October | `assign_closes` **2026-10-31** (reopened, 266), `entry_closes` 2026-11-06. 103 people carry measures |
 | Mail | **Internal mail PAUSED, client escalation matrix PAUSED** (270), switched from Messaging, E-mail. Held, not discarded: what queues waits, with its WhatsApp copy. `crux-perf-reminders` and `crux-matrix-nudge` also paused, on the owner's instruction |
 | Demo passwords | **none set** (263) |
