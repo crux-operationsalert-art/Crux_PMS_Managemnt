@@ -155,6 +155,15 @@ setMe(ADMIN); PF.cycle = SHUT;
 ok("an administrator past the window is offered what the server says",
    mapping(true, true).includes('id="pfmsave"'));
 
+// "has an easy direct option to edit it" (16 Oct): whoever may reopen the
+// month is handed the button inside the panel, not only in the banner.
+setMe(MANAGER); PF.cycle = SHUT;
+ok("a manager with a shut month is not offered a reopen they cannot do",
+   !mapping(true, false).includes('id="pfmreopen"'));
+setMe(HR);
+ok("HR, looking at a shut scorecard, can reopen it from the panel itself",
+   mapping(true, false).includes('id="pfmreopen"'));
+
 setMe(MANAGER);
 const reader = mapping(false, false);
 ok("somebody who only reads is told whose they are, not that the month is shut",

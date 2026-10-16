@@ -237,7 +237,7 @@ echo
 echo "== the window for setting KPIs"
 if [ -x "$NODE" ]; then
   if "$NODE" "$REPO/build/test/window_check.mjs"; then
-    pass=$((pass + 35))
+    pass=$((pass + 37))
   else
     fail=$((fail + 1))
   fi
@@ -275,6 +275,19 @@ fi
 # the screen the owner is told to open, is there a path of calls that reaches
 # this? It runs over the published index.html, which is the artefact a person
 # actually loads.
+echo
+echo "== the daily update: every KPI, its sub-KPIs under it"
+if [ -x "$NODE" ]; then
+  if "$NODE" "$REPO/build/test/daily_check.mjs"; then
+    pass=$((pass + 10))
+  else
+    fail=$((fail + 1))
+  fi
+else
+  echo "   skipped: node is not on this machine."
+  missing="$missing daily"
+fi
+
 echo
 echo "== the quarter, edited month by month in the mapping panel"
 if [ -x "$NODE" ]; then

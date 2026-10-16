@@ -426,56 +426,94 @@ function pfThisMonthScore(){
    per row. The tool had two columns and a button each, which turns filing a
    day into eleven separate acts.                                          */
 function pfDaily(){
+  /* Every KPI the person carries, in their scorecard's order, with each
+     one's sub-KPIs nested under it -- the same rows a manager sees in
+     Performance mapping. It used to draw only what /perf/due returned for
+     today: a measure with sub-KPIs vanished (it is not filed itself) and
+     each sub-KPI arrived as a row of its own, so a branch manager saw
+     thirteen bank names posing as thirteen KPIs and no "Branch revenue" at
+     all (16 Oct). Only what is due today gets a box; the rest say when
+     they are due, so nothing looks missing. */
   var due = PF.due || [];
   var open = PF.cycle.entry_open;
-  var byId = {};
-  (function walk(list){
-    (list || []).forEach(function(m){
-      if (m.assignmentId) byId[m.assignmentId] = m;
-      walk(m.parts);
-    });
-  })((PF.tree || {}).measures);
+  var dueBy = {};
+  due.forEach(function(d){ dueBy[d.assignmentId] = d; });
+  var ms = (PF.tree || {}).measures || [];
 
   if (!open) {
     return '<div class="card"><h2>Daily update</h2>' +
       '<div class="empty">Filing closed on ' + day(PF.cycle.entry_closes) +
       '. The month is still readable below.</div></div>';
   }
-  if (!due.length) {
+  if (!ms.length && !due.length) {
     return '<div class="card"><h2>Daily update</h2>' +
       '<p class="mute">Numbers against every KPI, then anything worth recording ' +
       'that is not a number.</p>' +
-      '<div class="empty">Nothing is due from you today. What you file and when is ' +
-      'set with your KPI, not by this screen.</div></div>';
+      '<div class="empty">Nothing has been set for you this month yet. Your ' +
+      'manager sets your KPIs; once they do, they are listed here.</div></div>';
   }
 
-  var rows = due.map(function(d){
-    var m = byId[d.assignmentId] || {};
-    var pct = (m.pct === null || m.pct === undefined) ? '' : esc(m.pct) + '%';
-    return '<tr>' +
-      '<td><b>' + esc(d.name) + '</b>' +
-        (d.split ? ' <span class="mute">' + esc(d.split) + '</span>' : '') +
-        '<div class="mute">' +
-          esc(String(d.cadence || "").toLowerCase().replace(/_/g, " ")) +
-          (d.setBy ? ' · set by ' + esc(d.setBy) : '') +
-        '</div></td>' +
-      '<td>' + (d.target ? pfNum(d.target, d.unit) : '<span class="mute">no target</span>') + '</td>' +
-      '<td>' + pfNum(m.value, m.unit) + '</td>' +
-      '<td>' + pct + '</td>' +
-      '<td><input class="pfin" data-pffile="' + esc(d.assignmentId) + '" type="number" step="any" ' +
-        'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '"></td>' +
-      '</tr>';
+  var drawn = {};
+  function cadence(m){
+    return esc(String(m.cadence || "").toLowerCase().replace(/_/g, " "));
+  }
+  function entry(m){
+    var d = dueBy[m.assignmentId];
+    if (!d) return '<span class="mute">not due today</span>';
+    drawn[m.assignmentId] = true;
+    return '<input class="pfin" data-pffile="' + esc(m.assignmentId) + '" type="number" step="any" ' +
+      'placeholder="' + (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '">';
+  }
+  function pct(m){
+    return (m.pct === null || m.pct === undefined) ? '' : esc(m.pct) + '%';
+  }
+  function target(m){
+    return (m.target !== null && m.target !== undefined && m.target !== '')
+      ? pfNum(m.target, m.unit) : '<span class="mute">no target</span>';
+  }
+  var rows = ms.map(function(m){
+    var parts = m.parts || [];
+    if (!parts.length) {
+      return '<tr><td><b>' + esc(m.name) + '</b><div class="mute">' + cadence(m) + '</div></td>' +
+        '<td>' + target(m) + '</td><td>' + pfNum(m.value, m.unit) + '</td>' +
+        '<td>' + pct(m) + '</td><td>' + entry(m) + '</td></tr>';
+    }
+    return '<tr class="pfmderived"><td><b>' + esc(m.name) + '</b>' +
+        '<div class="pfmderivedsay">Made up of ' + parts.length + ' sub-KPIs. File ' +
+        'against each line below; this total adds itself up.</div></td>' +
+        '<td>' + target(m) + '</td><td>' + pfNum(m.value, m.unit) + '</td>' +
+        '<td>' + pct(m) + '</td><td class="mute">from the lines below</td></tr>' +
+      parts.map(function(c){
+        return '<tr class="pfmsub"><td><span class="pfmsubmark">&#8627;</span> ' +
+            esc(c.split || c.name) + '<div class="mute">' + cadence(c) + '</div></td>' +
+          '<td>' + target(c) + '</td><td>' + pfNum(c.value, c.unit || m.unit) + '</td>' +
+          '<td>' + pct(c) + '</td><td>' + entry(c) + '</td></tr>';
+      }).join("");
   }).join("");
+  /* Anything due that the scorecard did not draw -- a measure set after the
+     page loaded -- still gets its box rather than silently none. */
+  rows += due.filter(function(d){ return !drawn[d.assignmentId]; }).map(function(d){
+    drawn[d.assignmentId] = true;
+    return '<tr><td><b>' + esc(d.split || d.name) + '</b><div class="mute">' +
+        esc(String(d.cadence || "").toLowerCase().replace(/_/g, " ")) + '</div></td>' +
+      '<td>' + (d.target ? pfNum(d.target, d.unit) : '<span class="mute">no target</span>') + '</td>' +
+      '<td></td><td></td><td><input class="pfin" data-pffile="' + esc(d.assignmentId) +
+      '" type="number" step="any" placeholder="' +
+      (d.alreadyFiled ? 'filed — change it' : 'today’s number') + '"></td></tr>';
+  }).join("");
+  var any = Object.keys(drawn).length > 0;
 
   return '<div class="card"><h2>Daily update</h2>' +
-    '<p class="mute">Numbers against every KPI, then anything worth recording ' +
-    'that is not a number. The number is for today: filing it tomorrow does not ' +
-    'make it tomorrow’s number.</p>' +
-    '<div class="scroll"><table><thead><tr>' +
+    '<p class="mute">Every KPI you carry, with its sub-KPIs under it. Type today’s ' +
+    'number where there is a box; the number is for today, and filing it tomorrow ' +
+    'does not make it tomorrow’s number.</p>' +
+    '<div class="scroll"><table class="pfmt"><thead><tr>' +
       '<th>KPI</th><th>Monthly target</th><th>Achieved</th><th>%</th><th>Today’s count</th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>' +
-    '<p><button class="btn primary" id="pfsubmitday">Submit daily update</button> ' +
-    '<span class="mute">Everything you have filled in, in one go. Blank rows are left alone.</span></p>' +
+    (any
+      ? '<p><button class="btn primary" id="pfsubmitday">Submit daily update</button> ' +
+        '<span class="mute">Everything you have filled in, in one go. Blank rows are left alone.</span></p>'
+      : '<p class="mute">Nothing is due from you today. Each KPI says when it is.</p>') +
     '</div>';
 }
 
@@ -1762,7 +1800,15 @@ function pfMapMonthly(){
       '</td>' +
     '</tr></tfoot></table></div>' +
     (may ? pfMapFoot(d, r)
-         : PF.map.data.maySet ? pfShutHere("Changing these KPIs") : '') +
+         : PF.map.data.maySet ? pfShutHere("Changing these KPIs") +
+           /* "has an easy direct option to edit it" (16 Oct): whoever may
+              reopen the month gets the button here, where they are looking,
+              not only in the banner at the top of the page. */
+           (pfMayExtend()
+             ? '<p><button class="btn primary" id="pfmreopen">Reopen ' +
+               esc(pfMonthName(PF.period)) + '</button> <span class="mute">The ' +
+               'date and the reason are asked for next, and recorded.</span></p>'
+             : '') : '') +
     '<div id="pfmmsg">' + (PF.map.says || "") + '</div>';
 }
 
@@ -2159,6 +2205,17 @@ function pfMapWire(){
   });
 
   if (el("pfmretry")) el("pfmretry").onclick = function(){ pfMapOpen(PF.who); };
+
+  /* One form reopens a month -- the banner's, which bounds the date the way
+     perf_cycle_extend does. The panel's button opens that one and brings it
+     into view rather than drawing a second copy. */
+  if (el("pfmreopen")) el("pfmreopen").onclick = function(){
+    if (el("pfreopen")) el("pfreopen").click();
+    setTimeout(function(){
+      var f = el("pfreopenform");
+      if (f && f.scrollIntoView) f.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
+  };
 
   if (el("pfmhist")) el("pfmhist").onclick = async function(){
     M.histOpen = true; pfRender();
