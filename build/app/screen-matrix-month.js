@@ -45,6 +45,9 @@ async function mxCardLoad(){
   var late = m.clients.filter(function(c){ return !c.sentAt; });
   box.innerHTML = '<div class="card"><h2>This month’s escalation matrix</h2>' +
     '<div class="mxline' + (late.length ? ' due' : ' done') + '">' + esc(m.says) + '</div>' +
+    (m.clientMailPaused
+      ? '<div class="mxline">Sending to clients is paused by the administrator.</div>'
+      : '') +
     (late.length
       ? '<ul class="mxlist">' + late.slice(0, 6).map(function(c){
           return '<li>' + esc(c.name) + ' <span class="mute">' + esc(c.ready) +
@@ -131,6 +134,10 @@ function mxPack(){
   var held = p.heldBack || [];
   var picked = rec.filter(function(r){ return MX.to[r.email]; }).length;
   var may = (MX.month || {}).maySend;
+  /* 270: the administrator's switch. matrix_send refuses while it is on, so
+     the button is not offered -- a Send that is always refused is worse than
+     no Send -- and the reason is said where the button would be. */
+  var paused = (MX.month || {}).clientMailPaused;
 
   return '<div class="mxpack">' +
     '<div class="mxsays">' + esc(p.says) + '</div>' +
@@ -158,7 +165,12 @@ function mxPack(){
       : '<div class="empty">Nothing is complete enough to send.</div>') +
 
     '<div class="plbar">' +
-      (may
+      (may && paused
+        ? '<button class="btn primary" disabled>Sending is paused</button>' +
+          '<span class="mute">Client escalation-matrix mail is paused by the ' +
+          'administrator (Messaging, E-mail). Nothing can be sent to a client ' +
+          'until it is switched back on.</span>'
+        : may
         ? '<button class="btn primary" id="mxsend"' +
             (picked && ready.length ? '' : ' disabled') + '>' +
             (picked && ready.length

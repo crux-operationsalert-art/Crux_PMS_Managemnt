@@ -10,9 +10,9 @@ Owner: Crux Risk Management Pvt Ltd (India).
 Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
 `crux-operationsalert-art/Crux_PMS_Managemnt`, branch `main`.
 
-**Last reconciled against the live database: 2026-10-14.**
+**Last reconciled against the live database: 2026-10-16.**
 
-At that reconciliation: migrations applied through **269** (268 written, awaiting the owner); twelve edge
+At that reconciliation: migrations applied through **271** (268 written, still not applied — see §11); twelve edge
 functions deployed with their source in the repository; the page published
 from `app_page` `ef789fe9b850` (726,913 bytes); the suite **857 assertions,
 0 failures, nothing skipped**, from a database rebuilt out of `build/schema`
@@ -274,8 +274,10 @@ than a message.
 | **263** | The fourteen demo passwords from 30 Sep are cleared, by address. Google sign-in and Act as are unaffected. |
 | **264** | October branch targets from `Business_Targets_Oct_2026.xlsx`. Only the 36 leaf locations are read (zone and regional subtotals were checked to add up and skipped). Twelve branch managers move from "% of target" to Branch revenue ₹ (30), Branch collection ₹ = 2× (25), Turnaround time 48 h, lower (15), Branch quality 95% (15), plus expense against budget — or "Cases completed within TAT" where a team feeds it. Revenue is split by client (107 lines); revenue and collection roll into Manish Shukla's, set to the whole sheet + 10% (₹3,69,47,900 / ₹7,38,95,800). All targets pinned. |
 | **267** | Manish Shukla's "SLA and TAT adherence" target 5 → **95**, through `perf_target_set`; the copy down the line corrects the nine Team Leaders' "Cases within TAT", which had inherited the 5. Dry-run first: exactly ten measures moved. |
-| **268** | **Written, not applied** — the 531 client-bank contacts leave `person`. Of 160 foreign keys, only `branch_contact.person_id` (750 rows; details copied across first, 55 had no name of their own) and `person_event` (531 DEACTIVATED records) point at them. Every row is archived whole in `person_removed` first. The session's destructive-statement confirmation was not given, so the owner runs it from the Supabase SQL editor. |
+| **268** | **Written, not applied — still.** The 531 client-bank contacts leave `person`. Of 160 foreign keys, only `branch_contact.person_id` (750 rows; details copied across first, 55 had no name of their own) and `person_event` (531 DEACTIVATED records) point at them; re-measured 16 Oct, unchanged, and no trigger, rule or constraint stands in the way. Every row is archived whole in `person_removed` first. On 16 Oct the owner reported running it, but the database never received it: 531 contacts still there, no `person_removed` table, and no trace of the statement in `pg_stat_statements`. Applied again from this session, the destructive-statement confirmation came back cancelled a second time. See §11. |
 | **269** | **Windows, caps and missed-window escalations.** A month is scored and self-evaluated only once it is over (from the 1st of the next month); both are capped 0–10 in half steps and to the sheet's own three months (the screen's min/max had been the only fence; the self-evaluation checked nothing). A month's review is due on the 5th working day after it ends (`plb_review_due`, `app_setting.plb_review_days`). `perf_window_sweep`, daily at 05:15 UTC, turns every missed KPI window (a scheme member's scorecard incomplete when `assign_closes` passes) and every missed review into **one escalation per manager per window** — raised about the manager, routed to their manager with a 3-working-day clock — and **one e-mail**, their manager copied, recorded in `window_miss` so nothing is raised twice. From October 2026 (`window_escalations_from`). Patch 21: the scheme screen offers only months that have ended and says when the next opens. |
+| **270** | **Two mail switches, both PAUSED.** The owner: "Client escalation matrix emails are on pause. Add that pause and unpause button for admin … And same but different button for normal internal mails too, as tool is not 100% live." Neither existed: the client matrix had no off switch (just nobody had pressed Send), and internal mail was live, 835 sent. `app_setting.mail_client_paused` and `mail_internal_paused`, read by the database at the moment a message would leave: `outbox_claim` and both WhatsApp claims (`wa_claim`, `wa_bridge_claim`) skip a paused audience, so rows stay QUEUED with no attempt spent; `matrix_send` refuses before it records a despatch. Every e-mail is also copied to WhatsApp (`whatsapp_mirror = all`, 721 internal copies waiting for a phone), so the internal switch holds those copies too. Only `TEST` — the administrator's own test from the Mail screen — always goes. Anything but an explicit `false` reads as paused. `mail_pause_set` is administrator-only and writes `MAIL_PAUSED`/`MAIL_RESUMED` to the trail; `mail_status` and `matrix_month` report both switches, so the screens offer only what will be accepted. `crux` v9 adds `POST /api/mail/pause`. Patch 22 puts the two cards on Messaging, E-mail, each counting what it holds and asking before a release. |
+| **271** | **The functions, the table and the view the public key could use.** Found while building 270: 22 SECURITY DEFINER functions were executable by `anon` — the role behind the publishable key that is in every page — and most take the actor as an argument (`perf_cycle_extend`, `org_person_set`, `partner_file_set`, `person_escalation_raise`, and 269's own `perf_window_sweep`). So passing the administrator's id made you the administrator. Also open: `window_miss` (269; row security off) and `plb_goal_kpi`. That view ran as its owner, so it bypassed row security over every goal sheet's KPIs, and it accepted writes. All closed to `anon` and `authenticated`. The services keep their access through the service-role key and the database owner, and neither the page nor any policy or view called these. Defaults turned round: a new function or table in `public` is closed until granted. Left open by design: `schema_snapshot` (the snapshot workflow) and the four row-security predicates. |
 | **266** | October's KPI window reopened to **31 Oct** through `perf_cycle_extend`, reason recorded (the owner, 16 Oct: "the option to edit the KPIs is gone"). The 5-working-day rule is untouched from November. The mapping panel now hands HR, BE and administrators a Reopen button where Save was. |
 | **265** | The welcome e-mail through the tool's outbox: 103 people, once only, "Important" in the subject (neither sender can set a priority header), CC every manager above up to Manish Shukla and never a Managing Director. A test copy went to operations.alert first. |
 | **259** | A shut month stops offering what it will refuse. `perf_mapping` answers `mayEdit` and `assignCloses`; the panel's three monthly checks read it, and a shut month says so where Save would have been, with the date and who can reopen it. |
@@ -297,12 +299,27 @@ than a message.
 | **L12** | **The escalation matrix is not ready to send.** 692 of 3,987 client branches are complete (17%), 3,284 are empty, none has ever been sent. The mailer is **held**; the welcome e-mail told the 14 people who cover branches how many of theirs are missing contacts. |
 | **L13** | ~~Manish's SLA target 5~~ — **fixed (267)**. |
 | **L14** | ~~A month can be scored before it ends~~ — **fixed (269)**, the owner's decision. Was: **A month can be scored before it ends.** The 16 Oct audit: `plb_score_month` accepted a manager's October score on the 16th, with half the month's filings still to come. Allowed today; whether it should wait for the month's last working day is the owner's call. |
-| **L9** | From the 30 Sep demo page, still true: **531 of the people rows are client-bank contacts**. Removing them was left for the owner's go-ahead. |
+| **L9** | **Go-ahead given (16 Oct); not yet run.** 531 of the people rows are client-bank contacts. 268 removes them, archived whole; it needs the destructive-statement confirmation this session cannot give (§11). |
+| **L15** | **New.** While internal mail is paused, everything the tool writes to staff waits. On unpausing it all goes, including what is stale by then. Already waiting: **721 WhatsApp copies** of old reminders and welcome letters, queued for a phone that was never linked. They go too, the moment a phone is linked and internal mail is on. Whether to clear that backlog before unpausing is the owner's call (Q8). The Mail screen shows the count beside the switch. |
 
 ## 11. Open items the owner must apply
 
-**Nothing to apply.** Every migration through 263 is live. What is left is
-decisions, not statements: L5 (the mailers), L6, L7, L8 and L9 above.
+**One statement to apply: migration 268** (the 531 client-bank contacts).
+Every other migration through 271 is live. 268 deletes rows, so the session's
+gate asks for a confirmation, and twice it came back cancelled. On 16 Oct the
+owner reported running it from the SQL editor, but it never reached the
+database: nothing changed and the statement is not in `pg_stat_statements`.
+The likeliest cause is the editor's own "destructive operation" prompt being
+closed rather than confirmed.
+
+To apply it: open the Supabase SQL editor for project `oxpwqfbtbxlvuqpztbwg`,
+paste `build/migration/268_the_client_contacts_leave_the_people_table.sql`
+whole, press Run, and when the editor warns that the query has destructive
+operations, choose to run it anyway. It is all-or-nothing: if anything fails,
+nothing changes. Success prints `531 client contacts removed`. Or approve the
+confirmation when this session next applies it.
+
+The rest are decisions, not statements: L5 (the mailers), L6, L7, L8 and L15 above.
 
 Migration **254** — removing `perf_assignment_once_top_old` — was the last
 one, and it is **done**: the live database now carries one index,
@@ -328,6 +345,7 @@ apply itself.
 | R5 | Aniket Chalke has **42** direct reports, and the reporting line has **six** roots — six people with no manager at all | A data shape nobody chose. Worth the owner's decision (Q1). |
 | R6 | **A check that cannot run is not a check** | `window_check.mjs` threw a `ReferenceError` before its first assertion for six days, because its harness named a renderer that had been deleted — and the suite counted that as one failure among hundreds while the thing it guarded quietly stopped being true. `run.sh` now exits non-zero on a **skipped** check as well as a failed one, and the whole suite is run from a clean rebuild before every commit. |
 | R8 | **260 moved Q3 bonus figures** on 89 sheets, because their ceiling measures are now scored the right way up (Manish Shukla ₹2,01,476 → ₹1,99,155; Virendra Pal ₹2,32,693 → ₹2,36,817; Anuja Adhali unchanged) | Intended — it is the owner's 7 Oct rule reaching the one scorer it had missed. Nothing is stored: reverting `plb_compute` reverts every figure. The rupee targets on the demo sheets remain placeholders. |
+| R9 | **A new function or table was open to the public key unless somebody remembered to close it** | Supabase's defaults grant `anon` EXECUTE on every new function and full rights on every new table, and row security starts off. 22 functions, a table and a view had slipped through (271). The defaults are now turned round, and 271's proof names the five functions left open on purpose. Residual: a function created by a role other than `postgres` still gets the platform default. |
 | R7 | A feature can be published and unreachable | Four times in one fortnight. `reach_check.mjs` now asserts that 15 named features are reachable **from the screen the owner is told to open**. Its own limitation is documented in the file: reachability is name-occurrence, not control flow, so it errs towards "reachable" and will miss dead code — it cannot raise a false alarm, and it cannot catch tidiness. |
 
 ## 13. Validation and acceptance
@@ -397,6 +415,11 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | 2026-10-14 | **The escalation matrix to clients is held** | 82% of branches have no contacts; a matrix with a hole reads as complete. |
 | 2026-10-14 | **The welcome e-mail goes to all 103, CC up to Manish and never above** | The owner's choice of recipients; the Managing Directors sit beside Manish in the data and above him in fact, so they are not copied. |
 | 2026-10-14 | **Scope is decided by one function, not restated in the edge function** | `/api/ogl/points`, `/arbiter` and `/pause-preview` called functions that take no caller, so anybody holding an assignment id could read another chair's case parties and addresses. All three now ask `ogl_detail` first and return its refusal unchanged (`crux` v8). |
+| 2026-10-16 | **Two mail switches, not one, both paused from the start** (270) | The owner: "same but different button for normal internal mails too, as tool is not 100% live". Client mail and staff mail stop different things, so neither switch may pause or release the other. |
+| 2026-10-16 | **Paused means held, not discarded** | Throwing messages away would turn "not yet" into "never" with nobody knowing which. The card counts what is waiting, and unpausing asks first and says how much will go. |
+| 2026-10-16 | **The WhatsApp copy is held with its e-mail** | Every e-mail is mirrored to WhatsApp. An e-mail pause that let its WhatsApp copy through would not be a pause. |
+| 2026-10-16 | **Only the administrator's own test mail goes while paused; sign-in codes are held** | The route has to be testable before it is opened. Sign-in does not depend on mail: every session so far has been Google Workspace, Act-as or a password, and an e-mailed activation code has never been used. |
+| 2026-10-16 | **Closed the 22 functions, a table and a view to the public key, and the default with them** (271) | Found while building 270, so fixed rather than noted. Nothing legitimate used them that way. |
 
 ## 15. Open questions
 
@@ -408,25 +431,27 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | Q4 | ~~Should M1/M2/M3 be typed by the manager?~~ **Answered from the specification: yes** (14 Oct). | — |
 | Q5 | ~~Does the bulk path stay?~~ **Decided: yes, labelled** (14 Oct). | — |
 | Q6 | Are "cost per case", "days to close" and DSO levels rather than counts? (L7) | No |
-| Q7 | Go-ahead to remove the 531 client-bank contacts from `person`? (L9) | No |
+| Q7 | ~~Go-ahead to remove the 531 client-bank contacts?~~ **Given, 16 Oct.** Waiting only on 268 being run (§11). | — |
+| Q8 | Before internal mail is unpaused, should the **721 stale WhatsApp copies** (and anything queued meanwhile) be cleared, so only new messages go? (L15) | No — only when unpausing |
 
 ## 16. Status and next actions
 
-**Live as of 2026-10-14.**
+**Live as of 2026-10-16.**
 
 | | |
 |---|---|
-| Migrations | everything through **266** |
-| Edge functions | `crux` v8, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v5, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
+| Migrations | everything through **271**, except **268** (§11) |
+| Edge functions | `crux` v9, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v5, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
 | Published page | `app_page` `ef789fe9b850` (726,913 bytes). The reportee's Daily update nests sub-KPIs; Performance Mapping with the quarter editable month by month; the shut-month notice; no second quarter editor |
 | Suite | **857 passed, 0 failed, nothing skipped**, from a clean rebuild |
 | October | `assign_closes` **2026-10-31** (reopened, 266), `entry_closes` 2026-11-06. 103 people carry measures |
-| Mailers | `crux-perf-reminders` and `crux-matrix-nudge` **paused, on the owner's instruction**; the rest running |
+| Mail | **Internal mail PAUSED, client escalation matrix PAUSED** (270), switched from Messaging, E-mail. Held, not discarded: what queues waits, with its WhatsApp copy. `crux-perf-reminders` and `crux-matrix-nudge` also paused, on the owner's instruction |
 | Demo passwords | **none set** (263) |
-| Owner's list | decisions only: Q3, Q6, Q7, and the two non-person rows in L6 |
+| Owner's list | **run 268** (§11); decisions Q3, Q6, Q8, and the two non-person rows in L6 |
 
 **Next actions, in order.**
 
-1. **The owner answers Q3, Q6, Q7.** Each is a one-line answer; none needs engineering first.
+1. **The owner runs 268** from the SQL editor, confirming the destructive-operation prompt (§11). Then the session verifies: 0 contacts left, 531 archived.
+1. **The owner answers Q3, Q6, Q8.** Each is a one-line answer; none needs engineering first. Unpausing internal mail is the owner's switch, on Messaging, E-mail.
 2. **L6**: retire `Migration:M1` and re-type the shared mailbox, in **All people**.
 3. **L7**: once Q6 is answered, mark the level measures as levels in the registry.

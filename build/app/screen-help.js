@@ -95,7 +95,8 @@ var HELP = {
   matrix: { t:"Escalation matrix",
     w:"The monthly statement that goes to each client, naming who to call.",
     s:["Check the contacts, then despatch.",
-       "What went out is kept. A contact changed afterwards does not rewrite last month."] },
+       "What went out is kept. A contact changed afterwards does not rewrite last month.",
+       "While the administrator has client mail paused, nothing can be sent, and the Send button says so."] },
 
   visits: { t:"Visits & claims",
     w:"Where you went, and what it cost.",
@@ -127,6 +128,12 @@ var HELP = {
   profile:{ t:"My profile", w:"Your own record, and your sign-in.",
     s:["Change your password here.",
        "Anything you cannot edit is held by Human Resources."] },
+
+  mail:   { t:"E-mail", w:"How the tool's messages leave the building, and the two switches that hold them.",
+    s:["Two switches: internal mail, and the client escalation matrix. Each pauses only what it says.",
+       "Paused is held, not thrown away. Messages wait in the queue with their WhatsApp copies, and the card counts them.",
+       "Unpausing internal mail sends what has been waiting. The card asks first, and says how much.",
+       "A test you send yourself still goes, so the route can be checked before it is opened."] },
 
   config: { t:"Settings", w:"How the tool behaves for everybody.",
     s:["These are company-wide. A change here is felt by every user.",

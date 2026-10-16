@@ -1,4 +1,5 @@
-// Who may read an OGL assignment, asked at the front door.
+// Who may read an OGL assignment, and who may flip a mail switch, asked
+// at the front door.
 //
 // /api/ogl/points, /api/ogl/arbiter and /api/ogl/pause-preview call
 // functions that take only the assignment id, not the caller. Until they
@@ -27,10 +28,16 @@ let handler; const calls = [];
 globalThis.Deno = { env: { get: (k) => k === "SUPABASE_URL" ? "https://x.supabase.co" : "svc" },
                     serve: (h) => { handler = h; } };
 const MINE = "a-mine", THEIRS = "a-theirs";
+let role = "VIEWER", lastPause = null;
 globalThis.fetch = async (u, o) => {
   const fn = String(u).split("/rpc/")[1]; const a = JSON.parse(o.body || "{}"); calls.push(fn);
   let out = null;
-  if (fn === "auth_whoami") out = { id: "p1", app_role: "VIEWER" };
+  if (fn === "auth_whoami") out = { id: "p1", app_role: role };
+  else if (fn === "mail_pause_set") {
+    lastPause = a;
+    out = a.p_paused === null || !["client", "internal"].includes(a.p_kind)
+      ? { error: "invalid", reason: "say which" } : { ok: true };
+  }
   else if (fn === "ogl_detail") out = a.p_assignment === MINE ? { assignment: {} }
                                    : { error: "not_yours", reason: "another chair" };
   else if (fn === "ogl_open_points") out = [{ party: "X", address: "Y" }];
@@ -64,4 +71,30 @@ let r = await go("/api/ogl/detail?id=" + THEIRS);
 ok("detail still refuses the same way it did", r.status === 403, r);
 r = await handler(new Request("https://x.supabase.co/functions/v1/crux/api/ogl/points?id=" + MINE));
 ok("no token is still 401", r.status === 401, r.status);
+
+// ------------------------------------------- the two mail switches (270)
+// Administrator work at the door, and "paused" must be said as a boolean:
+// a body that forgot it, or said "false" as a string, is passed on as
+// "not said" and refused -- never read as "send".
+const pause = (body) => go("/api/mail/pause", { method: "POST", body: JSON.stringify(body),
+                                                headers: { ...H, "content-type": "application/json" } });
+role = "VIEWER";
+r = await pause({ kind: "internal", paused: false });
+ok("mail pause: somebody who is not an administrator is refused 403",
+   r.status === 403 && r.body.error === "admin_only", r);
+ok("mail pause: and the switch is never reached", !r.calls.includes("mail_pause_set"), r.calls);
+role = "ADMIN";
+r = await pause({ kind: "internal", paused: false });
+ok("mail pause: the administrator unpauses internal mail",
+   r.status === 200 && lastPause && lastPause.p_actor === "p1" &&
+   lastPause.p_kind === "internal" && lastPause.p_paused === false, { r, lastPause });
+r = await pause({ kind: "client", paused: true });
+ok("mail pause: and pauses the client matrix, a different switch",
+   r.status === 200 && lastPause.p_kind === "client" && lastPause.p_paused === true, lastPause);
+r = await pause({ kind: "internal" });
+ok("mail pause: a body that does not say which way is refused, not read as send",
+   r.status === 400 && lastPause.p_paused === null, { r, lastPause });
+r = await pause({ kind: "internal", paused: "false" });
+ok("mail pause: \"false\" as a string is not a boolean, and is refused",
+   r.status === 400 && lastPause.p_paused === null, { r, lastPause });
 console.log(fails ? `-- crux: ${fails} failed` : "-- crux: all passed"); process.exit(fails ? 1 : 0);

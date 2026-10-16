@@ -1854,6 +1854,45 @@ PATCHES.append((
 ))
 
 
+# 22. The two mail switches (270).
+#
+# "Add that pause and unpause button for admin ... And same but different
+# button for normal internal mails too" -- the owner, 16 Oct. Two cards at
+# the top of Messaging, E-mail: one for the client escalation matrix, one
+# for internal mail, each saying what it is holding. The code is in
+# build/app/screen-mail-pause.js, which the tests read; the status tile
+# says "Paused" rather than "Ready" while internal mail is held, because
+# "Ready" over a queue that is not moving is the wrong word.
+SCREEN_MAILPAUSE = io.open("build/app/screen-mail-pause.js", encoding="utf-8").read()
+
+PATCHES.append((
+    "the two mail switches",
+    "MAIL-SWITCHES (270)",
+    [("async function vMail(){",
+      SCREEN_MAILPAUSE.rstrip() + "\n\nasync function vMail(){", 1),
+     ('(m.ready ? "Ready" : "Not sending")',
+      '(mpIsPaused(m.pause && m.pause.internal) ? "Paused" : m.ready ? "Ready" : "Not sending")', 1),
+     ('    (m.lastError ? msg("bad", "Last failure: " + m.lastError) : "") +',
+      '    mpCard(m) +\n'
+      '    (m.lastError ? msg("bad", "Last failure: " + m.lastError) : "") +', 1),
+     ('  el("mp").onchange = keyBox; keyBox();',
+      '  mpWire(m, vMail);\n'
+      '  el("mp").onchange = keyBox; keyBox();', 1),
+     ('#mxperiod{width:auto;min-width:170px}',
+      '#mxperiod{width:auto;min-width:170px}\n'
+      '/* the two mail switches (270) */\n'
+      '.mpwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:16px 0}\n'
+      '.mpwrap .card{margin:0}\n'
+      '.mpcard p{margin:0 0 10px}\n'
+      '.mpcard h2 + p{margin-top:12px}\n'
+      '.mpcard button{margin:4px 15px 14px}\n'
+      '.mpstate{display:inline-block;margin-left:8px;padding:1px 9px;border-radius:999px;'
+      'font-size:12px;font-weight:600;vertical-align:middle}\n'
+      '.mppaused .mpstate{background:var(--gold-bg);color:var(--gold-ink)}\n'
+      '.mpon .mpstate{background:var(--green-bg);color:var(--body)}', 1)],
+))
+
+
 # A sentinel asks one question -- "has this patch already been folded into
 # app_page?" -- and the only string that can answer it honestly is one THIS
 # patch writes. A sentinel the application carries for some other reason is

@@ -48,13 +48,20 @@ Two things that run on an event rather than a clock: an outbox row mirrors
 itself to WhatsApp when the mirror setting says to, and a coverage rule that
 overlaps an existing one is refused at write time rather than resolved later.
 
+Above every job, **two switches** (270), both **paused** while the tool is
+not fully live: **internal mail** (everything to staff, with its WhatsApp
+copy) and the **client escalation matrix**. A paused message is held in the
+queue, not discarded, and goes when its switch is turned off. `MAIL_DRAIN`
+and `WA_DRAIN` keep running and simply find nothing they may send. Only an
+administrator's own test message is never held.
+
 ---
 
 ## 3 · What you can change, today, from a screen
 
 | Where | What |
 |---|---|
-| **Mail** | Provider, sender address and name, reply-to, the Google client id and secret, connect and disconnect, daily cap, a test send. |
+| **Mail** | Two switches at the top, **Internal mail** and **Client escalation matrix**: pause and unpause each one separately, see what each is holding, and confirm before releasing it. Below them: provider, sender address and name, reply-to, the Google client id and secret, connect and disconnect, daily cap, a test send. |
 | **WhatsApp** | Provider (Meta, Twilio, or a linked device), sender, token, daily cap, country code, what gets mirrored, a test send. Add and retire sending devices, see the code to scan, take an alert. |
 | **Org chart** | Where a chair holder sits: one button that places everyone whose coverage says plainly where they are, and a picker per person for the rest. |
 | **Data setup** | Load any of the thirteen file kinds, download its template, see the preview, apply or cancel, and read the history of what was loaded. |

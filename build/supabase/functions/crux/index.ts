@@ -619,6 +619,21 @@ Deno.serve(async (req: Request) => {
       return json(out);
     }
 
+    // The two switches (270): client escalation-matrix mail, and everything
+    // internal. The database holds the messages back; this only flips the
+    // switch. "paused" must be said, true or false: a body that forgot it is
+    // refused rather than read as "send".
+    if (path === "/api/mail/pause" && req.method === "POST") {
+      const b = await req.json().catch(() => ({}));
+      const out = await rpc("mail_pause_set", {
+        p_actor: person.id,
+        p_kind: typeof b.kind === "string" ? b.kind : null,
+        p_paused: typeof b.paused === "boolean" ? b.paused : null,
+      });
+      if (out && out.error) return json(out, out.error === "not_permitted" ? 403 : 400);
+      return json(out);
+    }
+
     // ------------------------------------------- Gmail, without an admin
     // The consent round trip comes back as a plain redirect with no session
     // header on it, so the session is not what carries across: a one-time
