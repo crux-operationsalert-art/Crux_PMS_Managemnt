@@ -14,7 +14,7 @@ Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
 
 At that reconciliation: migrations applied through **269** (268 written, awaiting the owner); twelve edge
 functions deployed with their source in the repository; the page published
-from `app_page` `ef789fe9b850` (726,913 bytes); the suite **853 assertions,
+from `app_page` `ef789fe9b850` (726,913 bytes); the suite **857 assertions,
 0 failures, nothing skipped**, from a database rebuilt out of `build/schema`
 and nothing else.
 
@@ -336,12 +336,12 @@ apply itself.
 
 ```
 TSLIB=/path/to/typescript ./build/test/run.sh
-== 853 passed, 0 failed
+== 857 passed, 0 failed
 ```
 
 | | |
 |---|---|
-| SQL | **596 assertions over 27 files** |
+| SQL | **600 assertions over 28 files** |
 | JavaScript | **12 checks, 257 assertions** — `driver` 10, `daily` 12, `crux_scope` 11, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `help` 20, `okr` 22, `today` 28, `window` 37, `list` 59 |
 | Policy | `check_access_matches_nav.py` — the navigation and the database agree on all **262** combinations (8 levels × 29 screens, 30 chair titles) |
 
@@ -419,7 +419,7 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | Migrations | everything through **266** |
 | Edge functions | `crux` v8, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v5, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
 | Published page | `app_page` `ef789fe9b850` (726,913 bytes). The reportee's Daily update nests sub-KPIs; Performance Mapping with the quarter editable month by month; the shut-month notice; no second quarter editor |
-| Suite | **853 passed, 0 failed, nothing skipped**, from a clean rebuild |
+| Suite | **857 passed, 0 failed, nothing skipped**, from a clean rebuild |
 | October | `assign_closes` **2026-10-31** (reopened, 266), `entry_closes` 2026-11-06. 103 people carry measures |
 | Mailers | `crux-perf-reminders` and `crux-matrix-nudge` **paused, on the owner's instruction**; the rest running |
 | Demo passwords | **none set** (263) |
