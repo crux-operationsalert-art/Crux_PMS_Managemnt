@@ -2102,3 +2102,13 @@ create table if not exists public.wa_outbox (
   bridge_id uuid
 );
 
+create table if not exists public.window_miss (
+  kind text not null,
+  period date not null,
+  manager_id uuid not null,
+  people jsonb not null,
+  escalation_id uuid,
+  outbox_key text,
+  raised_at timestamp with time zone default now() not null
+);
+

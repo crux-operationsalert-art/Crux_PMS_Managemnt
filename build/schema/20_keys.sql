@@ -178,6 +178,7 @@ alter table public.wa_bridge add constraint wa_bridge_pkey PRIMARY KEY (id);
 alter table public.wa_bridge_event add constraint wa_bridge_event_pkey PRIMARY KEY (id);
 alter table public.wa_budget add constraint wa_budget_pkey PRIMARY KEY (day);
 alter table public.wa_outbox add constraint wa_outbox_pkey PRIMARY KEY (id);
+alter table public.window_miss add constraint window_miss_pkey PRIMARY KEY (kind, period, manager_id);
 alter table public.ai_key add constraint ai_key_chain_order_key UNIQUE (chain_order);
 alter table public.assignment add constraint assignment_ref_key UNIQUE (ref);
 alter table public.assignment_completion add constraint assignment_completion_assignment_id_breach_cycle_no_key UNIQUE (assignment_id, breach_cycle_no);

@@ -8,67 +8,6 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
-CREATE OR REPLACE FUNCTION public.ogl_attribution_confirm(p_segment uuid, p_reason uuid, p_actor uuid, p_remarks text DEFAULT NULL::text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare
-  s sla_clock_segment%rowtype; a assignment%rowtype; r reason_taxonomy%rowtype;
-  v_attr text;
-begin
-  select * into s from sla_clock_segment where id = p_segment for update;
-  if not found then return jsonb_build_object('error','no_such_segment'); end if;
-  if s.attribution <> 'PENDING_REVIEW' then
-    return jsonb_build_object('error','nothing_pending',
-      'reason','That stretch of time is already attributed to ' || s.attribution || '.');
-  end if;
-
-  select asg.* into a from assignment asg
-    join sla_instance si on si.assignment_id = asg.id
-   where si.id = s.sla_instance_id;
-
-  if a.assignor_id is distinct from p_actor
-     and (select app_role from person where id = p_actor) is distinct from 'ADMIN'
-     and not exists (select 1 from person p where p.id = a.assignor_id and p.manager_id = p_actor) then
-    return jsonb_build_object('error','not_yours_to_confirm',
-      'reason','The assignor, their manager, or an administrator confirms attribution.');
-  end if;
-
-  select * into r from reason_taxonomy where id = p_reason and context = 'ATTRIBUTION';
-  if not found then
-    return jsonb_build_object('error','no_such_reason',
-      'reason','Choose one of the attribution outcomes.');
-  end if;
-  if r.requires_remarks and coalesce(btrim(coalesce(p_remarks,'')),'') = '' then
-    return jsonb_build_object('error','remarks_required',
-      'reason','Reclassifying time needs a sentence saying why.');
-  end if;
-
-  v_attr := case r.code
-    when 'RECLASSIFIED_ASSIGNEE' then 'ASSIGNEE'
-    when 'RECLASSIFIED_EXTERNAL' then 'EXTERNAL'
-    -- the delay's own reason stands
-    else coalesce((select implied_attribution from reason_taxonomy where id = s.reason_id), 'EXTERNAL')
-  end;
-
-  update sla_clock_segment
-     set attribution      = v_attr,
-         counts_to_strike = (v_attr = 'ASSIGNEE'),
-         reason_text      = coalesce(p_remarks, s.reason_text),
-         set_by           = p_actor
-   where id = p_segment;
-
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (a.id, 'ATTRIBUTION_CONFIRMED', p_actor,
-          jsonb_build_object('segment', p_segment, 'outcome', r.code,
-                             'attribution', v_attr, 'remarks', p_remarks));
-
-  return jsonb_build_object('segment', p_segment, 'outcome', r.code, 'attribution', v_attr);
-end $function$
-;
-
 CREATE OR REPLACE FUNCTION public.ogl_attribution_pending(p_sla uuid)
  RETURNS boolean
  LANGUAGE sql
@@ -5374,6 +5313,54 @@ begin
     if v_into is not null then return v_into; end if;
   end loop;
   return null;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.perf_cycle_extend(p_actor uuid, p_cycle uuid, p_until date, p_why text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a person%rowtype; c perf_cycle; v_was date;
+begin
+  select * into a from person where id=p_actor and employment_status='ACTIVE' and superseded_by is null;
+  if a.id is null or (a.app_role <> 'ADMIN'
+                      and coalesce(a.department,'') <> 'Human Resources'
+                      and coalesce(a.department,'') <> 'Business Excellence') then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Reopening a month for KPI setting is HR''s, Business Excellence''s or an administrator''s -- the same three who open it.');
+  end if;
+  select * into c from perf_cycle where id=p_cycle;
+  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  if p_why is null or btrim(p_why)='' then
+    return jsonb_build_object('error','reason_required',
+      'reason','Reopening a month changes what a team can still be asked for, so it carries the reason it was reopened.');
+  end if;
+  if p_until is null then
+    return jsonb_build_object('error','no_date','reason','Say the date KPI setting should close instead.');
+  end if;
+  if p_until < current_date then
+    return jsonb_build_object('error','already_past',
+      'reason', p_until || ' is in the past, so it would shut the month rather than reopen it.');
+  end if;
+  if p_until <= c.assign_closes then
+    return jsonb_build_object('error','not_later',
+      'reason','KPIs for ' || c.period_start || ' can already be set until ' || c.assign_closes || '. This only ever moves that date later.');
+  end if;
+  if p_until > c.entry_closes then
+    return jsonb_build_object('error','after_filing_closes',
+      'reason','Filing for ' || c.period_start || ' closes on ' || c.entry_closes || ', so a KPI set after that could never be filed against.');
+  end if;
+  v_was := c.assign_closes;
+  update perf_cycle set assign_closes = p_until where id = c.id;
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p_actor,'PERF_CYCLE_EXTENDED','perf_cycle', c.id::text,
+          jsonb_build_object('assignCloses', v_was),
+          jsonb_build_object('assignCloses', p_until, 'why', btrim(p_why), 'by', a.full_name));
+  return jsonb_build_object('ok',true,'cycleId',c.id,'period',c.period_start,
+    'was',v_was,'assignCloses',p_until,
+    'note','KPIs for ' || c.period_start || ' may now be set until ' || p_until || '. Who reopened it and why is recorded.');
 end $function$
 ;
 

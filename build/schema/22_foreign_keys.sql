@@ -342,4 +342,6 @@ alter table public.visit add constraint visit_person_id_fkey FOREIGN KEY (person
 alter table public.wa_bridge add constraint wa_bridge_created_by_fkey FOREIGN KEY (created_by) REFERENCES person(id);
 alter table public.wa_bridge_event add constraint wa_bridge_event_bridge_id_fkey FOREIGN KEY (bridge_id) REFERENCES wa_bridge(id) ON DELETE CASCADE;
 alter table public.wa_outbox add constraint wa_outbox_bridge_id_fkey FOREIGN KEY (bridge_id) REFERENCES wa_bridge(id);
+alter table public.window_miss add constraint window_miss_escalation_id_fkey FOREIGN KEY (escalation_id) REFERENCES person_escalation(id);
+alter table public.window_miss add constraint window_miss_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES person(id);
 

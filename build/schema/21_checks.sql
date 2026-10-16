@@ -136,4 +136,5 @@ alter table public.upload_batch add constraint upload_batch_state_check CHECK ((
 alter table public.value_correction add constraint value_correction_reason_real CHECK ((length(btrim(reason)) >= 8));
 alter table public.wa_bridge add constraint wa_bridge_device_kind_check CHECK ((device_kind = ANY (ARRAY['laptop'::text, 'phone'::text, 'server'::text])));
 alter table public.wa_bridge add constraint wa_bridge_state_check CHECK ((state = ANY (ARRAY['NEW'::text, 'NEEDS_QR'::text, 'READY'::text, 'STALE'::text, 'DISABLED'::text])));
+alter table public.window_miss add constraint window_miss_kind_check CHECK ((kind = ANY (ARRAY['KPI_NOT_SET'::text, 'REVIEW_NOT_DONE'::text])));
 

@@ -3450,3 +3450,64 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.ogl_attribution_confirm(p_segment uuid, p_reason uuid, p_actor uuid, p_remarks text DEFAULT NULL::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  s sla_clock_segment%rowtype; a assignment%rowtype; r reason_taxonomy%rowtype;
+  v_attr text;
+begin
+  select * into s from sla_clock_segment where id = p_segment for update;
+  if not found then return jsonb_build_object('error','no_such_segment'); end if;
+  if s.attribution <> 'PENDING_REVIEW' then
+    return jsonb_build_object('error','nothing_pending',
+      'reason','That stretch of time is already attributed to ' || s.attribution || '.');
+  end if;
+
+  select asg.* into a from assignment asg
+    join sla_instance si on si.assignment_id = asg.id
+   where si.id = s.sla_instance_id;
+
+  if a.assignor_id is distinct from p_actor
+     and (select app_role from person where id = p_actor) is distinct from 'ADMIN'
+     and not exists (select 1 from person p where p.id = a.assignor_id and p.manager_id = p_actor) then
+    return jsonb_build_object('error','not_yours_to_confirm',
+      'reason','The assignor, their manager, or an administrator confirms attribution.');
+  end if;
+
+  select * into r from reason_taxonomy where id = p_reason and context = 'ATTRIBUTION';
+  if not found then
+    return jsonb_build_object('error','no_such_reason',
+      'reason','Choose one of the attribution outcomes.');
+  end if;
+  if r.requires_remarks and coalesce(btrim(coalesce(p_remarks,'')),'') = '' then
+    return jsonb_build_object('error','remarks_required',
+      'reason','Reclassifying time needs a sentence saying why.');
+  end if;
+
+  v_attr := case r.code
+    when 'RECLASSIFIED_ASSIGNEE' then 'ASSIGNEE'
+    when 'RECLASSIFIED_EXTERNAL' then 'EXTERNAL'
+    -- the delay's own reason stands
+    else coalesce((select implied_attribution from reason_taxonomy where id = s.reason_id), 'EXTERNAL')
+  end;
+
+  update sla_clock_segment
+     set attribution      = v_attr,
+         counts_to_strike = (v_attr = 'ASSIGNEE'),
+         reason_text      = coalesce(p_remarks, s.reason_text),
+         set_by           = p_actor
+   where id = p_segment;
+
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (a.id, 'ATTRIBUTION_CONFIRMED', p_actor,
+          jsonb_build_object('segment', p_segment, 'outcome', r.code,
+                             'attribution', v_attr, 'remarks', p_remarks));
+
+  return jsonb_build_object('segment', p_segment, 'outcome', r.code, 'attribution', v_attr);
+end $function$
+;
+

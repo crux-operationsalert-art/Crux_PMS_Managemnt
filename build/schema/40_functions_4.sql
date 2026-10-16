@@ -8,6 +8,31 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_sheet_for(p_actor uuid, p_sheet uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare v_rel text; v_out jsonb;
+begin
+  v_rel := plb_sheet_rel(p_actor, p_sheet);
+  if v_rel is null then
+    if not exists (select 1 from plb_goal_sheet where id = p_sheet) then
+      return jsonb_build_object('error','no_such_sheet');
+    end if;
+    return jsonb_build_object('error','not_permitted',
+      'reason','A goal sheet is the employee''s and the line above them.');
+  end if;
+  v_out := plb_sheet(p_sheet);
+  if jsonb_typeof(v_out) = 'object' then
+    v_out := v_out || jsonb_build_object(
+      'rel', v_rel, 'mine', v_rel = 'self', 'maySet', v_rel in ('manage','admin'));
+  end if;
+  return v_out;
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_sheet_from_perf(p_actor uuid, p_person uuid, p_quarter date, p_plb_inr numeric DEFAULT 0)
  RETURNS jsonb
  LANGUAGE plpgsql

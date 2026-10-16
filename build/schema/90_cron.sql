@@ -17,4 +17,5 @@ select cron.schedule('crux-task-sweep', '45 1 * * *', 'select crux_task_tick()')
 select cron.schedule('crux-tick', '*/15 * * * *', 'select crux_tick()');
 select cron.schedule('crux-wa-bridge', '* * * * *', 'select crux_wa_bridge_tick()');
 select cron.schedule('crux-whatsapp', '* * * * *', 'select crux_wa_tick()');
+select cron.schedule('crux-window-escalations', '15 5 * * *', 'select perf_window_sweep(current_date)');
 
