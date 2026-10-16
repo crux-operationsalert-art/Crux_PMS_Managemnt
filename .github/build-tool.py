@@ -1829,6 +1829,31 @@ PATCHES.append((
 ))
 
 
+# 21. A month is scored once it is over (269).
+#
+# "Wait for the month to end before scoring" -- the owner, 16 Oct. The
+# database now refuses a score or a self-evaluation for a month still in
+# progress. Both forms on this screen listed all three months of the
+# quarter, the future ones included, so they offered exactly what the write
+# refuses. They now list the months that have ended, disable their button
+# when none has, and say when the next one opens.
+PATCHES.append((
+    "a month is offered for scoring only once it is over",
+    "PB-MONTH-OVER (269)",
+    [("function pbMonthTable(", '/* PB-MONTH-OVER (269). A month is scored, and self-evaluated, once it is\n   over: plb_score_month and plb_self_eval refuse before then, in words. So\n   the two forms offer only the months that have ended, and say when the\n   next one opens, rather than offering a month the server will refuse. */\nfunction pbMonthsOver(months){\n  var t = new Date();\n  var today = t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" +\n              String(t.getDate()).padStart(2, "0");\n  return (months || []).filter(function(mi){ return today >= pbMonthAfter(mi); });\n}\nfunction pbMonthAfter(mi){\n  var y = Number(String(mi).slice(0, 4)), m = Number(String(mi).slice(5, 7));\n  return (m === 12 ? (y + 1) + "-01" : y + "-" + String(m + 1).padStart(2, "0")) + "-01";\n}\nfunction pbNotYet(months){\n  var ended = pbMonthsOver(months);\n  var next = (months || []).filter(function(mi){ return ended.indexOf(mi) < 0; })[0];\n  return next ? pbMonthName(next) + " opens on 1 " + pbMonthName(pbMonthAfter(next)) +\n                ", once it is over." : "";\n}\nfunction pbMonthTable(', 1),
+     ("""      '<select id="pbmm">' + months.map(function(mi){""",
+      """      '<select id="pbmm">' + pbMonthsOver(months).map(function(mi){""", 1),
+     ("""      '<button class="btn" id="pbmgo">Score</button>' +""",
+      """      '<button class="btn" id="pbmgo"' + (pbMonthsOver(months).length ? '' : ' disabled') + '>Score</button>' +
+      (pbNotYet(months) ? ' <span class="mute">' + esc(pbNotYet(months)) + '</span>' : '') +""", 1),
+     ("""      '<select id="pbsm">' + months.map(function(mi){""",
+      """      '<select id="pbsm">' + pbMonthsOver(months).map(function(mi){""", 1),
+     ("""      '<button class="btn" id="pbsgo">Submit</button>' +""",
+      """      '<button class="btn" id="pbsgo"' + (pbMonthsOver(months).length ? '' : ' disabled') + '>Submit</button>' +
+      (pbNotYet(months) ? ' <span class="mute">' + esc(pbNotYet(months)) + '</span>' : '') +""", 1)],
+))
+
+
 # A sentinel asks one question -- "has this patch already been folded into
 # app_page?" -- and the only string that can answer it honestly is one THIS
 # patch writes. A sentinel the application carries for some other reason is
