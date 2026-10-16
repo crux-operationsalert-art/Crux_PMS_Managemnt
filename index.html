@@ -3526,6 +3526,26 @@ function pbDisputeActions(d, mine){
 }
 
 /* ------------------------------------------------------- monthly scores */
+/* PB-MONTH-OVER (269). A month is scored, and self-evaluated, once it is
+   over: plb_score_month and plb_self_eval refuse before then, in words. So
+   the two forms offer only the months that have ended, and say when the
+   next one opens, rather than offering a month the server will refuse. */
+function pbMonthsOver(months){
+  var t = new Date();
+  var today = t.getFullYear() + "-" + String(t.getMonth() + 1).padStart(2, "0") + "-" +
+              String(t.getDate()).padStart(2, "0");
+  return (months || []).filter(function(mi){ return today >= pbMonthAfter(mi); });
+}
+function pbMonthAfter(mi){
+  var y = Number(String(mi).slice(0, 4)), m = Number(String(mi).slice(5, 7));
+  return (m === 12 ? (y + 1) + "-01" : y + "-" + String(m + 1).padStart(2, "0")) + "-01";
+}
+function pbNotYet(months){
+  var ended = pbMonthsOver(months);
+  var next = (months || []).filter(function(mi){ return ended.indexOf(mi) < 0; })[0];
+  return next ? pbMonthName(next) + " opens on 1 " + pbMonthName(pbMonthAfter(next)) +
+                ", once it is over." : "";
+}
 function pbMonthTable(s){
   var months = pbMonths(s.quarter);
   var by = {};
@@ -3571,12 +3591,13 @@ function pbMonthTable(s){
     'bind your manager and is not averaged with their score. Skipping it costs you ' +
     'nothing and does not bar a dispute.</p>' +
     '<div class="plbar">' +
-      '<select id="pbsm">' + months.map(function(mi){
+      '<select id="pbsm">' + pbMonthsOver(months).map(function(mi){
         return '<option value="' + esc(mi) + '">' + esc(pbMonthName(mi)) + '</option>';
       }).join("") + '</select> ' +
       '<label>KPIs <input id="pbsk" type="number" min="0" max="10" step="0.5" style="width:80px"></label> ' +
       '<label>Attributes <input id="pbsa" type="number" min="0" max="10" step="0.5" style="width:80px"></label> ' +
-      '<button class="btn" id="pbsgo">Submit</button>' +
+      '<button class="btn" id="pbsgo"' + (pbMonthsOver(months).length ? '' : ' disabled') + '>Submit</button>' +
+      (pbNotYet(months) ? ' <span class="mute">' + esc(pbNotYet(months)) + '</span>' : '') +
     '</div><div id="pbselfmsg"></div></div>';
 }
 
@@ -3750,13 +3771,14 @@ function pbOpenSheet(){
     '</div>' +
     '<h4 class="plh">Score a month</h4>' +
     '<div class="plbar">' +
-      '<select id="pbmm">' + months.map(function(mi){
+      '<select id="pbmm">' + pbMonthsOver(months).map(function(mi){
         return '<option value="' + esc(mi) + '">' + esc(pbMonthName(mi)) + '</option>';
       }).join("") + '</select> ' +
       '<label>KPIs <input id="pbmk" type="number" min="0" max="10" step="0.5" style="width:80px"></label> ' +
       '<label>Attributes <input id="pbma" type="number" min="0" max="10" step="0.5" style="width:80px"></label> ' +
       '<input id="pbmr" placeholder="Reason, if 2.0 or more from the self-evaluation" style="min-width:280px"> ' +
-      '<button class="btn" id="pbmgo">Score</button>' +
+      '<button class="btn" id="pbmgo"' + (pbMonthsOver(months).length ? '' : ' disabled') + '>Score</button>' +
+      (pbNotYet(months) ? ' <span class="mute">' + esc(pbNotYet(months)) + '</span>' : '') +
       '<button class="btn" id="pbmlock">Lock the month</button>' +
     '</div>' +
     pbPartsPanel() +
