@@ -28,11 +28,14 @@ let handler; const calls = [];
 globalThis.Deno = { env: { get: (k) => k === "SUPABASE_URL" ? "https://x.supabase.co" : "svc" },
                     serve: (h) => { handler = h; } };
 const MINE = "a-mine", THEIRS = "a-theirs";
-let role = "VIEWER", lastPause = null;
+let role = "VIEWER", lastPause = null, acting = null, lastPw = null, lastIssue = null;
 globalThis.fetch = async (u, o) => {
   const fn = String(u).split("/rpc/")[1]; const a = JSON.parse(o.body || "{}"); calls.push(fn);
   let out = null;
-  if (fn === "auth_whoami") out = { id: "p1", app_role: role };
+  if (fn === "auth_whoami") out = { id: "p1", app_role: role, acting };
+  else if (fn === "auth_salt_of") out = "ab".repeat(16);
+  else if (fn === "auth_password_change") { lastPw = a; out = { ok: true }; }
+  else if (fn === "auth_password_issue") { lastIssue = a; out = { ok: true, loginId: "EMP-0105" }; }
   else if (fn === "mail_pause_set") {
     lastPause = a;
     out = a.p_paused === null || !["client", "internal"].includes(a.p_kind)
@@ -97,4 +100,39 @@ ok("mail pause: a body that does not say which way is refused, not read as send"
 r = await pause({ kind: "internal", paused: "false" });
 ok("mail pause: \"false\" as a string is not a boolean, and is refused",
    r.status === 400 && lastPause.p_paused === null, { r, lastPause });
+
+// ------------------------------------------------ passwords (274)
+// The database is handed a scrypt hash and never the password; a reset's
+// password is shown once, in the answer; nothing is done as somebody one is
+// only looking at the tool as.
+const { scryptSync } = await import("node:crypto");
+const post = (path, body) => go(path, { method: "POST", body: JSON.stringify(body),
+                                         headers: { ...H, "content-type": "application/json" } });
+role = "VIEWER"; acting = null; lastPw = null;
+r = await post("/api/password", { current: "old-one-1", next: "short" });
+ok("password: fewer than eight characters is refused before anything is stored",
+   r.status === 400 && r.body.error === "too_short" && lastPw === null, r);
+r = await post("/api/password", { current: "old-one-1", next: "a-new-one-2" });
+const hex = (x, n) => typeof x === "string" && new RegExp("^[0-9a-f]{" + n + "}$").test(x);
+ok("password: the database gets hashes, never the password",
+   r.status === 200 && hex(lastPw.p_current_hash, 128) && hex(lastPw.p_new_salt, 32) &&
+   hex(lastPw.p_new_hash, 128) && !JSON.stringify(lastPw).includes("a-new-one-2") &&
+   !JSON.stringify(lastPw).includes("old-one-1"), lastPw);
+ok("password: the hashes are scrypt over the salt, as /api/login checks them",
+   lastPw.p_current_hash === scryptSync("old-one-1", Buffer.from("ab".repeat(16), "hex"), 64).toString("hex") &&
+   lastPw.p_new_hash === scryptSync("a-new-one-2", Buffer.from(lastPw.p_new_salt, "hex"), 64).toString("hex"),
+   lastPw);
+acting = { by: "Ops Admin" }; lastPw = null;
+r = await post("/api/password", { current: "x", next: "a-new-one-2" });
+ok("password: not while looking at Crux as somebody else", r.status === 403 && lastPw === null, r);
+r = await post("/api/password/reset", { personId: "p9" });
+ok("reset: not while looking at Crux as somebody else", r.status === 403 && r.calls.indexOf("auth_password_issue") < 0, r);
+acting = null; lastIssue = null;
+r = await post("/api/password/reset", { personId: "p9" });
+ok("reset: a ten-character password with nothing to misread is shown once",
+   r.status === 200 && /^[A-HJ-NP-Za-km-z2-9]{10}$/.test(r.body.password || "") && r.body.loginId === "EMP-0105", r.body);
+ok("reset: and what is stored is its scrypt hash, for the person named",
+   lastIssue && lastIssue.p_person === "p9" && lastIssue.p_actor === "p1" &&
+   lastIssue.p_hash === scryptSync(r.body.password, Buffer.from(lastIssue.p_salt, "hex"), 64).toString("hex"),
+   lastIssue);
 console.log(fails ? `-- crux: ${fails} failed` : "-- crux: all passed"); process.exit(fails ? 1 : 0);

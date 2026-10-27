@@ -1893,6 +1893,68 @@ PATCHES.append((
 ))
 
 
+# 23. A login ID and a password (274).
+#
+# "Yes, using login ID and password along with all current ones" -- the
+# owner, 27 Oct. Three places on the page:
+#
+#   * the sign-in box was for a work e-mail only (patch 3 refused anything
+#     else before the round trip, rightly, while no account had a
+#     password). It now takes a login ID -- the employee number -- or an
+#     e-mail, and still refuses what is neither, which is what a browser's
+#     password manager puts there;
+#   * the HR add-a-person card lives in app_page, not in a spliced file, and
+#     build/app/screen-hr-add.js is its mirror (one comment apart, checked).
+#     The new card -- a login shown once, a "give somebody a new password"
+#     panel -- replaces that span whole;
+#   * My profile's password card is in screen-mytab.js, spliced by patch 9.
+_HRA_SRC = io.open("build/app/screen-hr-add.js", encoding="utf-8").read()
+_HRA_BODY = _HRA_SRC[_HRA_SRC.index("var HRA = "):].rstrip() + "\n\n\n"
+
+PATCHES.append((
+    "a login ID and a password",
+    "LOGIN-ID (274)",
+    [('<div><label for="em">Work e-mail</label>\n'
+      '        <input id="em" type="email" autocomplete="username" placeholder="yourname@cruxindia.co.in"></div>',
+      '<div><label for="em">Login ID or work e-mail</label>\n'
+      '        <input id="em" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" '
+      'placeholder="EMP-0105 or yourname@cruxindia.co.in"></div>', 1),
+     ('    var em = el("em").value.trim();\n'
+      '    if (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(em)) {\n'
+      '      el("loginMsg").innerHTML = msg("bad", "That is not an e-mail address. Your "\n'
+      '        + "browser has probably filled this box with a saved name rather than an "\n'
+      '        + "address. Clear it and type your work address.");\n'
+      '      return;\n'
+      '    }',
+      '    var em = el("em").value.trim();\n'
+      '    /* LOGIN-ID (274): a login ID (EMP-0105) or a work e-mail. What is\n'
+      '       refused before the round trip is what is neither -- the company\n'
+      '       name a browser\'s password manager likes to put in this box. */\n'
+      '    if (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(em) && !/^[A-Za-z0-9][A-Za-z0-9\\/_-]{0,19}$/.test(em)) {\n'
+      '      el("loginMsg").innerHTML = msg("bad", "That is neither a login ID nor an e-mail "\n'
+      '        + "address. Your login ID looks like EMP-0105. Your browser may have filled "\n'
+      '        + "this box with a saved name: clear it and type your login ID.");\n'
+      '      return;\n'
+      '    }', 1),
+     ('      + " No Crux account has a password set, so this box cannot let anyone in. "\n'
+      '      + "Use the Google button above."); return; }',
+      '      + " Check the login ID and password your administrator gave you. With a "\n'
+      '      + "cruxindia.co.in address you can also use the Google button above."); return; }', 1),
+     (("var HRA = { open:false, opts:null, form:{}, chk:null, busy:false, d:null };",
+       "/* ============================================================== hr-merge"),
+      _HRA_BODY, 1),
+     ('#mxperiod{width:auto;min-width:170px}',
+      '#mxperiod{width:auto;min-width:170px}\n'
+      '/* a login, shown once (274) */\n'
+      '.hraissued{border-left:3px solid var(--gold)}\n'
+      '.hralogin{display:flex;flex-wrap:wrap;gap:12px 32px;margin:8px 15px 12px}\n'
+      '.hralogin div{display:flex;flex-direction:column;gap:2px}\n'
+      '.hralogin b{font-size:20px;font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em}\n'
+      '.hrareset{margin:6px 0 12px}\n'
+      '.hrareset select{max-width:24rem}', 1)],
+))
+
+
 # A sentinel asks one question -- "has this patch already been folded into
 # app_page?" -- and the only string that can answer it honestly is one THIS
 # patch writes. A sentinel the application carries for some other reason is

@@ -39,6 +39,25 @@ async function rpc(fn: string, args: Record<string, unknown>) {
 
 const sha = (s: string) => createHash("sha256").update(s).digest("hex");
 
+// A password is stored as /api/login checks it: scrypt over a random salt,
+// both hex. The database is handed the hash and never the password.
+const scryptHex = (password: string, saltHex: string) =>
+  scryptSync(String(password), Buffer.from(saltHex, "hex"), 64).toString("hex");
+
+// A temporary password somebody can read off a sheet and type: ten
+// characters from an alphabet with no 0/O, 1/l/I to mistake for each other.
+// Rejection sampling, so every character is equally likely.
+const PW_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+function tempPassword(n = 10) {
+  let out = "";
+  while (out.length < n) {
+    for (const b of randomBytes(32)) {
+      if (b < 224 && out.length < n) out += PW_ALPHABET[b % 56];
+    }
+  }
+  return out;
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -143,7 +162,7 @@ async function signDownload(bucket: string, key: string, seconds = 900) {
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [], field = "", quoted = false;
-  const s = String(text).replace(/^﻿/, "");
+  const s = String(text).replace(/^\uFEFF/, "");
   for (let i = 0; i < s.length; i++) {
     const c = s[i];
     if (quoted) {
@@ -312,6 +331,50 @@ Deno.serve(async (req: Request) => {
     }
 
     if (path === "/api/me") return json(person);
+
+    // ------------------------------------------- passwords (274)
+    // Changing one's own, signed in, given the current one. Not while
+    // looking at Crux as somebody else: the session is theirs, the password
+    // would be too.
+    if (path === "/api/password" && req.method === "POST") {
+      if (person.acting) {
+        return json({ error: "acting", reason: "You are looking at Crux as somebody else. " +
+          "Stop, and change your own password as yourself." }, 403);
+      }
+      const b = await req.json().catch(() => ({}));
+      const next = typeof b.next === "string" ? b.next : "";
+      if (next.length < 8) {
+        return json({ error: "too_short", reason: "Use at least eight characters." }, 400);
+      }
+      const salt = await rpc("auth_salt_of", { p_person: person.id });
+      const current = typeof b.current === "string" && b.current && salt
+        ? scryptHex(b.current, salt) : null;
+      const newSalt = randomBytes(16).toString("hex");
+      const out = await rpc("auth_password_change", {
+        p_person: person.id, p_current_hash: current,
+        p_new_salt: newSalt, p_new_hash: scryptHex(next, newSalt),
+      });
+      if (out && out.error) return json(out, out.error === "wrong_password" ? 403 : 400);
+      return json(out);
+    }
+
+    // A temporary password for somebody else: the administrator's, or HR's,
+    // as auth_password_issue decides. It is made here, shown once in the
+    // answer, and kept nowhere.
+    if (path === "/api/password/reset" && req.method === "POST") {
+      if (person.acting) {
+        return json({ error: "acting", reason: "Stop looking at Crux as somebody else first." }, 403);
+      }
+      const b = await req.json().catch(() => ({}));
+      const temp = tempPassword();
+      const salt = randomBytes(16).toString("hex");
+      const out = await rpc("auth_password_issue", {
+        p_actor: person.id, p_person: typeof b.personId === "string" ? b.personId : null,
+        p_salt: salt, p_hash: scryptHex(temp, salt),
+      });
+      if (out && out.error) return json(out, out.error === "not_permitted" ? 403 : 400);
+      return json({ ...out, password: temp });
+    }
     if (path === "/api/kinds") return json({ kinds: await rpc("upload_kinds", {}) });
     if (path === "/api/refs") return json(await rpc("app_refs", { p_person: person.id }));
     if (path === "/api/ogl") {

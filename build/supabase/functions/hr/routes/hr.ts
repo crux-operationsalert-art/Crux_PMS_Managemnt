@@ -15,7 +15,22 @@
 // the person and this file mints the code and hands it to the outbox.
 // =====================================================================
 import { Router, one, many, enqueue, issueActivation } from "../shim.ts";
+import { randomBytes, scryptSync } from "node:crypto";
+import { Buffer } from "node:buffer";
 const r = Router();
+
+// The same temporary password crux makes for a reset: ten characters with
+// nothing to misread, every one equally likely.
+const PW_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+function tempPassword(n = 10) {
+  let out = "";
+  while (out.length < n) {
+    for (const b of randomBytes(32)) {
+      if (b < 224 && out.length < n) out += PW_ALPHABET[b % 56];
+    }
+  }
+  return out;
+}
 
 // Creating a person makes an account. HR's, or an administrator's — and
 // the database function says so too, so a caller that skips this service
@@ -60,6 +75,32 @@ r.post("/add", async (req: any, res: any) => {
     [req.person.id, JSON.stringify(req.body || {})]);
   if (o.o?.error) return out(res, o.o);
 
+  // A login ID and a temporary password (274), so somebody with no work
+  // e-mail can still sign in. Made here, shown once in the answer, kept
+  // nowhere: the database is handed the scrypt hash, as /api/login checks it.
+  let login: Record<string, unknown> = {};
+  try {
+    const temp = tempPassword();
+    const salt = randomBytes(16).toString("hex");
+    const hash = scryptSync(temp, Buffer.from(salt, "hex"), 64).toString("hex");
+    const i = await one(`select auth_password_issue($1,$2,$3,$4) as o`,
+      [req.person.id, o.o.personId, salt, hash]);
+    if (i?.o?.ok) login = { loginId: i.o.loginId, password: temp };
+    else login = { loginError: i?.o?.reason || i?.o?.error || "not issued" };
+  } catch (e) {
+    login = { loginError: (e as Error).message || "not issued" };
+  }
+
+  // Nobody to e-mail is not a failure: they sign in with the login ID.
+  if (!o.o.email) {
+    return res.json({
+      ...o.o, ...login, activation: "no e-mail",
+      note: o.o.note + (login.password
+        ? " They sign in with login ID " + login.loginId + " and the temporary password shown."
+        : " No password could be issued: " + login.loginError + "."),
+    });
+  }
+
   // The account exists; now let them into it. A failure here leaves a real
   // person who cannot yet sign in, which is recoverable and says so, rather
   // than rolling back a person somebody has already been told about.
@@ -85,7 +126,7 @@ r.post("/add", async (req: any, res: any) => {
   }
 
   return res.json({
-    ...o.o,
+    ...o.o, ...login,
     activation,
     note: o.o.note +
       (activation === "sent"

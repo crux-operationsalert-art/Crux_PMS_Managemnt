@@ -115,7 +115,7 @@ echo "== behaviour"
 # set -e that killed the script before it could print WHICH one. A test runner
 # that dies silently on a failing test is worse than no runner.
 out=""
-for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit test_offer test_people test_account test_window test_quarter test_assign test_escalate test_partner test_ratio test_qedit test_mkpi test_miss test_mailpause test_signin; do
+for t in test_190_198 test_scope test_task test_line test_seat test_seed test_flow test_link test_move test_split test_phase test_pip test_join test_mail test_welcome test_edit test_offer test_people test_account test_window test_quarter test_assign test_escalate test_partner test_ratio test_qedit test_mkpi test_miss test_mailpause test_signin test_logins; do
   out="$out
 $(psq -q -f "$REPO/build/test/$t.sql" 2>&1 | sed 's/^psql:[^ ]* //' || true)"
 done
@@ -306,7 +306,7 @@ echo "== an OGL assignment is read only by somebody it belongs to, and a mail sw
 TSLIB=${TSLIB:-/opt/node-tools/node_modules/typescript}
 if [ -x "$NODE" ] && [ -d "$TSLIB" ]; then
   if TSLIB="$TSLIB" "$NODE" "$REPO/build/test/crux_scope_check.mjs"; then
-    pass=$((pass + 17))
+    pass=$((pass + 24))
   else
     fail=$((fail + 1))
   fi

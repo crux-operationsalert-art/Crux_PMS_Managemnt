@@ -18,7 +18,8 @@
    performance upload joins people BY employee number, so a person without
    one has their rows dropped in silence. Eleven active staff are in that
    state today, which is how this screen came to exist.                  */
-var HRA = { open:false, opts:null, form:{}, chk:null, busy:false, d:null };
+var HRA = { open:false, opts:null, form:{}, chk:null, busy:false, d:null,
+            issued:null, reset:false, people:null };
 
 /* vHR hands the overview over on every draw, because the card only exists
    for somebody HR, and only vHR knows whether this viewer is. */
@@ -57,15 +58,59 @@ function hraPick(field, label, options, extra){
     hraSays(field) + '</label>';
 }
 
+/* ------------------------------------------------ a login, shown once (274)
+   A person added here, or given a new password, signs in with a login ID --
+   their employee number -- and a temporary password. The password is made
+   by the service, shown in this card once, and kept nowhere: once Done is
+   pressed nobody, the administrator included, can read it again. So the
+   card stays until somebody presses Done, rather than vanishing with the
+   page's next redraw while they are still copying it.                    */
+function hraIssued(){
+  var i = HRA.issued;
+  if (!i) return "";
+  return '<div class="card hraissued"><h2>Sign-in for ' + esc(i.name || "them") + '</h2>' +
+    '<div class="hralogin"><div><span class="mute">Login ID</span><b>' + esc(i.loginId) + '</b></div>' +
+    '<div><span class="mute">Temporary password</span><b>' + esc(i.password) + '</b></div></div>' +
+    '<p>Give them both now. This password is shown once and stored nowhere; ' +
+    'they change it on My profile after signing in.</p>' +
+    '<p><button class="btn primary" id="hraissueddone">Done</button></p></div>';
+}
+
+/* Somebody who has forgotten theirs, or never had one. */
+function hraResetCard(){
+  if (!HRA.reset) {
+    return '<p><button class="btn" id="hraresetopen">Give somebody a new password</button></p>';
+  }
+  var people = HRA.people;
+  if (!people) return '<p class="mute">Loading the people&hellip;</p>';
+  return '<div class="hrareset"><label><span>Who</span><select id="hraresetwho">' +
+    '<option value="">— choose a person —</option>' +
+    people.map(function(m){
+      return '<option value="' + esc(m.id) + '">' + esc(m.name) +
+        (m.employeeNo ? ' · ' + esc(m.employeeNo) : '') + '</option>'; }).join("") +
+    '</select></label> ' +
+    '<button class="btn primary" id="hraresetgo">Give them a new password</button> ' +
+    '<button class="btn" id="hraresetcancel">Cancel</button>' +
+    '<p class="mute">Their old password stops working, and anybody signed in with it is signed out.</p>' +
+    '<div id="hraresetmsg"></div></div>';
+}
+
 /* --------------------------------------------------------------- the card */
 function hraCard(d){
   if (!d || !d.isHr) return "";
+  return hraIssued() + hraCardBody(d);
+}
+
+function hraCardBody(d){
   if (!HRA.open) {
     return '<div class="card"><h2>Add a person</h2>' +
       '<p class="mute">Nine fields, all checked as you type. The employee number is ' +
       'required because every performance upload joins people by it — somebody added ' +
-      'without one has their rows dropped and nothing says so.</p>' +
-      '<p><button class="btn primary" id="hraopen">Add a person</button></p></div>';
+      'without one has their rows dropped and nothing says so. A work e-mail and a ' +
+      'mobile are asked for and not required: without them, the person signs in with ' +
+      'their login ID and a temporary password, shown here once.</p>' +
+      '<p><button class="btn primary" id="hraopen">Add a person</button></p>' +
+      hraResetCard() + '</div>';
   }
   var o = HRA.opts;
   if (!o) return '<div class="card"><h2>Add a person</h2>' +
@@ -223,9 +268,49 @@ function hraWire(){
       return;
     }
     HRA.open = false; HRA.form = {}; HRA.chk = null;
+    /* A password to hand over stays on screen until Done; anything else
+       redraws the page as it always did. */
+    if (out.password) {
+      HRA.issued = { name: out.name || (out.note || "").split(" added")[0],
+                     loginId: out.loginId, password: out.password };
+      hraRepaint();
+      var bx = el("hramsg");
+      if (bx) bx.innerHTML = msg("ok", out.note);
+      return;
+    }
     hraRepaint();
     var box = el("hramsg");
     if (box) box.innerHTML = msg("ok", out.note);
     setTimeout(function(){ route(); }, 1600);
+  };
+
+  if (el("hraissueddone")) el("hraissueddone").onclick = function(){
+    HRA.issued = null; route();
+  };
+
+  if (el("hraresetopen")) el("hraresetopen").onclick = async function(){
+    HRA.reset = true; hraRepaint();
+    var o = await hrapi("/hr/options");
+    HRA.people = o && !o.error ? (o.managers || []) : [];
+    hraRepaint();
+  };
+  if (el("hraresetcancel")) el("hraresetcancel").onclick = function(){
+    HRA.reset = false; hraRepaint();
+  };
+  if (el("hraresetgo")) el("hraresetgo").onclick = async function(){
+    var who = el("hraresetwho").value;
+    if (!who) { el("hraresetmsg").innerHTML = msg("bad", "Choose who it is for."); return; }
+    var pick = (HRA.people || []).filter(function(m){ return m.id === who; })[0] || {};
+    if (!confirm("Give " + (pick.name || "them") + " a new password? Their old one stops working.")) return;
+    el("hraresetgo").disabled = true;
+    var out = await crux("/api/password/reset", { method:"POST", body:{ personId: who } });
+    if (out.error) {
+      el("hraresetgo").disabled = false;
+      el("hraresetmsg").innerHTML = msg("bad", out.reason || out.error);
+      return;
+    }
+    HRA.reset = false;
+    HRA.issued = { name: out.name || pick.name, loginId: out.loginId, password: out.password };
+    hraRepaint();
   };
 }

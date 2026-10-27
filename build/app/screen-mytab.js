@@ -66,6 +66,7 @@ function myRender(){
         myDocs() +
         myRaised() +
         myWhere() +
+        myPassword() +
       '</div>' +
     '</div>';
   myWire();
@@ -279,7 +280,40 @@ function myEditForm(field, was, label){
 }
 
 /* ---------------------------------------------------------------- wiring */
+/* ---------------------------------------------- your password (274)
+   A password handed out on a sheet is one the person should replace, and
+   this is where. The current one is asked for whenever there is one; a
+   person who has only ever signed in with Google sets their first.      */
+function myPassword(){
+  var me0 = (typeof me === "object" && me) || {};
+  return '<div class="card"><h2>Your password</h2>' +
+    '<p class="mute">You sign in with ' +
+      (me0.employee_no ? 'login ID <b>' + esc(me0.employee_no) + '</b>' : 'your login ID') +
+      (me0.work_email ? ' or ' + esc(me0.work_email) : '') + ' and this password.</p>' +
+    '<div class="row"><div><label>Current password</label>' +
+      '<input id="mypwcur" type="password" autocomplete="current-password"></div>' +
+    '<div><label>New password</label>' +
+      '<input id="mypwnew" type="password" autocomplete="new-password" placeholder="at least eight characters"></div>' +
+    '<div><label>New password again</label>' +
+      '<input id="mypwnew2" type="password" autocomplete="new-password"></div></div>' +
+    '<p><button class="btn primary" id="mypwgo">Change my password</button></p>' +
+    '<div id="mypwmsg"></div></div>';
+}
+
 function myWire(){
+  if (el("mypwgo")) el("mypwgo").onclick = async function(){
+    var next = el("mypwnew").value, again = el("mypwnew2").value;
+    if (next.length < 8) { el("mypwmsg").innerHTML = msg("bad", "Use at least eight characters."); return; }
+    if (next !== again) { el("mypwmsg").innerHTML = msg("bad", "The two new passwords are not the same."); return; }
+    el("mypwgo").disabled = true;
+    var o = await crux("/api/password", { method:"POST",
+      body:{ current: el("mypwcur").value, next: next } });
+    el("mypwgo").disabled = false;
+    if (o.error) { el("mypwmsg").innerHTML = msg("bad", o.reason || o.error); return; }
+    el("mypwcur").value = ""; el("mypwnew").value = ""; el("mypwnew2").value = "";
+    el("mypwmsg").innerHTML = msg("ok", o.note || "Changed.");
+  };
+
   if (el("myask")) el("myask").onclick = function(){
     el("mybox").innerHTML = myAskForm();
     el("mybox").scrollIntoView({ behavior:"smooth", block:"nearest" });
