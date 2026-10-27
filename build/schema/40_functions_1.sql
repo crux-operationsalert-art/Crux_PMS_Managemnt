@@ -611,8 +611,9 @@ begin
   insert into auth_session (person_id, expires_at, source, token_hash)
   values (p.id, now() + interval '7 days', 'WORKSPACE_SSO', p_token_hash);
 
-  return jsonb_build_object('id', p.id, 'full_name', p.full_name,
-    'work_email', p.work_email, 'app_role', p.app_role);
+  -- 272: the same answer /api/me and Act as give -- the chair, the
+  -- department and the screens -- so a fresh sign-in opens the chair's view.
+  return auth_whoami(p_token_hash);
 end $function$
 ;
 
@@ -652,8 +653,9 @@ begin
   insert into auth_session (person_id, expires_at, source, token_hash)
   values (p.id, now() + interval '7 days', 'PASSWORD', p_token_hash);
 
-  return jsonb_build_object('id', p.id, 'full_name', p.full_name,
-    'work_email', p.work_email, 'app_role', p.app_role);
+  -- 272: the same answer /api/me and Act as give -- the chair, the
+  -- department and the screens -- so a fresh sign-in opens the chair's view.
+  return auth_whoami(p_token_hash);
 end $function$
 ;
 
