@@ -12,9 +12,9 @@ Supabase project `oxpwqfbtbxlvuqpztbwg`. Repository
 
 **Last reconciled against the live database: 2026-10-27.**
 
-At that reconciliation: every migration through **271** applied (268 by the owner, 27 Oct); twelve edge
+At that reconciliation: every migration through **274** applied (268 by the owner, 27 Oct); twelve edge
 functions deployed with their source in the repository; the page published
-from `app_page` `415f71bbacb4` (735,728 bytes); the suite **891 assertions,
+from `app_page` `c83e9357cd06` (742,579 bytes); the suite **909 assertions,
 0 failures, nothing skipped**, from a database rebuilt out of `build/schema`
 and nothing else.
 
@@ -290,9 +290,9 @@ than a message.
 | **L2** | **Done, 14 Oct.** The quarter has one door: the Quarterly tab. `pfQEditor` is deleted; it sat on the person's *own* quarter card, which nobody may edit. |
 | **L3** | **Decided (Q5): the bulk path stays, as the bulk path**, with a sentence pointing one person at Performance mapping. |
 | **L4** | **Done.** The help panel says how to reach Performance mapping and what `+` does. |
-| **L5** | **Not done, deliberately.** This section used to say the mailers were paused "because they nagged about a window" and that 259 removed the reason. Migration 256 says otherwise: they were paused on the **owner's instruction** — "pause the daily morning mailers as of now". Turning them back on is the owner's call. |
+| **L5** | **Held — the owner's answer to Q3, 27 Oct: "Hold".** This section used to say the mailers were paused "because they nagged about a window" and that 259 removed the reason. Migration 256 says otherwise: they were paused on the **owner's instruction** — "pause the daily morning mailers as of now". Turning them back on is the owner's call. |
 | **L6** | Of the four people with no manager, two are right (Arun Bodupali, the MD, at the top; the service account). Two are not people: **`Migration:M1`** (no address) and **`cruxbposervicespvtltd@gmail.com`**, a shared mailbox typed as an employee. Data, in **All people**. |
-| **L7** | **New.** `perf_accrual_kind` reads "cost per case", "working days to close" and DSO as **counts** from their unit text, so a quarter adds three months of them together. They are levels. A registry classification — the owner's or the one-up manager's to confirm. |
+| **L7** | ~~Cost per case, days to close and DSO read as counts~~ — **fixed (273, 27 Oct)**, the owner's answer to Q6 via the BI dashboard's own definitions: 16 registry measures are levels (`REPLACES`), and 12 time, cost and defect measures are lower-is-better, a manager's own override kept. |
 | **L8** | **New.** "Issues resolved below this chair" is registered **lower-is-better**. Resolving more below a chair reads as better. One sheet carries it; direction is the one-up manager's per KPI (253). |
 | **L10** | **October targets cover 12 of 36 sheet locations.** 23 locations (₹1,53,29,820) have nobody in a Branch Manager chair; their money is in Manish's target only. Vinayak Jondale is seated "West" with no branch of his own and was left as he was. Nitish Bhope (Zonal) has no ₹ measure, so the climb passes him. |
 | **L11** | **The division stops at the client.** Branch teams carry no revenue measure, so ₹ targets were split by client, not across executives. Giving executives a revenue share means new measures and re-weighting 66 scorecards — a decision, not a default. |
@@ -300,13 +300,15 @@ than a message.
 | **L13** | ~~Manish's SLA target 5~~ — **fixed (267)**. |
 | **L14** | ~~A month can be scored before it ends~~ — **fixed (269)**, the owner's decision. Was: **A month can be scored before it ends.** The 16 Oct audit: `plb_score_month` accepted a manager's October score on the 16th, with half the month's filings still to come. Allowed today; whether it should wait for the month's last working day is the owner's call. |
 | **L9** | ~~531 of the people rows are client-bank contacts~~ — **done (268, 27 Oct).** Archived whole in `person_removed`; the client branches keep each contact's name, e-mail and mobile. |
-| **L15** | **New.** While internal mail is paused, everything the tool writes to staff waits. On unpausing it all goes, including what is stale by then. Already waiting: **721 WhatsApp copies** of old reminders and welcome letters, queued for a phone that was never linked. They go too, the moment a phone is linked and internal mail is on. Whether to clear that backlog before unpausing is the owner's call (Q8). The Mail screen shows the count beside the switch. |
+| **L15** | ~~The stale WhatsApp backlog~~ — **retired (273, 27 Oct)**, the owner's answer to Q8 ("you decide"). The **723** copies queued before 27 Oct were marked `ABANDONED` with the reason, and none was removed. While internal mail is paused, anything queued from now on still waits and goes on unpausing. The Mail screen shows the count beside the switch. |
+| **L16** | **New, 27 Oct: what the onboarding left open (274).** 306 people from the October work record are in the tool. **133 of them have no manager**: everyone in Pune, Gujarat, Marathwada and Jharkhand, and everyone who worked in more than one branch. The owner said "keep it open, I will do it on the tool". **33 names were not created** because they read as a vendor, team, test or outstation login. They are listed in the owner's workbook, and the real ones can be added on the HR screen. Two to check: **Mysore Ananda Mahadevaiah** (EMP-0178) may be **Mahadeviah** (EMP-0115), and **Crux Ambedkar** was taken to be Sadu Ambedkar's login, so it was not created. Seven people have one name only, as the work record gives it. |
 
 ## 11. Open items the owner must apply
 
-**Nothing to apply.** Every migration through 271 is live. 268, the last one
-waiting, was run by the owner from the SQL editor on 27 Oct and verified the
-same day.
+**Nothing to apply.** Every migration through 274 is live. 268 was run by the
+owner from the SQL editor on 27 Oct and verified the same day; 272, 273 and
+274 were applied from this session the same day, each with its guard passing
+against live data.
 
 How to recognise the next one: anything that deletes rows needs a confirmation
 this session's gate asks for, and the owner may not see that prompt. Either the
@@ -315,7 +317,7 @@ chooses "run anyway" at the editor's own destructive-operation warning. On
 16 Oct that warning was closed instead, and the statement never reached the
 database.
 
-What is left is decisions, not statements: L5 (the mailers), L6, L7, L8 and L15 above.
+What is left is decisions and data, not statements: L6, L8 and L16 above.
 
 Migration **254** — removing `perf_assignment_once_top_old` — was the last
 one, and it is **done**: the live database now carries one index,
@@ -334,7 +336,7 @@ apply itself.
 
 | | Risk | Standing |
 |---|---|---|
-| R1 | The application is one ~717 KB row with 20 patches applied at build time | Every patch asserts its own call-site count, and the build refuses any patch whose sentinel appears in none of its own rules. A build fails loudly rather than publishing a page it did not understand. |
+| R1 | The application is one ~742 KB row with 23 patches applied at build time | Every patch asserts its own call-site count, and the build refuses any patch whose sentinel appears in none of its own rules. A build fails loudly rather than publishing a page it did not understand. |
 | R2 | A function rewritten from memory loses a clause | Migration 239 did exactly this. Mitigated by substituting over live `prosrc`, with a raise if the anchor is not found. |
 | R3 | Three independent line walkers — `perf_line`, `org_subtree`, `app_subtree` | They can disagree. 245 keeps the service-account rule in the table so none of them needs to know about it. |
 | R4 | 6 of 108 staff have no manager, 3 no designation | Not a code defect, but `perf_rel` is built on `manager_id`. **All people** exists to find and fix it. |
@@ -342,6 +344,8 @@ apply itself.
 | R6 | **A check that cannot run is not a check** | `window_check.mjs` threw a `ReferenceError` before its first assertion for six days, because its harness named a renderer that had been deleted — and the suite counted that as one failure among hundreds while the thing it guarded quietly stopped being true. `run.sh` now exits non-zero on a **skipped** check as well as a failed one, and the whole suite is run from a clean rebuild before every commit. |
 | R8 | **260 moved Q3 bonus figures** on 89 sheets, because their ceiling measures are now scored the right way up (Manish Shukla ₹2,01,476 → ₹1,99,155; Virendra Pal ₹2,32,693 → ₹2,36,817; Anuja Adhali unchanged) | Intended — it is the owner's 7 Oct rule reaching the one scorer it had missed. Nothing is stored: reverting `plb_compute` reverts every figure. The rupee targets on the demo sheets remain placeholders. |
 | R9 | **A new function or table was open to the public key unless somebody remembered to close it** | Supabase's defaults grant `anon` EXECUTE on every new function and full rights on every new table, and row security starts off. 22 functions, a table and a view had slipped through (271). **This is the second time.** 228 closed 30 such functions on 7 Oct and named the same five exceptions, but it left the default in place, so every function written after it opened again. The defaults are now turned round, and 271's proof names the five left open on purpose. Residuals: a function created by a role other than `postgres` still gets the platform default. And the local rebuild cannot show a revoke from PUBLIC (the snapshot records grants, not revokes), so `test_mailpause` asserts the explicit grants and the live proofs in 270 and 271 assert the rest. |
+| R10 | **408 temporary passwords exist in one workbook** (27 Oct). Anybody holding it can sign in as those people until each changes theirs | The workbook was sent to the owner and is not in the repository. The database holds only scrypt hashes. Each person changes theirs on **My profile**. An administrator or HR can issue a new one from the HR screen, and that signs the person out everywhere. Nothing forces a change at first sign-in yet. |
+| R11 | **A sign-in made outside the sign-in screen** | To issue the 408 passwords through the live `/api/password/reset` route rather than paste 408 hashes through SQL, one session was opened for the administrator account, `source = 'ONBOARD_SCRIPT'`, for 30 minutes. It was revoked once the passwords were issued, about six minutes after it opened. Every issue is in `audit_entry` as `PASSWORD_ISSUED`, 408 rows. |
 | R7 | A feature can be published and unreachable | Four times in one fortnight. `reach_check.mjs` now asserts that 15 named features are reachable **from the screen the owner is told to open**. Its own limitation is documented in the file: reachability is name-occurrence, not control flow, so it errs towards "reachable" and will miss dead code — it cannot raise a false alarm, and it cannot catch tidiness. |
 
 ## 13. Validation and acceptance
@@ -350,13 +354,13 @@ apply itself.
 
 ```
 TSLIB=/path/to/typescript ./build/test/run.sh
-== 891 passed, 0 failed
+== 909 passed, 0 failed
 ```
 
 | | |
 |---|---|
-| SQL | **611 assertions over 29 files** |
-| JavaScript | **13 checks, 280 assertions** — `driver` 10, `daily` 12, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `crux_scope` 17, `mailpause` 17, `help` 20, `okr` 22, `today` 28, `window` 37, `list` 59 |
+| SQL | **622 assertions over 31 files** |
+| JavaScript | **13 checks, 287 assertions** — `driver` 10, `daily` 12, `linkify` 14, `qedit` 14, `forget` 15, `reach` 15, `mailpause` 17, `help` 20, `okr` 22, `crux_scope` 24, `today` 28, `window` 37, `list` 59 |
 | Policy | `check_access_matches_nav.py` — the navigation and the database agree on all **262** combinations (8 levels × 29 screens, 30 chair titles) |
 
 - **The published page carries the change.** After every publish the new
@@ -417,6 +421,16 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 | 2026-10-16 | **Only the administrator's own test mail goes while paused; sign-in codes are held** | The route has to be testable before it is opened. Sign-in does not depend on mail: every session so far has been Google Workspace, Act-as or a password, and an e-mailed activation code has never been used. |
 | 2026-10-16 | **Closed the 22 functions, a table and a view to the public key, and the default with them** (271) | Found while building 270, so fixed rather than noted. Nothing legitimate used them that way. |
 | 2026-10-27 | **The 531 client-bank contacts are removed** (268, run by the owner) | The owner's instruction of 16 Oct. Archived whole rather than discarded, and branch contacts keep their own details, so nothing a client branch shows is lost and the removal can be undone. |
+| 2026-10-27 | **Signing in opens the chair, not the bare role** (272) | Manish Shukla signed in to the reduced MANAGER view, but Act-as showed his full chair. Password and Google sign-in returned a four-field payload. They now return `auth_whoami`, which is what Act-as already used. |
+| 2026-10-27 | **Q3: the morning mailers stay held** | The owner: "Hold". |
+| 2026-10-27 | **Q6: a rate, a ratio, an average or a duration is a level, and time, cost and defects are lower-is-better** (273) | The owner pointed at the BI dashboard, whose definitions settle it. 16 measures `REPLACES` and 12 `LOWER`. A manager's own direction is kept. |
+| 2026-10-27 | **Manish's October rupees re-pointed** (273) | 264 had joined his Revenue and Collection to "Cost per case" and "Escalation ratio", by unit text. They now point at Branch revenue and Branch collection. |
+| 2026-10-27 | **Q8: the 723 stale WhatsApp copies are retired, not sent** (273) | The owner: "you decide". A reminder for a window that has closed does harm if it arrives. They are marked `ABANDONED` with the reason, and none is removed. |
+| 2026-10-27 | **The login ID is the employee number, beside the work e-mail** (274) | The owner: "using login ID and password along with all current ones". Field and back-office staff have no work e-mail, and the add form had refused them for it. A missing e-mail or mobile is now a warning. |
+| 2026-10-27 | **Passwords are made in the edge function and shown once; the database holds only the hash** | A temporary password is never stored, logged or committed. An administrator or HR issues one, but HR cannot for an administrator, nobody can for themselves or a service account, and issuing one ends the old sessions. |
+| 2026-10-27 | **Existing staff onboarded from the October work record** (306 people, EMP-0105 to EMP-0410) | The BI record had 394 workers and the tool knew 48 of them. Of the other 346, 7 are people the tool already has, 33 are not one person, and 306 were created. Honorifics and the " Fe" / " Tl" tags are dropped. One-name people are created, because Bangalore writes its field staff that way. |
+| 2026-10-27 | **A manager only where one branch has one head; otherwise left open** | The owner: "if you are not able to identify the managers… keep it open". 173 have one and 133 are open. |
+| 2026-10-27 | **No bulk password for an administrator** | Shantanu Suravase signs in with Google, and an administrator's password does not belong in a spreadsheet. The service account has none. |
 
 ## 15. Open questions
 
@@ -424,12 +438,13 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 |---|---|---|
 | Q1 | Aniket Chalke has 42 direct reports, and six people sit at the top of the line with no manager above them. Is that the intended shape? | No — but it decides L6 |
 | Q2 | Should the KPI window be 5 working days, or longer while the tool is being rolled out? October is extended to the 15th; `perf_cycle_extend` makes either possible. | No |
-| Q3 | **When do the morning mailers come back on?** They were paused on your instruction. | No — L5 |
+| Q3 | ~~When do the morning mailers come back on?~~ **Answered 27 Oct: hold.** | — |
 | Q4 | ~~Should M1/M2/M3 be typed by the manager?~~ **Answered from the specification: yes** (14 Oct). | — |
 | Q5 | ~~Does the bulk path stay?~~ **Decided: yes, labelled** (14 Oct). | — |
-| Q6 | Are "cost per case", "days to close" and DSO levels rather than counts? (L7) | No |
+| Q6 | ~~Are "cost per case", "days to close" and DSO levels rather than counts?~~ **Answered 27 Oct by the BI dashboard: yes** (273). | — |
 | Q7 | ~~Go-ahead to remove the 531 client-bank contacts?~~ **Given 16 Oct, done 27 Oct** (268). | — |
-| Q8 | Before internal mail is unpaused, should the **721 stale WhatsApp copies** (and anything queued meanwhile) be cleared, so only new messages go? (L15) | No — only when unpausing |
+| Q8 | ~~Clear the stale WhatsApp copies before unpausing?~~ **"You decide" — retired, 723 of them** (273). | — |
+| Q9 | Should a person be made to change the temporary password at first sign-in? Today it is asked of them, not enforced (R10). | No |
 
 ## 16. Status and next actions
 
@@ -437,18 +452,19 @@ TSLIB=/path/to/typescript ./build/test/run.sh
 
 | | |
 |---|---|
-| Migrations | everything through **271** |
-| Edge functions | `crux` v9, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v5, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
-| Published page | `app_page` `415f71bbacb4` (735,728 bytes). The two mail switches on Messaging, E-mail; the matrix Send says when it is paused. The reportee's Daily update nests sub-KPIs; Performance Mapping with the quarter editable month by month; the shut-month notice; no second quarter editor |
-| Suite | **891 passed, 0 failed, nothing skipped**, from a clean rebuild |
+| Migrations | everything through **274** |
+| Edge functions | `crux` v10, `plb` v14, `perf` v12, `api` v9, `ops` v8, `mail` v6, `hr` v6, `wa` v5, `cfg` v3, `org` v2, `kpi` v1, `pack` v1 — every app-facing one `verify_jwt: false`, every one with its source in `build/supabase/functions/` |
+| Published page | `app_page` `c83e9357cd06` (742,579 bytes). Sign-in takes a login ID or a work e-mail. **My profile** has a "Your password" card, and the HR screen can give a person a new temporary password. The two mail switches are on Messaging, E-mail, and the matrix Send says when it is paused. Performance Mapping edits the quarter month by month |
+| Suite | **909 passed, 0 failed, nothing skipped**, from a clean rebuild |
 | October | `assign_closes` **2026-10-31** (reopened, 266), `entry_closes` 2026-11-06. 103 people carry measures |
-| Mail | **Internal mail PAUSED, client escalation matrix PAUSED** (270), switched from Messaging, E-mail. Held, not discarded: what queues waits, with its WhatsApp copy. `crux-perf-reminders` and `crux-matrix-nudge` also paused, on the owner's instruction |
-| Demo passwords | **none set** (263) |
-| People | **108 rows, 104 active.** The 531 client-bank contacts are archived in `person_removed` (268) |
-| Owner's list | decisions only: Q3, Q6, Q8, and the two non-person rows in L6 |
+| Mail | **Internal mail PAUSED, client escalation matrix PAUSED** (270), switched from Messaging, E-mail. Held, not discarded: what queues waits, with its WhatsApp copy. `crux-perf-reminders` and `crux-matrix-nudge` also paused, on the owner's instruction (Q3: hold) |
+| Passwords | **408 of 410 active people have a login ID and a temporary password** (274). The two without are Shantanu Suravase (administrator, Google) and the service account. The passwords are in the owner's workbook only, and no demo password is set (263) |
+| People | **414 rows, 410 active**: 104 from before, and 306 onboarded from the October work record (EMP-0105 to EMP-0410; FE 105, BO 201). The 531 client-bank contacts are archived in `person_removed` (268) |
+| Owner's list | data, not decisions: the 133 open managers, the 33 names to check, and the two possible duplicates (L16); the two non-person rows in L6 |
 
 **Next actions, in order.**
 
-1. **The owner answers Q3, Q6, Q8.** Each is a one-line answer; none needs engineering first. Unpausing internal mail is the owner's switch, on Messaging, E-mail.
-2. **L6**: retire `Migration:M1` and re-type the shared mailbox, in **All people**.
-3. **L7**: once Q6 is answered, mark the level measures as levels in the registry.
+1. **Hand the logins out** from the workbook. Each person signs in with their login ID and changes the password on My profile.
+2. **L16, on the tool**: set the 133 open managers in All people. Add any real people from the 33 names to check on the HR screen. Merge Mahadeviah and Mysore Ananda Mahadevaiah if they are one person.
+3. **L6**: retire `Migration:M1` and re-type the shared mailbox, in **All people**.
+4. **Q9**, when convenient: whether to force a password change at first sign-in.
