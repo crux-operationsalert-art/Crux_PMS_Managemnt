@@ -116,6 +116,7 @@ alter table public.person enable row level security;
 alter table public.person_document enable row level security;
 alter table public.person_escalation enable row level security;
 alter table public.person_event enable row level security;
+alter table public.person_removed enable row level security;
 alter table public.person_request enable row level security;
 alter table public.person_warning enable row level security;
 alter table public.pip_plan enable row level security;

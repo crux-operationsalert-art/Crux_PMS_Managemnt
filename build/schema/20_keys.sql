@@ -116,6 +116,7 @@ alter table public.person add constraint person_pkey PRIMARY KEY (id);
 alter table public.person_document add constraint person_document_pkey PRIMARY KEY (id);
 alter table public.person_escalation add constraint person_escalation_pkey PRIMARY KEY (id);
 alter table public.person_event add constraint person_event_pkey PRIMARY KEY (id);
+alter table public.person_removed add constraint person_removed_pkey PRIMARY KEY (id);
 alter table public.person_request add constraint person_request_pkey PRIMARY KEY (id);
 alter table public.person_warning add constraint person_warning_pkey PRIMARY KEY (id);
 alter table public.pip_plan add constraint pip_plan_pkey PRIMARY KEY (id);

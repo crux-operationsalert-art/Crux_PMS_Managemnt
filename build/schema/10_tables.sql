@@ -1319,6 +1319,14 @@ create table if not exists public.person_event (
   actor_id uuid
 );
 
+create table if not exists public.person_removed (
+  id uuid not null,
+  removed_at timestamp with time zone default now() not null,
+  why text not null,
+  person jsonb not null,
+  events jsonb default '[]'::jsonb not null
+);
+
 create table if not exists public.person_request (
   id uuid default gen_random_uuid() not null,
   full_name text not null,
