@@ -635,7 +635,8 @@ begin
   end if;
 
   select * into p from person
-   where lower(work_email) = lower(p_email)
+   where (lower(work_email) = lower(btrim(p_email))
+         or lower(user_id) = lower(btrim(p_email)))  -- 274: or the login ID
      and employment_status = 'ACTIVE'
      and superseded_by is null;
 
@@ -659,6 +660,100 @@ begin
 end $function$
 ;
 
+CREATE OR REPLACE FUNCTION public.auth_password_change(p_person uuid, p_current_hash text, p_new_salt text, p_new_hash text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare p person;
+begin
+  select * into p from person
+   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null;
+  if p.id is null then
+    return jsonb_build_object('error','not_a_person');
+  end if;
+  if coalesce(p_new_salt,'') !~ '^[0-9a-f]{32}$' or coalesce(p_new_hash,'') !~ '^[0-9a-f]{128}$' then
+    return jsonb_build_object('error','invalid','reason','That is not a password the tool can store.');
+  end if;
+  -- somebody who has a password proves they know it; somebody signed in by
+  -- Google who never had one is setting their first
+  if p.password_hash is not null
+     and (p_current_hash is null or p_current_hash <> p.password_hash) then
+    return jsonb_build_object('error','wrong_password',
+      'reason','That is not your current password.');
+  end if;
+  update person
+     set password_salt = p_new_salt, password_hash = p_new_hash,
+         user_id = coalesce(user_id, nullif(btrim(employee_no),''))
+   where id = p.id;
+  insert into person_event (person_id, kind, note, at)
+  values (p.id, 'PASSWORD_CHANGED', 'Changed their own password', now());
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (p.id, 'PASSWORD_CHANGED', 'person', p.id::text, null, null);
+  return jsonb_build_object('ok', true,
+    'loginId', coalesce(p.user_id, nullif(btrim(p.employee_no),'')),
+    'note', 'Your password is changed. Use it from your next sign-in.');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.auth_password_issue(p_actor uuid, p_person uuid, p_salt text, p_hash text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a person; p person; v_login text;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null or not (a.app_role = 'ADMIN' or coalesce(a.department,'') = 'Human Resources') then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Giving somebody a password is the administrator''s, or Human Resources''.');
+  end if;
+  select * into p from person
+   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null;
+  if p.id is null then
+    return jsonb_build_object('error','not_a_person','reason','Nobody active by that id.');
+  end if;
+  if p.id = a.id then
+    return jsonb_build_object('error','your_own',
+      'reason','Change your own password on My profile, with your current one.');
+  end if;
+  if p.employee_type = 'SERVICE_ACCOUNT' then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A service account signs in by Google only.');
+  end if;
+  if p.app_role = 'ADMIN' and a.app_role <> 'ADMIN' then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Only an administrator can give an administrator a password.');
+  end if;
+  v_login := coalesce(p.user_id, nullif(btrim(p.employee_no),''));
+  if v_login is null then
+    return jsonb_build_object('error','no_login_id',
+      'reason','Give them an employee number first: it is their login ID.');
+  end if;
+  if coalesce(p_salt,'') !~ '^[0-9a-f]{32}$' or coalesce(p_hash,'') !~ '^[0-9a-f]{128}$' then
+    return jsonb_build_object('error','invalid','reason','That is not a password the tool can store.');
+  end if;
+
+  update person set password_salt = p_salt, password_hash = p_hash, user_id = v_login
+   where id = p.id;
+  -- whoever was signed in with the old password is not any more
+  update auth_session set revoked_at = now()
+   where person_id = p.id and source = 'PASSWORD' and revoked_at is null;
+  insert into person_event (person_id, kind, note, at)
+  values (p.id, 'PASSWORD_ISSUED', 'Temporary password issued by ' || a.full_name, now());
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (a.id, 'PASSWORD_ISSUED', 'person', p.id::text, null,
+          jsonb_build_object('loginId', v_login));
+  return jsonb_build_object('ok', true, 'personId', p.id, 'name', p.full_name,
+    'loginId', v_login,
+    'note', p.full_name || ' signs in with login ID ' || v_login ||
+            ' and the temporary password shown, and should change it on My profile.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.auth_salt(p_email text)
  RETURNS text
  LANGUAGE sql
@@ -666,9 +761,21 @@ CREATE OR REPLACE FUNCTION public.auth_salt(p_email text)
  SET search_path TO 'public'
 AS $function$
   select password_salt from person
-   where lower(work_email) = lower(p_email)
+   where (lower(work_email) = lower(btrim(p_email))
+         or lower(user_id) = lower(btrim(p_email)))  -- 274: or the login ID
      and employment_status = 'ACTIVE'
      and superseded_by is null
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.auth_salt_of(p_person uuid)
+ RETURNS text
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  select password_salt from person
+   where id = p_person and employment_status = 'ACTIVE' and superseded_by is null
 $function$
 ;
 
@@ -3364,99 +3471,6 @@ begin
     p_assignment::text || ':allocated:' || p_person::text);
 
   return r || jsonb_build_object('allocated_to', p_person);
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_arbiter(p_assignment uuid)
- RETURNS jsonb
- LANGUAGE plpgsql
- STABLE
- SET search_path TO 'public'
-AS $function$
-declare
-  a assignment%rowtype; v_cur uuid; v_chain uuid[] := '{}'; v_guard int := 0;
-begin
-  select * into a from assignment where id = p_assignment;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-
-  -- the assignor's line, from them upwards
-  v_cur := a.assignor_id;
-  while v_cur is not null and v_guard < 50 loop
-    v_chain := v_chain || v_cur;
-    select manager_id into v_cur from person where id = v_cur;
-    v_guard := v_guard + 1;
-  end loop;
-
-  -- walk the assignee's line until it meets it
-  v_cur := coalesce(a.allocated_to_id, a.assignor_id); v_guard := 0;
-  while v_cur is not null and v_guard < 50 loop
-    if v_cur = any(v_chain) and v_cur is distinct from a.assignor_id
-       and v_cur is distinct from a.allocated_to_id then
-      return jsonb_build_object('person_id', v_cur,
-        'name', (select full_name from person where id = v_cur), 'how','lowest common manager');
-    end if;
-    select manager_id into v_cur from person where id = v_cur;
-    v_guard := v_guard + 1;
-  end loop;
-
-  -- no common manager below the top: the top is the arbiter
-  select id into v_cur from person
-   where manager_id is null and employment_status = 'ACTIVE' and superseded_by is null
-   limit 1;
-  return jsonb_build_object('person_id', v_cur,
-    'name', (select full_name from person where id = v_cur),
-    'how','no common manager below the top of the chart, so the top holds it');
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.ogl_arbitrate(p_assignment uuid, p_actor uuid, p_outcome text, p_reason text)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare a assignment%rowtype; arb jsonb; q assignment_request%rowtype; r jsonb;
-begin
-  select * into a from assignment where id = p_assignment for update;
-  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
-  if a.current_state <> 'ARBITRATION' then
-    return jsonb_build_object('error','not_in_arbitration',
-      'reason','This assignment is ' || a.current_state || '.');
-  end if;
-  if p_outcome not in ('CLOSED','REWORK') then
-    return jsonb_build_object('error','bad_outcome',
-      'reason','Arbitration ends in CLOSED or REWORK.');
-  end if;
-  if coalesce(btrim(coalesce(p_reason,'')),'') = '' then
-    return jsonb_build_object('error','reason_required',
-      'reason','An arbitration decision without its reasoning is not a decision.');
-  end if;
-
-  arb := ogl_arbiter(p_assignment);
-  if (arb->>'person_id')::uuid is distinct from p_actor
-     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
-    return jsonb_build_object('error','not_the_arbiter',
-      'reason','This one is ' || coalesce(arb->>'name','nobody') || '''s to decide - '
-             || coalesce(arb->>'how',''), 'arbiter', arb);
-  end if;
-
-  -- an arbitration that goes to rework says the dispute was right; one that
-  -- closes says it was not, and that answer is what waives or keeps a strike
-  select * into q from assignment_request
-   where assignment_id = p_assignment and request_type = 'DISPUTE' and resolved_at is null
-   order by raised_at desc limit 1;
-  if q.id is not null then
-    perform ogl_dispute_classify(q.id, p_actor,
-      case when p_outcome = 'REWORK' then 'UPHELD' else 'NOT_UPHELD' end,
-      'By arbitration: ' || p_reason);
-  end if;
-
-  insert into assignment_event (assignment_id, event_type, actor_id, payload)
-  values (p_assignment, 'ARBITRATION_DECIDED', p_actor,
-          jsonb_build_object('outcome', p_outcome, 'reason', p_reason, 'arbiter', arb));
-
-  r := ogl_transition(p_assignment, p_outcome, p_actor, 'arbitration: ' || p_reason);
-  return r || jsonb_build_object('arbiter', arb, 'outcome', p_outcome);
 end $function$
 ;
 
