@@ -8,6 +8,46 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.plb_self_eval(p_actor uuid, p_sheet uuid, p_month date, p_kpi numeric, p_attr numeric)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare s plb_goal_sheet;
+begin
+  select * into s from plb_goal_sheet where id = p_sheet;
+  if s.person_id <> p_actor then
+    return jsonb_build_object('error','not_permitted',
+      'reason','A self-evaluation is your own.');
+  end if;
+  -- 269: the same fences as the manager's score.
+  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
+  if p_kpi is null or p_attr is null or p_kpi < 0 or p_kpi > 10 or p_attr < 0 or p_attr > 10
+     or p_kpi * 2 <> floor(p_kpi * 2) or p_attr * 2 <> floor(p_attr * 2) then
+    return jsonb_build_object('error','out_of_range',
+      'reason','Both halves, each from 0 to 10 in half steps.');
+  end if;
+  if date_trunc('month', p_month)::date < s.quarter
+     or date_trunc('month', p_month)::date >= (s.quarter + interval '3 months')::date then
+    return jsonb_build_object('error','not_this_quarter',
+      'reason','That month is not one of this goal sheet''s.');
+  end if;
+  if current_date < (date_trunc('month', p_month) + interval '1 month')::date then
+    return jsonb_build_object('error','month_not_over',
+      'reason','A month is evaluated once it is over -- from '
+             || to_char((date_trunc('month', p_month) + interval '1 month')::date, 'FMDD FMMonth') || '.');
+  end if;
+  insert into plb_month_score (sheet_id, month, self_kpi, self_attr, self_at)
+  values (p_sheet, date_trunc('month', p_month)::date, p_kpi, p_attr, now())
+  on conflict (sheet_id, month) do update
+     set self_kpi = excluded.self_kpi, self_attr = excluded.self_attr, self_at = now()
+   where plb_month_score.locked_at is null;
+  return jsonb_build_object('ok', true,
+    'note','Recorded. It is an input, not a score, and it is not averaged with your manager''s.');
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.plb_sheet(p_sheet uuid)
  RETURNS jsonb
  LANGUAGE sql

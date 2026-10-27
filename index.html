@@ -386,6 +386,13 @@ input.pbtg,input.pbbl{width:92px}
 .mxlv td{padding:3px 8px 3px 0;border:none;vertical-align:top}
 .mxl{width:28px;color:var(--mute);font-variant-numeric:tabular-nums}
 #mxperiod{width:auto;min-width:170px}
+/* a login, shown once (274) */
+.hraissued{border-left:3px solid var(--gold)}
+.hralogin{display:flex;flex-wrap:wrap;gap:12px 32px;margin:8px 15px 12px}
+.hralogin div{display:flex;flex-direction:column;gap:2px}
+.hralogin b{font-size:20px;font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em}
+.hrareset{margin:6px 0 12px}
+.hrareset select{max-width:24rem}
 /* the two mail switches (270) */
 .mpwrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin:16px 0}
 .mpwrap .card{margin:0}
@@ -1257,8 +1264,8 @@ button.exp:hover{border-color:var(--blue);color:var(--blue);background:var(--whi
       <div id="gbtn"></div>
       <div class="mute" id="ghint"></div>
       <div class="or">or sign in with a password</div>
-      <div><label for="em">Work e-mail</label>
-        <input id="em" type="email" autocomplete="username" placeholder="yourname@cruxindia.co.in"></div>
+      <div><label for="em">Login ID or work e-mail</label>
+        <input id="em" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="EMP-0105 or yourname@cruxindia.co.in"></div>
       <div><label for="pw">Password</label>
         <input id="pw" type="password" autocomplete="current-password"></div>
       <div><button id="go" class="go" style="width:100%">Sign in</button></div>
@@ -1464,17 +1471,20 @@ el("go").onclick = async function(){
   var b = el("go"); b.disabled = true; el("loginMsg").innerHTML = "";
   try {
     var em = el("em").value.trim();
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) {
-      el("loginMsg").innerHTML = msg("bad", "That is not an e-mail address. Your "
-        + "browser has probably filled this box with a saved name rather than an "
-        + "address. Clear it and type your work address.");
+    /* LOGIN-ID (274): a login ID (EMP-0105) or a work e-mail. What is
+       refused before the round trip is what is neither -- the company
+       name a browser's password manager likes to put in this box. */
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em) && !/^[A-Za-z0-9][A-Za-z0-9\/_-]{0,19}$/.test(em)) {
+      el("loginMsg").innerHTML = msg("bad", "That is neither a login ID nor an e-mail "
+        + "address. Your login ID looks like EMP-0105. Your browser may have filled "
+        + "this box with a saved name: clear it and type your login ID.");
       return;
     }
     var out = await crux("/api/login", { method:"POST",
       body:{ email: em, password: el("pw").value } });
     if (out.error) { el("loginMsg").innerHTML = msg("bad", (out.reason || out.error)
-      + " No Crux account has a password set, so this box cannot let anyone in. "
-      + "Use the Google button above."); return; }
+      + " Check the login ID and password your administrator gave you. With a "
+      + "cruxindia.co.in address you can also use the Google button above."); return; }
     token = out.token; aaSet("cruxToken", token); el("pw").value = "";
     start(out.person);
   } catch(e){ el("loginMsg").innerHTML = msg("bad", String(e)); }
@@ -12481,6 +12491,7 @@ function myRender(){
         myDocs() +
         myRaised() +
         myWhere() +
+        myPassword() +
       '</div>' +
     '</div>';
   myWire();
@@ -12694,7 +12705,40 @@ function myEditForm(field, was, label){
 }
 
 /* ---------------------------------------------------------------- wiring */
+/* ---------------------------------------------- your password (274)
+   A password handed out on a sheet is one the person should replace, and
+   this is where. The current one is asked for whenever there is one; a
+   person who has only ever signed in with Google sets their first.      */
+function myPassword(){
+  var me0 = (typeof me === "object" && me) || {};
+  return '<div class="card"><h2>Your password</h2>' +
+    '<p class="mute">You sign in with ' +
+      (me0.employee_no ? 'login ID <b>' + esc(me0.employee_no) + '</b>' : 'your login ID') +
+      (me0.work_email ? ' or ' + esc(me0.work_email) : '') + ' and this password.</p>' +
+    '<div class="row"><div><label>Current password</label>' +
+      '<input id="mypwcur" type="password" autocomplete="current-password"></div>' +
+    '<div><label>New password</label>' +
+      '<input id="mypwnew" type="password" autocomplete="new-password" placeholder="at least eight characters"></div>' +
+    '<div><label>New password again</label>' +
+      '<input id="mypwnew2" type="password" autocomplete="new-password"></div></div>' +
+    '<p><button class="btn primary" id="mypwgo">Change my password</button></p>' +
+    '<div id="mypwmsg"></div></div>';
+}
+
 function myWire(){
+  if (el("mypwgo")) el("mypwgo").onclick = async function(){
+    var next = el("mypwnew").value, again = el("mypwnew2").value;
+    if (next.length < 8) { el("mypwmsg").innerHTML = msg("bad", "Use at least eight characters."); return; }
+    if (next !== again) { el("mypwmsg").innerHTML = msg("bad", "The two new passwords are not the same."); return; }
+    el("mypwgo").disabled = true;
+    var o = await crux("/api/password", { method:"POST",
+      body:{ current: el("mypwcur").value, next: next } });
+    el("mypwgo").disabled = false;
+    if (o.error) { el("mypwmsg").innerHTML = msg("bad", o.reason || o.error); return; }
+    el("mypwcur").value = ""; el("mypwnew").value = ""; el("mypwnew2").value = "";
+    el("mypwmsg").innerHTML = msg("ok", o.note || "Changed.");
+  };
+
   if (el("myask")) el("myask").onclick = function(){
     el("mybox").innerHTML = myAskForm();
     el("mybox").scrollIntoView({ behavior:"smooth", block:"nearest" });
@@ -13190,7 +13234,8 @@ async function vIdeas(){
    performance upload joins people BY employee number, so a person without
    one has their rows dropped in silence. Eleven active staff are in that
    state today, which is how this screen came to exist.                  */
-var HRA = { open:false, opts:null, form:{}, chk:null, busy:false, d:null };
+var HRA = { open:false, opts:null, form:{}, chk:null, busy:false, d:null,
+            issued:null, reset:false, people:null };
 
 /* vHR hands the overview over on every draw, because the card only exists
    for somebody HR, and only vHR knows whether this viewer is. */
@@ -13229,15 +13274,59 @@ function hraPick(field, label, options, extra){
     hraSays(field) + '</label>';
 }
 
+/* ------------------------------------------------ a login, shown once (274)
+   A person added here, or given a new password, signs in with a login ID --
+   their employee number -- and a temporary password. The password is made
+   by the service, shown in this card once, and kept nowhere: once Done is
+   pressed nobody, the administrator included, can read it again. So the
+   card stays until somebody presses Done, rather than vanishing with the
+   page's next redraw while they are still copying it.                    */
+function hraIssued(){
+  var i = HRA.issued;
+  if (!i) return "";
+  return '<div class="card hraissued"><h2>Sign-in for ' + esc(i.name || "them") + '</h2>' +
+    '<div class="hralogin"><div><span class="mute">Login ID</span><b>' + esc(i.loginId) + '</b></div>' +
+    '<div><span class="mute">Temporary password</span><b>' + esc(i.password) + '</b></div></div>' +
+    '<p>Give them both now. This password is shown once and stored nowhere; ' +
+    'they change it on My profile after signing in.</p>' +
+    '<p><button class="btn primary" id="hraissueddone">Done</button></p></div>';
+}
+
+/* Somebody who has forgotten theirs, or never had one. */
+function hraResetCard(){
+  if (!HRA.reset) {
+    return '<p><button class="btn" id="hraresetopen">Give somebody a new password</button></p>';
+  }
+  var people = HRA.people;
+  if (!people) return '<p class="mute">Loading the people&hellip;</p>';
+  return '<div class="hrareset"><label><span>Who</span><select id="hraresetwho">' +
+    '<option value="">— choose a person —</option>' +
+    people.map(function(m){
+      return '<option value="' + esc(m.id) + '">' + esc(m.name) +
+        (m.employeeNo ? ' · ' + esc(m.employeeNo) : '') + '</option>'; }).join("") +
+    '</select></label> ' +
+    '<button class="btn primary" id="hraresetgo">Give them a new password</button> ' +
+    '<button class="btn" id="hraresetcancel">Cancel</button>' +
+    '<p class="mute">Their old password stops working, and anybody signed in with it is signed out.</p>' +
+    '<div id="hraresetmsg"></div></div>';
+}
+
 /* --------------------------------------------------------------- the card */
 function hraCard(d){
   if (!d || !d.isHr) return "";
+  return hraIssued() + hraCardBody(d);
+}
+
+function hraCardBody(d){
   if (!HRA.open) {
     return '<div class="card"><h2>Add a person</h2>' +
       '<p class="mute">Nine fields, all checked as you type. The employee number is ' +
       'required because every performance upload joins people by it — somebody added ' +
-      'without one has their rows dropped and nothing says so.</p>' +
-      '<p><button class="btn primary" id="hraopen">Add a person</button></p></div>';
+      'without one has their rows dropped and nothing says so. A work e-mail and a ' +
+      'mobile are asked for and not required: without them, the person signs in with ' +
+      'their login ID and a temporary password, shown here once.</p>' +
+      '<p><button class="btn primary" id="hraopen">Add a person</button></p>' +
+      hraResetCard() + '</div>';
   }
   var o = HRA.opts;
   if (!o) return '<div class="card"><h2>Add a person</h2>' +
@@ -13325,7 +13414,7 @@ async function hraCheck(){
 }
 
 /* Repainting the whole card on every keystroke would move the caret, so the
-   field that had focus and the position within it are put back. */
+   messages are patched in place and only a structural change redraws. */
 function hraRepaint(){
   var host = el("hracard");
   if (!host) return;
@@ -13395,10 +13484,50 @@ function hraWire(){
       return;
     }
     HRA.open = false; HRA.form = {}; HRA.chk = null;
+    /* A password to hand over stays on screen until Done; anything else
+       redraws the page as it always did. */
+    if (out.password) {
+      HRA.issued = { name: out.name || (out.note || "").split(" added")[0],
+                     loginId: out.loginId, password: out.password };
+      hraRepaint();
+      var bx = el("hramsg");
+      if (bx) bx.innerHTML = msg("ok", out.note);
+      return;
+    }
     hraRepaint();
     var box = el("hramsg");
     if (box) box.innerHTML = msg("ok", out.note);
     setTimeout(function(){ route(); }, 1600);
+  };
+
+  if (el("hraissueddone")) el("hraissueddone").onclick = function(){
+    HRA.issued = null; route();
+  };
+
+  if (el("hraresetopen")) el("hraresetopen").onclick = async function(){
+    HRA.reset = true; hraRepaint();
+    var o = await hrapi("/hr/options");
+    HRA.people = o && !o.error ? (o.managers || []) : [];
+    hraRepaint();
+  };
+  if (el("hraresetcancel")) el("hraresetcancel").onclick = function(){
+    HRA.reset = false; hraRepaint();
+  };
+  if (el("hraresetgo")) el("hraresetgo").onclick = async function(){
+    var who = el("hraresetwho").value;
+    if (!who) { el("hraresetmsg").innerHTML = msg("bad", "Choose who it is for."); return; }
+    var pick = (HRA.people || []).filter(function(m){ return m.id === who; })[0] || {};
+    if (!confirm("Give " + (pick.name || "them") + " a new password? Their old one stops working.")) return;
+    el("hraresetgo").disabled = true;
+    var out = await crux("/api/password/reset", { method:"POST", body:{ personId: who } });
+    if (out.error) {
+      el("hraresetgo").disabled = false;
+      el("hraresetmsg").innerHTML = msg("bad", out.reason || out.error);
+      return;
+    }
+    HRA.reset = false;
+    HRA.issued = { name: out.name || pick.name, loginId: out.loginId, password: out.password };
+    hraRepaint();
   };
 }
 

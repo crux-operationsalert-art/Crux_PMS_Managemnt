@@ -8,6 +8,54 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.perf_carry_forward(p_actor uuid, p_cycle uuid, p_person uuid, p_keep_targets boolean DEFAULT false)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare c perf_cycle; prev perf_cycle; n int := 0; r record; v_id uuid;
+begin
+  if not perf_may_set(p_actor, p_person) then
+    return jsonb_build_object('error','not_permitted');
+  end if;
+  select * into c from perf_cycle where id = p_cycle;
+  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
+  if current_date > c.assign_closes
+     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
+    return jsonb_build_object('error','window_closed',
+      'reason','KPIs for ' || c.period_start || ' had to be set by ' || c.assign_closes || '. HR or an administrator can reopen the month.');
+  end if;
+  select * into prev from perf_cycle
+   where period_kind = c.period_kind and period_start < c.period_start
+   order by period_start desc limit 1;
+  if prev.id is null then
+    return jsonb_build_object('ok', true, 'copied', 0,
+      'note','There is no earlier cycle to carry forward from.');
+  end if;
+  for r in select * from perf_assignment
+            where cycle_id = prev.id and person_id = p_person and part_of_id is null
+              and state is distinct from 'WITHDRAWN'
+            order by name loop
+    insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit,
+        target_value, weight_pct, cadence_day, set_by, carried_from_id, note)
+    values (c.id, p_person, r.kpi_id, r.name, r.unit,
+            case when p_keep_targets then r.target_value else null end,
+            r.weight_pct, r.cadence_day, p_actor, r.id, r.note)
+    on conflict do nothing
+    returning id into v_id;
+    if v_id is not null then
+      execute format('update perf_assignment set cadence = (select cadence from perf_assignment where id = %L) where id = %L', r.id, v_id);
+      n := n + 1;
+    end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'copied', n,
+    'note', n || ' measure(s) carried from ' || prev.period_start ||
+      case when p_keep_targets then ' with last month''s targets.'
+           else '. The targets are blank on purpose -- last month''s number is not this month''s promise.' end);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.perf_cascade(p_assignment uuid, p_depth integer DEFAULT 0)
  RETURNS integer
  LANGUAGE plpgsql
@@ -1978,6 +2026,8 @@ begin
           nullif(v->>'designationId','')::uuid, nullif(v->>'managerId','')::uuid,
           nullif(v->>'joinedOn','')::date, 'ACTIVE', v_app::role_kind, 'person_add')
   returning id into v_id;
+  -- 274: the login ID is the employee number
+  update person set user_id = nullif(btrim(v->>'employeeNo'),'') where id = v_id;
 
   select * into v_chair from chair where id = (v->>'chairId')::uuid;
 
@@ -2019,6 +2069,7 @@ begin
                              'chair', v_chair.title, 'place', v_place, 'appRole', v_app));
 
   return jsonb_build_object('ok', true, 'personId', v_id,
+    'loginId', nullif(btrim(v->>'employeeNo'),''),  -- 274
     'email', v->>'workEmail',
     'warnings', chk->'warnings',
     'note', (v->>'fullName') || ' added as ' || (v->>'employeeNo') ||
@@ -2083,8 +2134,8 @@ begin
   -- work e-mail
   if v_mail = '' then
     if v_type in ('EMPLOYEE','PARTNER','INTERN','CONTRACT') then
-      e := e || jsonb_build_object('field','workEmail',
-        'says','A work address is how they sign in and how the tool reaches them.');
+      w := w || jsonb_build_object('field','workEmail',  -- 274: a warning
+        'says','No work e-mail. They sign in with their login ID and a password, and the tool cannot e-mail them until one is added.');
     end if;
   elsif v_mail !~ '^[^@[:space:]]+@[^@[:space:]]+\.[a-zA-Z]{2,}$' then
     e := e || jsonb_build_object('field','workEmail','says','That is not an e-mail address.');
@@ -2131,8 +2182,8 @@ begin
   -- mobile
   if v_mob = '' then
     if v_type = 'EMPLOYEE' then
-      e := e || jsonb_build_object('field','mobile',
-        'says','A mobile number is required -- it is the second way in when e-mail fails.');
+      w := w || jsonb_build_object('field','mobile',  -- 274: a warning
+        'says','No mobile number. Add it when you have it -- it is the other way to reach them.');
     end if;
   elsif v_mob !~ '^[6-9][0-9]{9}$' then
     e := e || jsonb_build_object('field','mobile',
@@ -3048,6 +3099,92 @@ begin
     new.personal_email := lower(btrim(new.personal_email));
   end if;
   return new;
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.person_onboard_existing(p_actor uuid, p_rows jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare
+  a person; r jsonb; v_next int; v_no text; v_id uuid; v_name text; v_chair uuid;
+  v_mgr uuid; v_desig uuid; v_fe uuid; v_bo uuid; v_held text;
+  made jsonb := '[]'::jsonb; skipped jsonb := '[]'::jsonb;
+begin
+  select * into a from person
+   where id = p_actor and employment_status = 'ACTIVE' and superseded_by is null;
+  if a.id is null or a.app_role <> 'ADMIN' then
+    return jsonb_build_object('error','not_permitted',
+      'reason','Onboarding staff in bulk is the administrator''s.');
+  end if;
+  if jsonb_typeof(p_rows) is distinct from 'array' then
+    return jsonb_build_object('error','invalid','reason','Send the people as a list.');
+  end if;
+
+  select id into v_desig from designation where lower(btrim(title)) = 'executive' limit 1;
+  select id into v_fe from chair where code = 'FE';
+  select id into v_bo from chair where code = 'BO';
+  if v_fe is null or v_bo is null then
+    return jsonb_build_object('error','no_chair',
+      'reason','The Field Executives and Back Office chairs are not there to seat anybody in.');
+  end if;
+  select coalesce(max((substring(btrim(employee_no) from '^EMP-([0-9]+)$'))::int), 0) + 1
+    into v_next from person where btrim(employee_no) ~ '^EMP-[0-9]+$';
+
+  for r in select * from jsonb_array_elements(p_rows) loop
+    v_name := regexp_replace(btrim(coalesce(r->>'fullName','')), '\s+', ' ', 'g');
+    if length(v_name) < 3 then
+      skipped := skipped || jsonb_build_object('name', v_name, 'why', 'no name');
+      continue;
+    end if;
+    select string_agg(coalesce(employee_no, 'no number'), ', ') into v_held
+      from person
+     where superseded_by is null and left_on is null
+       and lower(regexp_replace(btrim(full_name), '\s+', ' ', 'g')) = lower(v_name);
+    if v_held is not null then
+      skipped := skipped || jsonb_build_object('name', v_name,
+        'why', 'already in the tool as ' || v_held);
+      continue;
+    end if;
+    if coalesce(r->>'salt','') !~ '^[0-9a-f]{32}$' or coalesce(r->>'hash','') !~ '^[0-9a-f]{128}$' then
+      skipped := skipped || jsonb_build_object('name', v_name, 'why', 'no password');
+      continue;
+    end if;
+    v_chair := case upper(coalesce(r->>'chair','')) when 'FE' then v_fe else v_bo end;
+    v_mgr := null;
+    if nullif(r->>'managerId','') is not null then
+      select id into v_mgr from person
+       where id = (r->>'managerId')::uuid and employment_status = 'ACTIVE'
+         and superseded_by is null and employee_type <> 'SERVICE_ACCOUNT';
+    end if;
+
+    v_no := 'EMP-' || lpad(v_next::text, 4, '0');
+    v_next := v_next + 1;
+    insert into person (full_name, employee_no, user_id, employee_type, department,
+                        designation_id, manager_id, employment_status, app_role,
+                        source_ref, password_salt, password_hash)
+    values (v_name, v_no, v_no, 'EMPLOYEE', 'Operations', v_desig, v_mgr, 'ACTIVE',
+            'VIEWER', left('onboard-2026-10 ' || coalesce(r->>'location',''), 200),
+            r->>'salt', r->>'hash')
+    returning id into v_id;
+    insert into chair_holder (chair_id, person_id, is_primary, from_date)
+    values (v_chair, v_id, true, current_date);
+    insert into person_event (person_id, kind, note, at)
+    values (v_id, 'CREATED',
+      'Onboarded by ' || a.full_name || ' from the October work record (' ||
+      coalesce(nullif(r->>'location',''), 'no location') || ')', now());
+    made := made || jsonb_build_object('name', v_name, 'employeeNo', v_no,
+      'personId', v_id, 'chair', case when v_chair = v_fe then 'FE' else 'BO' end,
+      'managerId', v_mgr);
+  end loop;
+
+  insert into audit_entry (actor_id, action, entity_type, entity_ref, old_value, new_value)
+  values (a.id, 'PEOPLE_ONBOARDED', 'person', null, null,
+          jsonb_build_object('created', jsonb_array_length(made),
+                             'skipped', jsonb_array_length(skipped)));
+  return jsonb_build_object('ok', true, 'created', made, 'skipped', skipped);
 end $function$
 ;
 
@@ -5291,46 +5428,6 @@ begin
     'monthlyScore', round(0.75 * p_kpi + 0.25 * p_attr, 2),
     'note', 'Scored ' || round(0.75 * p_kpi + 0.25 * p_attr, 2) || ' out of 10 for '
             || to_char(v_month, 'Mon YYYY') || '.');
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.plb_self_eval(p_actor uuid, p_sheet uuid, p_month date, p_kpi numeric, p_attr numeric)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare s plb_goal_sheet;
-begin
-  select * into s from plb_goal_sheet where id = p_sheet;
-  if s.person_id <> p_actor then
-    return jsonb_build_object('error','not_permitted',
-      'reason','A self-evaluation is your own.');
-  end if;
-  -- 269: the same fences as the manager's score.
-  if s.id is null then return jsonb_build_object('error','no_such_sheet'); end if;
-  if p_kpi is null or p_attr is null or p_kpi < 0 or p_kpi > 10 or p_attr < 0 or p_attr > 10
-     or p_kpi * 2 <> floor(p_kpi * 2) or p_attr * 2 <> floor(p_attr * 2) then
-    return jsonb_build_object('error','out_of_range',
-      'reason','Both halves, each from 0 to 10 in half steps.');
-  end if;
-  if date_trunc('month', p_month)::date < s.quarter
-     or date_trunc('month', p_month)::date >= (s.quarter + interval '3 months')::date then
-    return jsonb_build_object('error','not_this_quarter',
-      'reason','That month is not one of this goal sheet''s.');
-  end if;
-  if current_date < (date_trunc('month', p_month) + interval '1 month')::date then
-    return jsonb_build_object('error','month_not_over',
-      'reason','A month is evaluated once it is over -- from '
-             || to_char((date_trunc('month', p_month) + interval '1 month')::date, 'FMDD FMMonth') || '.');
-  end if;
-  insert into plb_month_score (sheet_id, month, self_kpi, self_attr, self_at)
-  values (p_sheet, date_trunc('month', p_month)::date, p_kpi, p_attr, now())
-  on conflict (sheet_id, month) do update
-     set self_kpi = excluded.self_kpi, self_attr = excluded.self_attr, self_at = now()
-   where plb_month_score.locked_at is null;
-  return jsonb_build_object('ok', true,
-    'note','Recorded. It is an input, not a score, and it is not averaged with your manager''s.');
 end $function$
 ;
 

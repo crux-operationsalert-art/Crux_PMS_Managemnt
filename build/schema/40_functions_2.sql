@@ -8,6 +8,99 @@
 -- Ordered by name, not by dependency. Load with check_function_bodies off.
 -- =====================================================================
 
+CREATE OR REPLACE FUNCTION public.ogl_arbiter(p_assignment uuid)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+declare
+  a assignment%rowtype; v_cur uuid; v_chain uuid[] := '{}'; v_guard int := 0;
+begin
+  select * into a from assignment where id = p_assignment;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+
+  -- the assignor's line, from them upwards
+  v_cur := a.assignor_id;
+  while v_cur is not null and v_guard < 50 loop
+    v_chain := v_chain || v_cur;
+    select manager_id into v_cur from person where id = v_cur;
+    v_guard := v_guard + 1;
+  end loop;
+
+  -- walk the assignee's line until it meets it
+  v_cur := coalesce(a.allocated_to_id, a.assignor_id); v_guard := 0;
+  while v_cur is not null and v_guard < 50 loop
+    if v_cur = any(v_chain) and v_cur is distinct from a.assignor_id
+       and v_cur is distinct from a.allocated_to_id then
+      return jsonb_build_object('person_id', v_cur,
+        'name', (select full_name from person where id = v_cur), 'how','lowest common manager');
+    end if;
+    select manager_id into v_cur from person where id = v_cur;
+    v_guard := v_guard + 1;
+  end loop;
+
+  -- no common manager below the top: the top is the arbiter
+  select id into v_cur from person
+   where manager_id is null and employment_status = 'ACTIVE' and superseded_by is null
+   limit 1;
+  return jsonb_build_object('person_id', v_cur,
+    'name', (select full_name from person where id = v_cur),
+    'how','no common manager below the top of the chart, so the top holds it');
+end $function$
+;
+
+CREATE OR REPLACE FUNCTION public.ogl_arbitrate(p_assignment uuid, p_actor uuid, p_outcome text, p_reason text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+declare a assignment%rowtype; arb jsonb; q assignment_request%rowtype; r jsonb;
+begin
+  select * into a from assignment where id = p_assignment for update;
+  if not found then return jsonb_build_object('error','no_such_assignment'); end if;
+  if a.current_state <> 'ARBITRATION' then
+    return jsonb_build_object('error','not_in_arbitration',
+      'reason','This assignment is ' || a.current_state || '.');
+  end if;
+  if p_outcome not in ('CLOSED','REWORK') then
+    return jsonb_build_object('error','bad_outcome',
+      'reason','Arbitration ends in CLOSED or REWORK.');
+  end if;
+  if coalesce(btrim(coalesce(p_reason,'')),'') = '' then
+    return jsonb_build_object('error','reason_required',
+      'reason','An arbitration decision without its reasoning is not a decision.');
+  end if;
+
+  arb := ogl_arbiter(p_assignment);
+  if (arb->>'person_id')::uuid is distinct from p_actor
+     and (select app_role from person where id = p_actor) is distinct from 'ADMIN' then
+    return jsonb_build_object('error','not_the_arbiter',
+      'reason','This one is ' || coalesce(arb->>'name','nobody') || '''s to decide - '
+             || coalesce(arb->>'how',''), 'arbiter', arb);
+  end if;
+
+  -- an arbitration that goes to rework says the dispute was right; one that
+  -- closes says it was not, and that answer is what waives or keeps a strike
+  select * into q from assignment_request
+   where assignment_id = p_assignment and request_type = 'DISPUTE' and resolved_at is null
+   order by raised_at desc limit 1;
+  if q.id is not null then
+    perform ogl_dispute_classify(q.id, p_actor,
+      case when p_outcome = 'REWORK' then 'UPHELD' else 'NOT_UPHELD' end,
+      'By arbitration: ' || p_reason);
+  end if;
+
+  insert into assignment_event (assignment_id, event_type, actor_id, payload)
+  values (p_assignment, 'ARBITRATION_DECIDED', p_actor,
+          jsonb_build_object('outcome', p_outcome, 'reason', p_reason, 'arbiter', arb));
+
+  r := ogl_transition(p_assignment, p_outcome, p_actor, 'arbitration: ' || p_reason);
+  return r || jsonb_build_object('arbiter', arb, 'outcome', p_outcome);
+end $function$
+;
+
 CREATE OR REPLACE FUNCTION public.ogl_attach_begin(p_assignment uuid, p_actor uuid, p_file_name text, p_doc_kind text DEFAULT 'EVIDENCE'::text, p_requirement uuid DEFAULT NULL::uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -5406,54 +5499,6 @@ begin
     end if;
   end if;
   return new;
-end $function$
-;
-
-CREATE OR REPLACE FUNCTION public.perf_carry_forward(p_actor uuid, p_cycle uuid, p_person uuid, p_keep_targets boolean DEFAULT false)
- RETURNS jsonb
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-declare c perf_cycle; prev perf_cycle; n int := 0; r record; v_id uuid;
-begin
-  if not perf_may_set(p_actor, p_person) then
-    return jsonb_build_object('error','not_permitted');
-  end if;
-  select * into c from perf_cycle where id = p_cycle;
-  if c.id is null then return jsonb_build_object('error','no_such_cycle'); end if;
-  if current_date > c.assign_closes
-     and not exists (select 1 from person where id = p_actor and app_role = 'ADMIN') then
-    return jsonb_build_object('error','window_closed',
-      'reason','KPIs for ' || c.period_start || ' had to be set by ' || c.assign_closes || '. HR or an administrator can reopen the month.');
-  end if;
-  select * into prev from perf_cycle
-   where period_kind = c.period_kind and period_start < c.period_start
-   order by period_start desc limit 1;
-  if prev.id is null then
-    return jsonb_build_object('ok', true, 'copied', 0,
-      'note','There is no earlier cycle to carry forward from.');
-  end if;
-  for r in select * from perf_assignment
-            where cycle_id = prev.id and person_id = p_person and part_of_id is null
-              and state is distinct from 'WITHDRAWN'
-            order by name loop
-    insert into perf_assignment (cycle_id, person_id, kpi_id, name, unit,
-        target_value, weight_pct, cadence_day, set_by, carried_from_id, note)
-    values (c.id, p_person, r.kpi_id, r.name, r.unit,
-            case when p_keep_targets then r.target_value else null end,
-            r.weight_pct, r.cadence_day, p_actor, r.id, r.note)
-    on conflict do nothing
-    returning id into v_id;
-    if v_id is not null then
-      execute format('update perf_assignment set cadence = (select cadence from perf_assignment where id = %L) where id = %L', r.id, v_id);
-      n := n + 1;
-    end if;
-  end loop;
-  return jsonb_build_object('ok', true, 'copied', n,
-    'note', n || ' measure(s) carried from ' || prev.period_start ||
-      case when p_keep_targets then ' with last month''s targets.'
-           else '. The targets are blank on purpose -- last month''s number is not this month''s promise.' end);
 end $function$
 ;
 
